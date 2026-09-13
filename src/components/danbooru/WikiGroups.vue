@@ -231,7 +231,7 @@ function handleCopyTag(tag: string, event?: Event) {
       </div>
 
       <!-- Categorized Collections List -->
-      <div class="flex-1 overflow-y-auto p-2 space-y-4">
+      <div class="flex-1 space-y-4 overflow-y-auto p-2">
         <div
           v-if="groupedByCategory.length === 0"
           class="text-muted-foreground py-12 text-center text-xs"
@@ -268,12 +268,12 @@ function handleCopyTag(tag: string, event?: Event) {
               v-for="group in catGroup.groups"
               :key="`${group.category}:${group.title}`"
               type="button"
-              class="flex w-full items-center justify-between gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors cursor-pointer"
+              class="flex w-full cursor-pointer items-center justify-between gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors"
               :class="
                 activeGroup &&
                 activeGroup.title === group.title &&
                 activeGroup.category === group.category
-                  ? 'bg-primary/10 text-primary font-semibold border-l-2 border-primary pl-2'
+                  ? 'bg-primary/10 text-primary border-primary border-l-2 pl-2 font-semibold'
                   : 'hover:bg-muted/60 text-muted-foreground hover:text-foreground'
               "
               @click="selectGroup(group)"
@@ -315,7 +315,7 @@ function handleCopyTag(tag: string, event?: Event) {
         class="border-border/50 text-muted-foreground bg-muted/10 flex items-center justify-between border-t px-3.5 py-2.5 text-xs"
       >
         <span class="flex items-center gap-1.5">
-          <Layers class="size-3.5 text-primary/80" />
+          <Layers class="text-primary/80 size-3.5" />
           <span>{{ filteredGroups.length }} collections</span>
         </span>
         <span class="font-mono">{{ totalTopicsAcrossAllGroups }} topics</span>
@@ -323,7 +323,7 @@ function handleCopyTag(tag: string, event?: Event) {
     </aside>
 
     <!-- Right Main Pane: Topics Explorer -->
-    <section class="flex flex-1 flex-col overflow-hidden bg-background">
+    <section class="bg-background flex flex-1 flex-col overflow-hidden">
       <!-- Collection Header Bar -->
       <div
         v-if="activeGroup"
@@ -340,7 +340,7 @@ function handleCopyTag(tag: string, event?: Event) {
               {{ activeGroup.links.length }} topics
             </span>
           </div>
-          <h2 class="text-lg font-bold tracking-tight text-foreground">
+          <h2 class="text-foreground text-lg font-bold tracking-tight">
             {{ activeGroup.title }}
           </h2>
         </div>
@@ -383,7 +383,9 @@ function handleCopyTag(tag: string, event?: Event) {
       <div v-if="activeGroup" class="flex-1 overflow-y-auto p-6">
         <!-- Search Filtered Results State -->
         <div v-if="topicQuery" class="space-y-4">
-          <div class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div
+            class="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
+          >
             Matching Topics ({{ searchResults.length }})
           </div>
 
@@ -391,19 +393,23 @@ function handleCopyTag(tag: string, event?: Event) {
             <div
               v-for="link in searchResults"
               :key="link.title"
-              class="group flex items-center gap-2 rounded-lg border border-border/60 bg-secondary/30 hover:bg-secondary/70 hover:border-primary/50 px-3 py-2 text-xs transition-colors cursor-pointer"
+              class="group border-border/60 bg-secondary/30 hover:bg-secondary/70 hover:border-primary/50 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors"
               @click="router.push(wikiPath(link.title))"
             >
-              <span class="font-medium text-foreground group-hover:text-primary transition-colors capitalize">
+              <span
+                class="text-foreground group-hover:text-primary font-medium capitalize transition-colors"
+              >
                 {{ link.label }}
               </span>
 
               <!-- Hover Quick Actions -->
-              <div class="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              <div
+                class="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+              >
                 <button
                   type="button"
                   title="Copy tag"
-                  class="text-muted-foreground hover:text-foreground p-0.5 transition-colors cursor-pointer"
+                  class="text-muted-foreground hover:text-foreground cursor-pointer p-0.5 transition-colors"
                   @click="handleCopyTag(link.title, $event)"
                 >
                   <Copy class="size-3" />
@@ -411,7 +417,7 @@ function handleCopyTag(tag: string, event?: Event) {
                 <button
                   type="button"
                   title="Use in prompt"
-                  class="text-muted-foreground hover:text-amber-400 p-0.5 transition-colors cursor-pointer"
+                  class="text-muted-foreground cursor-pointer p-0.5 transition-colors hover:text-amber-400"
                   @click="handleUsePrompt(link.title, $event)"
                 >
                   <Sparkles class="size-3" />
@@ -426,7 +432,9 @@ function handleCopyTag(tag: string, event?: Event) {
             class="text-muted-foreground flex flex-col items-center justify-center py-20 text-center text-xs"
           >
             <SearchX class="mb-2.5 size-7 opacity-40" />
-            <p class="text-sm font-medium">No topics match “{{ topicQuery }}”</p>
+            <p class="text-sm font-medium">
+              No topics match “{{ topicQuery }}”
+            </p>
             <p class="text-muted-foreground mt-1 text-xs">
               Try a different keyword or clear the filter.
             </p>
@@ -449,8 +457,12 @@ function handleCopyTag(tag: string, event?: Event) {
             class="space-y-3"
           >
             <!-- Section Header (Clean typography, no card box) -->
-            <div class="flex items-center gap-2 border-b border-border/40 pb-1.5">
-              <span class="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            <div
+              class="border-border/40 flex items-center gap-2 border-b pb-1.5"
+            >
+              <span
+                class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
+              >
                 {{ section.title }}
               </span>
               <span class="text-muted-foreground/60 font-mono text-xs">
@@ -463,19 +475,23 @@ function handleCopyTag(tag: string, event?: Event) {
               <div
                 v-for="link in section.links"
                 :key="link.title"
-                class="group flex items-center gap-2 rounded-lg border border-border/60 bg-secondary/30 hover:bg-secondary/70 hover:border-primary/50 px-3 py-1.5 text-xs transition-colors cursor-pointer"
+                class="group border-border/60 bg-secondary/30 hover:bg-secondary/70 hover:border-primary/50 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors"
                 @click="router.push(wikiPath(link.title))"
               >
-                <span class="font-medium text-foreground group-hover:text-primary transition-colors capitalize">
+                <span
+                  class="text-foreground group-hover:text-primary font-medium capitalize transition-colors"
+                >
                   {{ link.label }}
                 </span>
 
                 <!-- Quick actions on hover -->
-                <div class="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div
+                  class="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+                >
                   <button
                     type="button"
                     title="Copy tag"
-                    class="text-muted-foreground hover:text-foreground p-0.5 transition-colors cursor-pointer"
+                    class="text-muted-foreground hover:text-foreground cursor-pointer p-0.5 transition-colors"
                     @click="handleCopyTag(link.title, $event)"
                   >
                     <Copy class="size-3" />
@@ -483,7 +499,7 @@ function handleCopyTag(tag: string, event?: Event) {
                   <button
                     type="button"
                     title="Use in prompt"
-                    class="text-muted-foreground hover:text-amber-400 p-0.5 transition-colors cursor-pointer"
+                    class="text-muted-foreground cursor-pointer p-0.5 transition-colors hover:text-amber-400"
                     @click="handleUsePrompt(link.title, $event)"
                   >
                     <Sparkles class="size-3" />

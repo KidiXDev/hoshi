@@ -35,7 +35,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { formatShortDate } from '@/utils/formatters';
 import { LibraryService } from '../../services/libraryService';
 import { useWorkflowStore } from '../../stores/workflowStore';
-import type { LibraryItem, LibraryListEntry, PromptData } from '../../types/library';
+import type {
+  LibraryItem,
+  LibraryListEntry,
+  PromptData
+} from '../../types/library';
 
 const props = defineProps<{
   open: boolean;
@@ -139,8 +143,10 @@ async function handleSavePreset() {
 
   const data: PromptData = {
     type: saveType.value,
-    positive: saveType.value === 'negative' ? undefined : editPositivePrompt.value,
-    negative: saveType.value === 'positive' ? undefined : editNegativePrompt.value
+    positive:
+      saveType.value === 'negative' ? undefined : editPositivePrompt.value,
+    negative:
+      saveType.value === 'positive' ? undefined : editNegativePrompt.value
   };
 
   const payload: Omit<LibraryItem<PromptData>, 'thumbnailUrl'> = {
@@ -226,7 +232,10 @@ async function copyPromptText(entry: LibraryListEntry) {
             variant="outline"
             title="Open full Library"
             class="border-border bg-secondary hover:bg-accent h-7.5 gap-1 px-2.5 text-xs"
-            @click="emit('update:open', false); $router.push('/library?tab=prompts')"
+            @click="
+              emit('update:open', false);
+              $router.push('/library?tab=prompts');
+            "
           >
             <Library class="h-3.5 w-3.5" />
             <span>Open Library</span>
@@ -361,7 +370,7 @@ async function copyPromptText(entry: LibraryListEntry) {
                   <div>
                     <div class="flex items-center justify-between gap-2">
                       <span
-                        class="border-emerald-500/30 bg-emerald-500/15 text-emerald-400 rounded-md border px-1.5 py-0.5 font-mono text-xs font-bold uppercase"
+                        class="rounded-md border border-emerald-500/30 bg-emerald-500/15 px-1.5 py-0.5 font-mono text-xs font-bold text-emerald-400 uppercase"
                       >
                         Prompt
                       </span>
@@ -423,7 +432,9 @@ async function copyPromptText(entry: LibraryListEntry) {
                     </div>
 
                     <!-- Right: Apply Buttons -->
-                    <div class="flex flex-wrap items-center justify-end gap-1.5">
+                    <div
+                      class="flex flex-wrap items-center justify-end gap-1.5"
+                    >
                       <Button
                         size="sm"
                         variant="outline"
@@ -630,7 +641,9 @@ async function copyPromptText(entry: LibraryListEntry) {
           >
             <span class="text-muted-foreground text-xs">
               Saved to your
-              <code class="text-foreground font-mono font-semibold">Library / Prompts</code>.
+              <code class="text-foreground font-mono font-semibold"
+                >Library / Prompts</code
+              >.
             </span>
 
             <Button
@@ -646,5 +659,4 @@ async function copyPromptText(entry: LibraryListEntry) {
       </Tabs>
     </DialogContent>
   </Dialog>
-
 </template>

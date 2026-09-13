@@ -47,9 +47,7 @@ export function renderWikiDtext(body: string, posts: WikiPost[] = []) {
         const path =
           wikiPath(page ?? title) +
           (anchor ? `#dtext-${encodeURIComponent(anchor)}` : '');
-        const linkText = escapeHtml(
-          (label ?? title).replaceAll('_', ' ')
-        );
+        const linkText = escapeHtml((label ?? title).replaceAll('_', ' '));
         return addLiteral(`<a href="${escapeHtml(path)}">${linkText}</a>`);
       }
     )
@@ -58,7 +56,9 @@ export function renderWikiDtext(body: string, posts: WikiPost[] = []) {
       /\{\{([^}|]+)(?:\|([^}]+))?\}\}/gu,
       (_, tags: string, label?: string) => {
         const url = `${DANBOORU_URL}/posts?tags=${encodeURIComponent(tags)}`;
-        return addLiteral(`<a href="${escapeHtml(url)}">${escapeHtml(label || tags)}</a>`);
+        return addLiteral(
+          `<a href="${escapeHtml(url)}">${escapeHtml(label || tags)}</a>`
+        );
       }
     )
     // 4. Quoted web links "label":url
@@ -67,7 +67,9 @@ export function renderWikiDtext(body: string, posts: WikiPost[] = []) {
       (_, label: string, bracketUrl: string, plainUrl: string) => {
         const rawUrl = bracketUrl || plainUrl;
         const url = rawUrl.startsWith('/') ? DANBOORU_URL + rawUrl : rawUrl;
-        return addLiteral(`<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`);
+        return addLiteral(
+          `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`
+        );
       }
     )
     // 5. Illustrated list items: * !post #1234: <rest of line>
@@ -98,8 +100,7 @@ export function renderWikiDtext(body: string, posts: WikiPost[] = []) {
           : `<span class="wiki-no-thumb">#${id}</span>`;
 
         const titleContent =
-          tagPart ||
-          `<a href="${DANBOORU_URL}/posts/${id}">Post #${id}</a>`;
+          tagPart || `<a href="${DANBOORU_URL}/posts/${id}">Post #${id}</a>`;
         const descContent = descPart
           ? `<div class="wiki-post-desc">${descPart}</div>`
           : '';

@@ -5,6 +5,7 @@ mod danbooru_wiki;
 mod download_manager;
 mod image_gallery;
 mod library_manager;
+mod model_manager;
 mod network_cache;
 mod preset_manager;
 mod process_manager;
@@ -41,7 +42,6 @@ fn style_native_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     }
     Ok(())
 }
-
 
 const DATA_KEY: &[u8] = b"comfy-gui";
 static APP_DATA_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -171,11 +171,7 @@ fn set_app_data_entry(
 }
 
 #[tauri::command]
-fn remove_app_data_entry(
-    app_handle: AppHandle,
-    name: String,
-    key: String,
-) -> Result<(), String> {
+fn remove_app_data_entry(app_handle: AppHandle, name: String, key: String) -> Result<(), String> {
     delete_app_data_entry_value(&app_handle, &name, &key)
 }
 
@@ -366,6 +362,8 @@ pub fn run() {
     let download_manager = download_manager::DownloadManager::default();
     let gallery_files = image_gallery::GalleryFiles::default();
     let protocol_files = gallery_files.clone();
+    let model_index = model_manager::ModelIndex::default();
+    let protocol_models = model_index.clone();
     let window_state_flags = tauri_plugin_window_state::StateFlags::SIZE
         | tauri_plugin_window_state::StateFlags::POSITION
         | tauri_plugin_window_state::StateFlags::MAXIMIZED
@@ -387,6 +385,30 @@ pub fn run() {
         .manage(process_manager)
         .manage(download_manager)
         .manage(gallery_files)
+        .manage(model_index)
+        .register_asynchronous_uri_scheme_protocol(
+            "comfygui-model",
+            move |_context, request, responder| {
+                let mut parts = request.uri().path().trim_matches('/').split('/');
+                let thumbnail = parts.next() == Some("thumb");
+                let id = parts.next().unwrap_or_default().to_owned();
+                let models = protocol_models.clone();
+                std::thread::spawn(move || {
+                    let response = match models.read_preview(&id, thumbnail) {
+                        Some((bytes, content_type)) => tauri::http::Response::builder()
+                            .header(tauri::http::header::CONTENT_TYPE, content_type)
+                            .header(tauri::http::header::CACHE_CONTROL, "private, max-age=3600")
+                            .body(bytes)
+                            .unwrap(),
+                        None => tauri::http::Response::builder()
+                            .status(404)
+                            .body(Vec::new())
+                            .unwrap(),
+                    };
+                    responder.respond(response);
+                });
+            },
+        )
         .register_asynchronous_uri_scheme_protocol(
             "comfygui-image",
             move |_context, request, responder| {
@@ -487,7 +509,10 @@ pub fn run() {
                             let bytes = resp.bytes().unwrap_or_default().to_vec();
                             tauri::http::Response::builder()
                                 .header(tauri::http::header::CONTENT_TYPE, content_type)
-                                .header(tauri::http::header::CACHE_CONTROL, "public, max-age=604800")
+                                .header(
+                                    tauri::http::header::CACHE_CONTROL,
+                                    "public, max-age=604800",
+                                )
                                 .header("Access-Control-Allow-Origin", "*")
                                 .body(bytes)
                                 .unwrap()
@@ -506,6 +531,9 @@ pub fn run() {
             let gallery_cache_dir = app.path().app_config_dir()?.join(".cache");
             app.state::<image_gallery::GalleryFiles>()
                 .set_cache_dir(gallery_cache_dir)
+                .map_err(std::io::Error::other)?;
+            app.state::<model_manager::ModelIndex>()
+                .configure(app.path().app_config_dir()?)
                 .map_err(std::io::Error::other)?;
             network_cache::prune_expired_in_background(app.handle());
             if let (Some(window), Some(icon)) =
@@ -547,8 +575,22 @@ pub fn run() {
             booru::booru_clear_cache,
             civitai::models,
             civitai::model_by_id,
+            civitai::model_version_by_id,
+            civitai::model_version_by_hash,
             civitai::enums,
             civitai::download,
+            model_manager::list_local_models_index,
+            model_manager::rescan_models,
+            model_manager::find_local_model,
+            model_manager::read_model_metadata,
+            model_manager::read_model_sidecar,
+            model_manager::hash_model,
+            model_manager::sync_model_with_civitai,
+            model_manager::sync_all_models,
+            model_manager::cancel_model_sync,
+            model_manager::check_model_update,
+            model_manager::delete_model,
+            model_manager::set_model_preview,
             download_manager::list,
             download_manager::pause,
             download_manager::resume,

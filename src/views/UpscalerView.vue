@@ -4,6 +4,7 @@ import StudioToolbar from '@/components/layout/StudioToolbar.vue';
 import { useImageClipboard } from '@/composables/useImageClipboard';
 import ImageComparisonModes from '@/components/common/ImageComparisonModes.vue';
 import StudioLayout from '@/components/layout/StudioLayout.vue';
+import { resolveDynamicPromptWithSeed } from '@/utils/dynamicPrompt';
 import ImageBatchQueue from '@/components/common/ImageBatchQueue.vue';
 import ImageComparison from '@/components/common/ImageComparison.vue';
 import { useImageBatch, extractDimensions } from '@/composables/useImageBatch';
@@ -289,8 +290,16 @@ function buildPrompt(imageName: string, seed: number) {
       settings: state.settings,
       models: state.models,
       loras: state.loras,
-      positivePrompt: state.positivePrompt,
-      negativePrompt: state.negativePrompt,
+      positivePrompt: resolveDynamicPromptWithSeed(
+        state.positivePrompt,
+        seed,
+        'positive'
+      ),
+      negativePrompt: resolveDynamicPromptWithSeed(
+        state.negativePrompt,
+        seed,
+        'negative'
+      ),
       upscaleModel: upscaleModel.value,
       upscaleBy: upscaleBy.value,
       seed,
@@ -619,7 +628,10 @@ onUnmounted(() => {
               class="border-border flex flex-col gap-3 border-t pt-3"
             >
               <ModelSection :models="ultimateStore.state.models" />
-              <LoraChainSection v-model:loras="ultimateStore.state.loras" />
+              <LoraChainSection
+                v-model:loras="ultimateStore.state.loras"
+                v-model:positive-prompt="ultimateStore.state.positivePrompt"
+              />
               <WorkflowField label="Positive prompt (optional)">
                 <Textarea
                   v-model="ultimateStore.state.positivePrompt"

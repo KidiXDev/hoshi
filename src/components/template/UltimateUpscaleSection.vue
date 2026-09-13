@@ -130,7 +130,6 @@ function numberSelect(key: NumberKey, presets: number[]) {
   });
   const options = computed(() => {
     const values = Array.from(new Set([...presets, settings.value[key]]));
-    // oxlint-disable-next-line unicorn/no-array-sort
     values.sort((a, b) => a - b);
     return values.map(String);
   });

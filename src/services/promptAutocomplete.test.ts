@@ -39,3 +39,13 @@ assert.deepEqual(replacePromptToken('$pose', wildcardRange, '__pose__', true), {
   text: '__pose__, ',
   cursor: 10
 });
+
+// Dynamic prompt groups: `{`, `|` and `}` bound the token being completed.
+const dynamicText = '1girl, {red ha|blue hair} eyes';
+const dynamicRange = getPromptTokenRange(dynamicText, 14);
+assert.ok(dynamicRange);
+assert.equal(dynamicRange.query, 'red_ha');
+assert.deepEqual(replacePromptToken(dynamicText, dynamicRange, 'red_hair'), {
+  text: '1girl, {red_hair|blue hair} eyes',
+  cursor: 16
+});

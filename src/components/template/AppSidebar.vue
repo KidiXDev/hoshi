@@ -6,6 +6,7 @@ import {
   Compass,
   Eraser,
   GalleryVerticalEnd,
+  HardDrive,
   Image,
   Images,
   Library,
@@ -133,6 +134,13 @@ const navItems = [
     label: 'Civitai Model Browser',
     icon: CivitaiIcon,
     route: '/civitai',
+    group: 'browse'
+  },
+  {
+    id: 'models',
+    label: 'Model Manager',
+    icon: HardDrive,
+    route: '/models',
     group: 'browse'
   }
 ];

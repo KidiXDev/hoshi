@@ -8,6 +8,22 @@ export function dragHistoryImage(event: DragEvent, item: HistoryItem) {
   event.dataTransfer.setData('text/plain', item.imageUrl);
 }
 
+/** Custom MIME type carrying a gallery image's `localId` during HTML5 drag. */
+export const GALLERY_IMAGE_MIME = 'application/x-comfygui-gallery-image';
+
+/**
+ * Starts dragging a gallery card. Sets `text/uri-list` (so Upscaler/RMBG/Face
+ * Detailer dropzones can fetch the image) plus our own type for A/B compare.
+ */
+export function dragOutputImage(event: DragEvent, image: OutputImage) {
+  if (!event.dataTransfer) return;
+  const url = localImageUrl(image.localId, false);
+  event.dataTransfer.effectAllowed = 'copyLink';
+  event.dataTransfer.setData(GALLERY_IMAGE_MIME, image.localId);
+  event.dataTransfer.setData('text/uri-list', url);
+  event.dataTransfer.setData('text/plain', url);
+}
+
 export function localImageUrl(localId: string, thumbnail = false): string {
   const kind = thumbnail ? 'thumb' : 'full';
   return navigator.userAgent.includes('Windows')

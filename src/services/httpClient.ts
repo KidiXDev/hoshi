@@ -11,7 +11,10 @@ export interface RequestProgressCallback {
 
 export function formatAxiosErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    const axiosError = error as AxiosError<{ message?: string; error?: string }>;
+    const axiosError = error as AxiosError<{
+      message?: string;
+      error?: string;
+    }>;
     if (axiosError.response?.data) {
       if (typeof axiosError.response.data === 'string') {
         return axiosError.response.data;

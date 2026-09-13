@@ -146,6 +146,44 @@ assert.ok(randomSeedState.sampler.seed < 10_000_000_000);
 state.sampler.seed = 1;
 state.sampler.randomizeSeed = false;
 
+// Dynamic prompts: resolved from the seed, template preserved.
+assert.equal(prepareWorkflowForQueue(state).promptTemplates, undefined);
+state.positivePrompt = '{red|blue|green} hair, {a|{b|c}}';
+state.negativePrompt = 'bad, {blurry|lowres}';
+state.sampler.seed = 777;
+const dynamicFirst = prepareWorkflowForQueue(state);
+const dynamicSecond = prepareWorkflowForQueue(state);
+assert.equal(state.positivePrompt, '{red|blue|green} hair, {a|{b|c}}');
+assert.equal(dynamicFirst.positivePrompt, dynamicSecond.positivePrompt);
+assert.equal(dynamicFirst.negativePrompt, dynamicSecond.negativePrompt);
+assert.ok(!dynamicFirst.positivePrompt.includes('{'));
+assert.ok(!dynamicFirst.negativePrompt.includes('|'));
+assert.match(dynamicFirst.positivePrompt, /^(red|blue|green) hair, (a|b|c)$/u);
+assert.deepEqual(dynamicFirst.promptTemplates, {
+  positivePrompt: '{red|blue|green} hair, {a|{b|c}}',
+  negativePrompt: 'bad, {blurry|lowres}',
+  faceDetailerPositivePrompt: state.faceDetailer.positivePrompt,
+  faceDetailerNegativePrompt: state.faceDetailer.negativePrompt
+});
+const dynamicGraph = buildWorkflowPrompt(dynamicFirst) as Record<
+  string,
+  { inputs: Record<string, unknown> }
+>;
+assert.equal(dynamicGraph['21'].inputs.prompt, dynamicFirst.positivePrompt);
+assert.equal(dynamicGraph['17'].inputs.prompt, dynamicFirst.negativePrompt);
+assert.ok(!JSON.stringify(dynamicGraph).includes('{red'));
+state.sampler.seed = 778;
+const dynamicOtherSeeds = new Set(
+  Array.from({ length: 30 }, (_, index) => {
+    state.sampler.seed = 1000 + index;
+    return prepareWorkflowForQueue(state).positivePrompt;
+  })
+);
+assert.ok(dynamicOtherSeeds.size > 1);
+state.positivePrompt = 'test';
+state.negativePrompt = 'bad';
+state.sampler.seed = 1;
+
 const img2img = buildWorkflowPrompt(state) as Record<
   string,
   { class_type: string }

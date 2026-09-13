@@ -89,6 +89,17 @@ const router = createRouter({
       path: '/library',
       name: 'library',
       component: () => import('../views/LibraryView.vue')
+    },
+    {
+      path: '/models',
+      name: 'models',
+      component: () => import('../views/ModelManagerView.vue')
+    },
+    {
+      path: '/models/:id',
+      name: 'model-detail',
+      component: () => import('../views/ModelManagerDetailView.vue'),
+      props: true
     }
   ]
 });

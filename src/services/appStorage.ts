@@ -10,6 +10,7 @@ type AppDataName =
   | 'face_detailer_preferences'
   | 'launcher_config'
   | 'lora_presets'
+  | 'model_manager_state'
   | 'prompt_textarea_sizes'
   | 'prompt_format_options'
   | 'remove_background_preferences'
@@ -29,6 +30,7 @@ const dataFiles: Record<AppDataName, DataFile> = {
   face_detailer_preferences: 'state',
   launcher_config: 'config',
   lora_presets: 'state',
+  model_manager_state: 'state',
   prompt_textarea_sizes: 'state',
   prompt_format_options: 'state',
   remove_background_preferences: 'state',

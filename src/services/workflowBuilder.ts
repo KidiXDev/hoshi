@@ -1,5 +1,9 @@
 import type { WorkflowState } from '../types/workflow';
 import {
+  hasDynamicPrompt,
+  resolveDynamicPromptWithSeed
+} from '../utils/dynamicPrompt';
+import {
   appendFaceDetailerStage,
   type WorkflowNodeRef
 } from './faceDetailerWorkflow';
@@ -21,7 +25,49 @@ export function prepareWorkflowForQueue(state: WorkflowState): WorkflowState {
   if (queuedState.sampler.randomizeSeed || queuedState.sampler.seed < 0) {
     queuedState.sampler.seed = Math.floor(Math.random() * 10_000_000_000);
   }
+  resolveDynamicPrompts(queuedState);
   return queuedState;
+}
+
+/**
+ * Resolves `{a|b}` groups in every prompt field using the (now concrete) seed,
+ * remembering the templates so history can restore them.
+ */
+function resolveDynamicPrompts(state: WorkflowState) {
+  const templates = {
+    positivePrompt: state.positivePrompt,
+    negativePrompt: state.negativePrompt,
+    faceDetailerPositivePrompt: state.faceDetailer?.positivePrompt ?? '',
+    faceDetailerNegativePrompt: state.faceDetailer?.negativePrompt ?? ''
+  };
+  if (!Object.values(templates).some((text) => hasDynamicPrompt(text))) {
+    delete state.promptTemplates;
+    return;
+  }
+  const seed = state.sampler.seed;
+  state.promptTemplates = templates;
+  state.positivePrompt = resolveDynamicPromptWithSeed(
+    templates.positivePrompt,
+    seed,
+    'positive'
+  );
+  state.negativePrompt = resolveDynamicPromptWithSeed(
+    templates.negativePrompt,
+    seed,
+    'negative'
+  );
+  if (state.faceDetailer) {
+    state.faceDetailer.positivePrompt = resolveDynamicPromptWithSeed(
+      templates.faceDetailerPositivePrompt,
+      seed,
+      'fd-positive'
+    );
+    state.faceDetailer.negativePrompt = resolveDynamicPromptWithSeed(
+      templates.faceDetailerNegativePrompt,
+      seed,
+      'fd-negative'
+    );
+  }
 }
 
 export function buildWorkflowPrompt(

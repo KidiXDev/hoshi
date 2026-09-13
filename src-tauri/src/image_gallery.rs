@@ -91,11 +91,7 @@ impl GalleryFiles {
             drop(in_flight);
 
             let result = (|| {
-                let thumbnail = image::open(&path).ok()?.thumbnail(400, 400);
-                let mut bytes = Vec::new();
-                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 82)
-                    .encode_image(&thumbnail)
-                    .ok()?;
+                let bytes = encode_jpeg_thumbnail(&path, 400, 82)?;
                 fs::write(&cached, &bytes).ok()?;
                 Some((bytes, "image/jpeg"))
             })();
@@ -252,7 +248,26 @@ pub async fn resolve_history_images(
     .map_err(|error| error.to_string())?
 }
 
-fn directory_argument(args: &[String], flag: &str, work: &Path) -> Option<PathBuf> {
+/// Decodes an image and re-encodes a bounded JPEG thumbnail (shared by the
+/// gallery and model-preview URI schemes).
+pub(crate) fn encode_jpeg_thumbnail(path: &Path, max: u32, quality: u8) -> Option<Vec<u8>> {
+    // Sniff the real format: preview files written by other tools are often
+    // JPEG bytes saved as `.png`. Flatten to RGB since JPEG has no alpha.
+    let decoded = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .ok()?;
+    let thumbnail = decoded.thumbnail(max, max).to_rgb8();
+    let mut bytes = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, quality)
+        .encode_image(&thumbnail)
+        .ok()?;
+    Some(bytes)
+}
+
+pub(crate) fn directory_argument(args: &[String], flag: &str, work: &Path) -> Option<PathBuf> {
     let value = args.iter().enumerate().rev().find_map(|(index, arg)| {
         arg.strip_prefix(&format!("{flag}=")).or_else(|| {
             (arg == flag)

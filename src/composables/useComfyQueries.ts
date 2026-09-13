@@ -1,9 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
 import { computed, toValue, type MaybeRefOrGetter } from 'vue';
-import {
-  ComfyApi,
-  type AutocompleteSearchMode
-} from '../services/comfyApi';
+import { ComfyApi, type AutocompleteSearchMode } from '../services/comfyApi';
 import type {
   BridgeModelsResponse,
   BridgeSystemResponse,
@@ -20,7 +17,9 @@ export function useComfyHealthQuery(
     queryFn: () => ComfyApi.checkHealth(toValue(serverUrl)),
     enabled: computed(() => {
       const url = toValue(serverUrl);
-      const isCustomEnabled = options?.enabled ? toValue(options.enabled) : true;
+      const isCustomEnabled = options?.enabled
+        ? toValue(options.enabled)
+        : true;
       return Boolean(url) && isCustomEnabled;
     }),
     refetchInterval: options?.refetchInterval,
@@ -37,7 +36,9 @@ export function useComfyModelsQuery(
     queryFn: () => ComfyApi.fetchBridgeModels(toValue(serverUrl)),
     enabled: computed(() => {
       const url = toValue(serverUrl);
-      const isCustomEnabled = options?.enabled ? toValue(options.enabled) : true;
+      const isCustomEnabled = options?.enabled
+        ? toValue(options.enabled)
+        : true;
       return Boolean(url) && isCustomEnabled;
     }),
     // 5 minutes
@@ -54,7 +55,9 @@ export function useComfySystemQuery(
     queryFn: () => ComfyApi.fetchBridgeSystem(toValue(serverUrl)),
     enabled: computed(() => {
       const url = toValue(serverUrl);
-      const isCustomEnabled = options?.enabled ? toValue(options.enabled) : true;
+      const isCustomEnabled = options?.enabled
+        ? toValue(options.enabled)
+        : true;
       return Boolean(url) && isCustomEnabled;
     }),
     refetchInterval: options?.refetchInterval,
@@ -71,7 +74,9 @@ export function useComfyObjectInfoQuery(
     queryFn: () => ComfyApi.fetchObjectInfo(toValue(serverUrl)),
     enabled: computed(() => {
       const url = toValue(serverUrl);
-      const isCustomEnabled = options?.enabled ? toValue(options.enabled) : true;
+      const isCustomEnabled = options?.enabled
+        ? toValue(options.enabled)
+        : true;
       return Boolean(url) && isCustomEnabled;
     }),
     staleTime: 1000 * 60 * 10
@@ -104,7 +109,9 @@ export function useTagAutocompleteQuery(
     enabled: computed(() => {
       const q = toValue(query).trim();
       const url = toValue(serverUrl);
-      const isCustomEnabled = options?.enabled ? toValue(options.enabled) : true;
+      const isCustomEnabled = options?.enabled
+        ? toValue(options.enabled)
+        : true;
       return Boolean(url) && q.length > 0 && isCustomEnabled;
     }),
     staleTime: 1000 * 60 * 5

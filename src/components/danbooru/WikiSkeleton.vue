@@ -21,17 +21,15 @@ withDefaults(
       <Skeleton class="h-7 w-full rounded-md" />
       <Skeleton class="h-7 w-full rounded-md" />
       <div class="mt-1 space-y-1.5">
-        <Skeleton
-          v-for="i in 10"
-          :key="i"
-          class="h-7 w-full rounded-md"
-        />
+        <Skeleton v-for="i in 10" :key="i" class="h-7 w-full rounded-md" />
       </div>
     </div>
 
     <!-- Right content skeleton -->
-    <div class="flex flex-1 flex-col overflow-hidden p-5 space-y-4">
-      <div class="border-border/50 flex items-center justify-between border-b pb-3">
+    <div class="flex flex-1 flex-col space-y-4 overflow-hidden p-5">
+      <div
+        class="border-border/50 flex items-center justify-between border-b pb-3"
+      >
         <div class="flex items-center gap-2">
           <Skeleton class="h-5 w-20 rounded" />
           <Skeleton class="h-6 w-40 rounded" />
@@ -39,12 +37,10 @@ withDefaults(
         <Skeleton class="h-7 w-48 rounded-md" />
       </div>
 
-      <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        <Skeleton
-          v-for="j in 25"
-          :key="j"
-          class="h-8 rounded-md"
-        />
+      <div
+        class="grid grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      >
+        <Skeleton v-for="j in 25" :key="j" class="h-8 rounded-md" />
       </div>
     </div>
   </div>
@@ -77,14 +73,14 @@ withDefaults(
         <Skeleton class="h-4 w-4/6" />
       </div>
 
-      <div class="pt-2 space-y-2">
+      <div class="space-y-2 pt-2">
         <Skeleton class="h-5 w-36 rounded" />
         <Skeleton class="h-4 w-full" />
         <Skeleton class="h-4 w-3/4" />
       </div>
 
       <!-- Illustrated list skeleton -->
-      <div class="pt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div class="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-2">
         <div
           v-for="p in 4"
           :key="p"

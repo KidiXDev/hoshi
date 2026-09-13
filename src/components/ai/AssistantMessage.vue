@@ -602,9 +602,9 @@ function renderMarkdown(content: string): string {
               <img
                 :src="(part.invocation.result as any).image.url"
                 :alt="
-                (part.invocation.result as any).image.filename ||
-                'Generated image'
-              "
+                  (part.invocation.result as any).image.filename ||
+                  'Generated image'
+                "
                 class="border-border max-h-72 w-full rounded-lg border object-contain"
               />
             </button>

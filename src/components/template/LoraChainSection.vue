@@ -18,7 +18,9 @@ import { Slider } from '@/components/ui/slider';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import LoraPresetDialog from '../common/LoraPresetDialog.vue';
 import ModelGridSelectorDialog from '../common/ModelGridSelectorDialog.vue';
+import LoraTriggerWords from './LoraTriggerWords.vue';
 import { ComfyApi } from '../../services/comfyApi';
+import { appendPromptTerms, removePromptTerm } from '../../utils/promptTools';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useLauncherStore } from '../../stores/launcherStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
@@ -34,6 +36,24 @@ const loras = computed({
     else stack.value = value;
   }
 });
+// Prompt that trigger words are inserted into. Consumers with their own prompt
+// (Upscaler, Face Detailer) bind it; the generator falls back to the store.
+const promptModel = defineModel<string>('positivePrompt');
+const positivePrompt = computed({
+  get: () => promptModel.value ?? workflowStore.positivePrompt,
+  set: (value) => {
+    if (promptModel.value === undefined) workflowStore.positivePrompt = value;
+    else promptModel.value = value;
+  }
+});
+
+function insertTriggerWords(words: string[]) {
+  positivePrompt.value = appendPromptTerms(positivePrompt.value, words);
+}
+
+function removeTriggerWord(word: string) {
+  positivePrompt.value = removePromptTerm(positivePrompt.value, word);
+}
 
 const isLoraPresetManagerOpen = ref(false);
 const isLoraGridOpen = ref(false);
@@ -326,6 +346,15 @@ function getLoraPreviewUrl(name: string, res = 200): string {
             badge-class="text-primary min-w-11 text-right"
           />
         </div>
+
+        <!-- Trigger Words (from Civitai sidecar / safetensors header) -->
+        <LoraTriggerWords
+          :lora-name="lora.name"
+          :prompt="positivePrompt"
+          :disabled="!lora.enabled"
+          @insert="insertTriggerWords"
+          @remove="removeTriggerWord"
+        />
       </div>
     </div>
 

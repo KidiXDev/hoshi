@@ -76,7 +76,6 @@ const editingMessageId = ref<string | null>(null);
 const editingMessageText = ref('');
 
 const filteredSessions = computed(() => {
-  // eslint-disable-next-line unicorn/no-array-sort
   const list = [...aiStore.sessions].sort(
     (a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)
   );

@@ -18,6 +18,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { formatFileSize } from '@/utils/formatters';
 import {
   ArrowUpDown,
+  Columns2,
   FolderOpen,
   HardDrive,
   Image as ImageIcon,
@@ -58,6 +59,8 @@ import {
 } from '@/components/ui/tooltip';
 import {
   clearGalleryCache,
+  dragOutputImage,
+  GALLERY_IMAGE_MIME,
   getGalleryCacheDirectory,
   listOutputImages,
   localImageUrl,
@@ -66,12 +69,89 @@ import {
   type OutputImage
 } from '../services/imageGallery';
 import { useLauncherStore } from '../stores/launcherStore';
+import { pickCompareTarget } from '@/utils/imageCompare';
 
 const router = useRouter();
 
 const imageInspector = ref<InstanceType<typeof OutputImageInspector>>();
 function openImage(image: OutputImage) {
+  // While picking a partner via "Compare with…", the next click completes the pair.
+  if (compareSource.value) {
+    const pair = pickCompareTarget(compareSource.value, image);
+    compareSource.value = undefined;
+    if (pair) {
+      void imageInspector.value?.openCompare(pair.a, pair.b);
+      return;
+    }
+  }
   void imageInspector.value?.open(image);
+}
+
+// ─── A/B compare: drag a card onto another, or "Compare with…" then click ───
+const dragSourceId = ref<string>();
+const dropTargetId = ref<string>();
+const compareSource = ref<OutputImage>();
+
+function resetDragState() {
+  dragSourceId.value = undefined;
+  dropTargetId.value = undefined;
+}
+
+function onCardDragStart(event: DragEvent, image: OutputImage) {
+  dragOutputImage(event, image);
+  dragSourceId.value = image.localId;
+}
+
+function isCompareDrag(event: DragEvent) {
+  return Boolean(
+    dragSourceId.value || event.dataTransfer?.types.includes(GALLERY_IMAGE_MIME)
+  );
+}
+
+function onCardDragEnter(event: DragEvent, image: OutputImage) {
+  if (!isCompareDrag(event) || dragSourceId.value === image.localId) return;
+  dropTargetId.value = image.localId;
+}
+
+function onCardDragOver(event: DragEvent, image: OutputImage) {
+  if (!isCompareDrag(event) || dragSourceId.value === image.localId) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'link';
+  if (dropTargetId.value !== image.localId) dropTargetId.value = image.localId;
+}
+
+function onCardDragLeave(event: DragEvent, image: OutputImage) {
+  const currentTarget = event.currentTarget as HTMLElement | null;
+  const relatedTarget = event.relatedTarget as Node | null;
+  if (
+    dropTargetId.value === image.localId &&
+    (!currentTarget || !relatedTarget || !currentTarget.contains(relatedTarget))
+  ) {
+    dropTargetId.value = undefined;
+  }
+}
+
+function onCardDrop(event: DragEvent, image: OutputImage) {
+  const sourceId =
+    event.dataTransfer?.getData(GALLERY_IMAGE_MIME) || dragSourceId.value;
+  resetDragState();
+  if (!sourceId) return;
+  event.preventDefault();
+  const source = images.value.find((item) => item.localId === sourceId);
+  const pair = pickCompareTarget(source, image);
+  if (pair) void imageInspector.value?.openCompare(pair.a, pair.b);
+}
+
+function startCompareWith(image: OutputImage) {
+  compareSource.value = image;
+}
+
+function cancelCompare() {
+  compareSource.value = undefined;
+}
+
+function onCompareKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && compareSource.value) cancelCompare();
 }
 
 // Grid layout parameters
@@ -270,6 +350,8 @@ function rememberScroll(event: Event) {
 async function activateView() {
   isViewActive.value = true;
   if (scrollViewport.value) resizeObserver?.observe(scrollViewport.value);
+  window.addEventListener('dragend', resetDragState);
+  window.addEventListener('keydown', onCompareKeydown);
 
   await nextTick();
   await new Promise<void>((resolve) => {
@@ -283,6 +365,10 @@ async function activateView() {
 function deactivateView() {
   isViewActive.value = false;
   resizeObserver?.disconnect();
+  window.removeEventListener('dragend', resetDragState);
+  window.removeEventListener('keydown', onCompareKeydown);
+  resetDragState();
+  compareSource.value = undefined;
 }
 
 async function restoreImages() {
@@ -535,6 +621,32 @@ onUnmounted(() => {
       </div>
     </template>
 
+    <!-- Compare partner picker banner -->
+    <div
+      v-if="compareSource"
+      class="border-primary/30 bg-primary/10 text-primary flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2 text-xs"
+      role="status"
+    >
+      <span class="flex min-w-0 items-center gap-2">
+        <Columns2 class="h-3.5 w-3.5 shrink-0" />
+        <span class="truncate">
+          Select a second image to compare with
+          <span class="font-mono font-semibold">{{
+            compareSource.filename
+          }}</span>
+          — or drag any card onto another. Esc to cancel.
+        </span>
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-7 shrink-0 text-xs"
+        @click="cancelCompare"
+      >
+        <X class="h-3.5 w-3.5" /> Cancel
+      </Button>
+    </div>
+
     <!-- Main Scroll Viewport with Virtualized 7-Column Portrait Grid -->
     <div
       ref="scrollViewport"
@@ -680,10 +792,28 @@ onUnmounted(() => {
               <div
                 role="button"
                 tabindex="0"
+                draggable="true"
                 class="group border-border/70 bg-card/60 hover:bg-card/90 hover:border-border relative flex cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-colors duration-200 [content-visibility:auto]"
+                :class="{
+                  'opacity-60': dragSourceId === image.localId,
+                  'ring-primary border-primary ring-2':
+                    dropTargetId === image.localId ||
+                    compareSource?.localId === image.localId
+                }"
+                :title="
+                  compareSource && compareSource.localId !== image.localId
+                    ? `Compare ${compareSource.filename} with ${image.filename}`
+                    : 'Drag onto another image to compare side by side'
+                "
                 @click="openImage(image)"
                 @keydown.enter="openImage(image)"
                 @keydown.space.prevent="openImage(image)"
+                @dragstart="onCardDragStart($event, image)"
+                @dragend="resetDragState"
+                @dragenter="onCardDragEnter($event, image)"
+                @dragover="onCardDragOver($event, image)"
+                @dragleave="onCardDragLeave($event, image)"
+                @drop="onCardDrop($event, image)"
               >
                 <!-- Portrait Image Viewport (3:4 ratio) -->
                 <div
@@ -694,8 +824,20 @@ onUnmounted(() => {
                     :alt="image.filename"
                     loading="lazy"
                     decoding="async"
+                    draggable="false"
                     class="h-full w-full object-cover"
                   />
+
+                  <!-- Drop-to-compare hint -->
+                  <div
+                    v-if="dropTargetId === image.localId"
+                    class="bg-primary/25 text-primary-foreground pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 backdrop-blur-xs"
+                  >
+                    <Columns2 class="h-6 w-6 drop-shadow" />
+                    <span class="text-xs font-semibold drop-shadow">
+                      Drop to compare
+                    </span>
+                  </div>
 
                   <!-- Floating Subfolder Badge -->
                   <div
@@ -756,9 +898,12 @@ onUnmounted(() => {
                 </div>
               </div>
             </ContextMenuTrigger>
-            <ContextMenuContent class="w-48">
+            <ContextMenuContent class="w-52">
               <ContextMenuItem @select="openImage(image)">
                 <ZoomIn /> View Image
+              </ContextMenuItem>
+              <ContextMenuItem @select="startCompareWith(image)">
+                <Columns2 /> Compare with…
               </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem @select="openLocalPath(image.path)">

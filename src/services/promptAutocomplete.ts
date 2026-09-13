@@ -9,10 +9,12 @@ export function getPromptTokenRange(
   text: string,
   cursor: number
 ): PromptTokenRange | null {
+  // `{`, `|` and `}` bound tokens too so completion works inside `{a|b}` groups.
+  const boundaries = [',', '\n', '{', '|', '}'];
   let start = cursor;
-  while (start > 0 && ![',', '\n'].includes(text[start - 1])) start--;
+  while (start > 0 && !boundaries.includes(text[start - 1])) start--;
   let end = cursor;
-  while (end < text.length && ![',', '\n'].includes(text[end])) end++;
+  while (end < text.length && !boundaries.includes(text[end])) end++;
   const token = text.slice(start, cursor).trim();
   const mode = token.startsWith('@')
     ? 'artist'
@@ -33,17 +35,16 @@ export function replacePromptToken(
   includeArtistPrefix = true
 ): { text: string; cursor: number } {
   const prefix = text.slice(0, range.start);
-  const separator = prefix.endsWith(',')
-    ? ' '
-    : prefix && !/\s$/u.test(prefix)
-      ? ' '
-      : '';
+  const separator =
+    prefix.endsWith(',') || (prefix && !/[\s{|]$/u.test(prefix)) ? ' ' : '';
   const value =
     range.mode !== 'wildcard' && replaceUnderscores
       ? tag.replaceAll('_', ' ')
       : tag;
   const marker = range.mode === 'artist' && includeArtistPrefix ? '@' : '';
-  const inserted = `${separator}${marker}${value}, `;
+  // Inside a `{a|b}` group the option delimiter follows, so no trailing comma.
+  const trailing = /^\s*[|}]/u.test(text.slice(range.end)) ? '' : ', ';
+  const inserted = `${separator}${marker}${value}${trailing}`;
   return {
     text: prefix + inserted + text.slice(range.end).replace(/^\s*,?\s*/u, ''),
     cursor: prefix.length + inserted.length

@@ -124,8 +124,15 @@ function applyHistorySettings(item: HistoryItem) {
 }
 
 function applyPromptOnly(item: HistoryItem) {
-  workflowStore.positivePrompt = item.workflowState.positivePrompt || '';
-  workflowStore.negativePrompt = item.workflowState.negativePrompt || '';
+  const { workflowState } = item;
+  workflowStore.positivePrompt =
+    workflowState.promptTemplates?.positivePrompt ??
+    workflowState.positivePrompt ??
+    '';
+  workflowStore.negativePrompt =
+    workflowState.promptTemplates?.negativePrompt ??
+    workflowState.negativePrompt ??
+    '';
   triggerCopyFeedback(item.id, 'prompt-applied');
 }
 

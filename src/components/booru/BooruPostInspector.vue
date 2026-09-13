@@ -261,9 +261,7 @@ const detailActiveImgUrl = computed(() => {
       detail.value.sampleUrl ||
       detail.value.mediaUrl ||
       detail.value.previewUrl;
-    return rawUrl
-      ? getBooruMediaUrl(detail.value.source, rawUrl)
-      : '';
+    return rawUrl ? getBooruMediaUrl(detail.value.source, rawUrl) : '';
   }
   if (detailActivePost.value) {
     const rawUrl =

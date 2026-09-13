@@ -167,6 +167,18 @@ export interface FaceDetailerSettings {
   turboLora: string;
 }
 
+/**
+ * Original `{a|b}` dynamic-prompt templates, kept alongside the resolved
+ * prompts on queued/history states so "reuse settings" restores the template.
+ * Absent when the prompts contained no dynamic groups.
+ */
+export interface PromptTemplates {
+  positivePrompt: string;
+  negativePrompt: string;
+  faceDetailerPositivePrompt: string;
+  faceDetailerNegativePrompt: string;
+}
+
 export interface WorkflowState {
   positivePrompt: string;
   negativePrompt: string;
@@ -178,6 +190,7 @@ export interface WorkflowState {
   resolution: ResolutionSettings;
   postfx: PostFxSettings;
   faceDetailer: FaceDetailerSettings;
+  promptTemplates?: PromptTemplates;
 }
 
 export interface HistoryItem {

@@ -3,14 +3,23 @@ import { ref, onDeactivated, onUnmounted } from 'vue';
 import { ChevronLeft, ChevronRight } from '@lucide/vue';
 import type { ImageComparisonMode } from '@/types/imageBatch';
 
-defineProps<{
-  previewUrl: string;
-  resultUrl?: string;
-  alt: string;
-  mode: ImageComparisonMode;
-  resultLabel: string;
-}>();
-const splitSliderPos = ref(50);
+withDefaults(
+  defineProps<{
+    previewUrl: string;
+    resultUrl?: string;
+    alt: string;
+    mode: ImageComparisonMode;
+    resultLabel: string;
+    /** Label for the left/original side in split mode. */
+    originalLabel?: string;
+    /** CSS transform applied to every image layer (zoom/pan from the host). */
+    imageTransform?: string;
+    imageClass?: string;
+  }>(),
+  { originalLabel: 'BEFORE (ORIGINAL)', imageTransform: '', imageClass: '' }
+);
+/** Split divider position in percent; bindable via `v-model:position`. */
+const splitSliderPos = defineModel<number>('position', { default: 50 });
 const isDraggingSplit = ref(false);
 let stopDragging = () => {};
 function updateSplitFromEvent(clientX: number, targetElem: HTMLElement) {
@@ -60,6 +69,9 @@ onUnmounted(() => stopDragging());
         :src="resultUrl"
         :alt="alt"
         class="pointer-events-none max-h-full max-w-full object-contain drop-shadow-md"
+        :class="imageClass"
+        :style="imageTransform ? { transform: imageTransform } : undefined"
+        draggable="false"
       />
 
       <!-- Foreground Layer: Original (Before Image with Clip) -->
@@ -73,6 +85,9 @@ onUnmounted(() => stopDragging());
           :src="previewUrl"
           :alt="alt"
           class="pointer-events-none max-h-full max-w-full object-contain"
+          :class="imageClass"
+          :style="imageTransform ? { transform: imageTransform } : undefined"
+          draggable="false"
         />
       </div>
 
@@ -90,7 +105,7 @@ onUnmounted(() => stopDragging());
         @keydown.right.prevent="
           splitSliderPos = Math.min(100, splitSliderPos + 5)
         "
-        @pointerdown="handleSplitPointerDown"
+        @pointerdown.stop="handleSplitPointerDown"
       >
         <div
           class="border-border bg-background/90 text-primary flex h-8 w-8 items-center justify-center rounded-full border shadow-md backdrop-blur-xs transition-transform active:scale-110"
@@ -102,12 +117,12 @@ onUnmounted(() => stopDragging());
 
       <!-- Floating Labels -->
       <div
-        class="bg-background/80 text-muted-foreground pointer-events-none absolute top-3 left-3 z-10 rounded-md px-2 py-1 font-mono text-xs font-semibold shadow-xs backdrop-blur-xs"
+        class="bg-background/80 text-muted-foreground pointer-events-none absolute top-3 left-3 z-10 max-w-[45%] truncate rounded-md px-2 py-1 font-mono text-xs font-semibold shadow-xs backdrop-blur-xs"
       >
-        BEFORE (ORIGINAL)
+        <slot name="split-original-label">{{ originalLabel }}</slot>
       </div>
       <div
-        class="border-primary/40 bg-primary/20 text-primary pointer-events-none absolute top-3 right-3 z-10 rounded-md border px-2 py-1 font-mono text-xs font-bold shadow-xs backdrop-blur-xs"
+        class="border-primary/40 bg-primary/20 text-primary pointer-events-none absolute top-3 right-3 z-10 max-w-[45%] truncate rounded-md border px-2 py-1 font-mono text-xs font-bold shadow-xs backdrop-blur-xs"
       >
         {{ resultLabel }}
       </div>
@@ -131,6 +146,9 @@ onUnmounted(() => stopDragging());
         :src="previewUrl"
         :alt="alt"
         class="max-h-full max-w-full object-contain"
+        :class="imageClass"
+        :style="imageTransform ? { transform: imageTransform } : undefined"
+        draggable="false"
       />
     </div>
 
@@ -146,6 +164,9 @@ onUnmounted(() => stopDragging());
         :src="resultUrl"
         :alt="alt"
         class="max-h-full max-w-full object-contain drop-shadow-md"
+        :class="imageClass"
+        :style="imageTransform ? { transform: imageTransform } : undefined"
+        draggable="false"
       />
     </div>
   </div>

@@ -13,6 +13,15 @@ export function discoverLocalModels(
   });
 }
 
+export interface CivitaiFileHashes {
+  SHA256?: string;
+  AutoV1?: string;
+  AutoV2?: string;
+  AutoV3?: string;
+  BLAKE3?: string;
+  CRC32?: string;
+}
+
 export interface CivitaiFile {
   id: number;
   name: string;
@@ -20,6 +29,7 @@ export interface CivitaiFile {
   type: string;
   primary?: boolean;
   downloadUrl?: string;
+  hashes?: CivitaiFileHashes;
   metadata?: { format?: string; fp?: string; size?: string };
   pickleScanResult?: string;
   virusScanResult?: string;
@@ -155,6 +165,30 @@ export function fetchCivitaiModels(options: {
 
 export function fetchCivitaiModelById(id: number | string, apiKey = '') {
   return invoke<CivitaiModel>('model_by_id', { id: Number(id), apiKey });
+}
+
+/** A model-version record as returned by `/model-versions/{id}` (includes `model`). */
+export interface CivitaiVersionDetail extends CivitaiVersion {
+  modelId: number;
+  model: { name: string; type: string; nsfw?: boolean; poi?: boolean };
+  downloadUrl?: string;
+}
+
+export function fetchCivitaiModelVersionById(
+  versionId: number | string,
+  apiKey = ''
+) {
+  return invoke<CivitaiVersionDetail>('model_version_by_id', {
+    versionId: Number(versionId),
+    apiKey
+  });
+}
+
+export function fetchCivitaiModelVersionByHash(sha256: string, apiKey = '') {
+  return invoke<CivitaiVersionDetail>('model_version_by_hash', {
+    sha256,
+    apiKey
+  });
 }
 
 const modelMemoryCache = new Map<number, CivitaiModel>();

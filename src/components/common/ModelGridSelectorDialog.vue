@@ -132,7 +132,6 @@ const folderTabs = computed(() => {
       folders.add(f);
     }
   }
-  // eslint-disable-next-line unicorn/no-array-sort
   const list = [...folders].sort((a, b) => a.localeCompare(b));
   return ['All', ...list];
 });

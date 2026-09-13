@@ -7,6 +7,10 @@
  *
  * - Current match  → solid amber fill + amber outline  (VS Code current match)
  * - Other matches  → faint amber tint + amber outline  (VS Code other matches)
+ * - `ranges`       → caller-supplied ranges with their own class, e.g.
+ *                    `{a|b}` dynamic prompt groups (`ps-group`)
+ *
+ * Overlapping ranges are split into segments carrying every class involved.
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
@@ -15,13 +19,26 @@ interface FindMatch {
   end: number;
 }
 
-const props = defineProps<{
-  textareaEl: HTMLTextAreaElement | null;
-  text: string;
-  matches: FindMatch[];
-  currentMatchIndex: number;
-  active: boolean;
-}>();
+export interface HighlightRange extends FindMatch {
+  cls: string;
+}
+
+const props = withDefaults(
+  defineProps<{
+    textareaEl: HTMLTextAreaElement | null;
+    text: string;
+    matches?: FindMatch[];
+    currentMatchIndex?: number;
+    active?: boolean;
+    ranges?: HighlightRange[];
+  }>(),
+  {
+    matches: () => [],
+    currentMatchIndex: -1,
+    active: false,
+    ranges: () => []
+  }
+);
 
 // ─── overlay ref ──────────────────────────────────────────────────────────────
 const overlayRef = ref<HTMLDivElement | null>(null);
@@ -132,23 +149,52 @@ onUnmounted(() => {
 });
 
 // ─── build highlighted HTML ───────────────────────────────────────────────────
+const allRanges = computed<HighlightRange[]>(() => {
+  const ranges: HighlightRange[] = [];
+  if (props.active) {
+    props.matches.forEach(({ start, end }, index) => {
+      ranges.push({
+        start,
+        end,
+        cls: index === props.currentMatchIndex ? 'pf-current' : 'pf-other'
+      });
+    });
+  }
+  const length = props.text.length;
+  for (const range of props.ranges) {
+    const start = Math.max(0, Math.min(length, range.start));
+    const end = Math.max(start, Math.min(length, range.end));
+    if (end > start) ranges.push({ start, end, cls: range.cls });
+  }
+  return ranges;
+});
+
+const hasHighlights = computed(() => allRanges.value.length > 0);
+
 const highlightedHtml = computed(() => {
   const text = props.text;
-  const matches = props.matches;
-  if (!props.active || matches.length === 0 || !text) return '';
+  const ranges = allRanges.value;
+  if (ranges.length === 0 || !text) return '';
+
+  // Split into non-overlapping segments; each carries every class covering it.
+  const boundaries = new Set<number>([0, text.length]);
+  for (const range of ranges) boundaries.add(range.start).add(range.end);
+  const points = Array.from(boundaries).sort((a, b) => a - b);
 
   let result = '';
-  let cursor = 0;
-
-  for (let i = 0; i < matches.length; i++) {
-    const { start, end } = matches[i];
-    result += escapeHtml(text.slice(cursor, start));
-    const cls = i === props.currentMatchIndex ? 'pf-current' : 'pf-other';
-    result += `<mark class="${cls}">${escapeHtml(text.slice(start, end))}</mark>`;
-    cursor = end;
+  for (let index = 0; index < points.length - 1; index++) {
+    const start = points[index];
+    const end = points[index + 1];
+    const classes = ranges
+      .filter((range) => range.start <= start && range.end >= end)
+      .map((range) => range.cls);
+    const segment = escapeHtml(text.slice(start, end));
+    result +=
+      classes.length > 0
+        ? `<mark class="${[...new Set(classes)].join(' ')}">${segment}</mark>`
+        : segment;
   }
 
-  result += escapeHtml(text.slice(cursor));
   // Sentinel keeps last line height correct
   result += '<span>\u200B</span>';
   return result;
@@ -173,7 +219,7 @@ function escapeHtml(str: string) {
 
 <template>
   <div
-    v-if="active && matches.length > 0"
+    v-if="hasHighlights"
     ref="overlayRef"
     aria-hidden="true"
     class="pf-overlay pointer-events-none absolute inset-0"
@@ -211,5 +257,14 @@ function escapeHtml(str: string) {
   color: transparent;
   outline: 1.5px solid rgb(251 191 36 / 0.65);
   outline-offset: 0;
+}
+
+/* Dynamic prompt `{a|b}` groups: soft primary tint so options stand out */
+.pf-overlay :deep(.ps-group) {
+  background-color: color-mix(in oklab, var(--primary) 16%, transparent);
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklab, var(--primary) 40%, transparent);
+  color: transparent;
 }
 </style>

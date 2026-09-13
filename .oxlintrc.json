@@ -19,6 +19,7 @@
     "max-lines-per-function": "off",
     "no-underscore-dangle": "off",
     "unicorn/prefer-add-event-listener": "off",
+    "unicorn/no-array-sort": "off",
     "max-lines": [
       "error",
       { "max": 1000, "skipBlankLines": true, "skipComments": true }

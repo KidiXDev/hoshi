@@ -13,9 +13,9 @@ import {
 } from '../services/booruGallery';
 import { queryKeys } from './queryKeys';
 
-export function useBooruSourcesQuery(
-  options?: { enabled?: MaybeRefOrGetter<boolean> }
-) {
+export function useBooruSourcesQuery(options?: {
+  enabled?: MaybeRefOrGetter<boolean>;
+}) {
   return useQuery({
     queryKey: queryKeys.booru.sources(),
     queryFn: fetchBooruSources,
@@ -46,7 +46,9 @@ export function useBooruSearchQuery(
     queryFn: () => searchBooru(toValue(searchOptions)),
     enabled: computed(() => {
       const opts = toValue(searchOptions);
-      const isCustomEnabled = options?.enabled ? toValue(options.enabled) : true;
+      const isCustomEnabled = options?.enabled
+        ? toValue(options.enabled)
+        : true;
       return Boolean(opts.source) && isCustomEnabled;
     }),
     staleTime: 1000 * 60 * 2
@@ -66,16 +68,18 @@ export function useBooruDetailQuery(
     enabled: computed(() => {
       const src = toValue(source);
       const id = toValue(postId);
-      const isCustomEnabled = options?.enabled ? toValue(options.enabled) : true;
+      const isCustomEnabled = options?.enabled
+        ? toValue(options.enabled)
+        : true;
       return Boolean(src && id) && isCustomEnabled;
     }),
     staleTime: 1000 * 60 * 15
   });
 }
 
-export function useBooruSettingsQuery(
-  options?: { enabled?: MaybeRefOrGetter<boolean> }
-) {
+export function useBooruSettingsQuery(options?: {
+  enabled?: MaybeRefOrGetter<boolean>;
+}) {
   return useQuery({
     queryKey: queryKeys.booru.settings(),
     queryFn: fetchBooruSettings,

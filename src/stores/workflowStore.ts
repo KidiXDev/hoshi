@@ -403,8 +403,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   function applyWorkflowState(state: WorkflowState) {
-    positivePrompt.value = state.positivePrompt;
-    negativePrompt.value = state.negativePrompt;
+    // Prefer the `{a|b}` template over the resolved text from a queued state.
+    positivePrompt.value =
+      state.promptTemplates?.positivePrompt ?? state.positivePrompt;
+    negativePrompt.value =
+      state.promptTemplates?.negativePrompt ?? state.negativePrompt;
     models.value = JSON.parse(JSON.stringify(state.models));
     advanced.value = {
       ...DEFAULT_ADVANCED,
@@ -433,6 +436,12 @@ export const useWorkflowStore = defineStore('workflow', () => {
       ...DEFAULT_FACE_DETAILER,
       ...JSON.parse(JSON.stringify(state.faceDetailer || {}))
     };
+    if (state.promptTemplates) {
+      faceDetailer.value.positivePrompt =
+        state.promptTemplates.faceDetailerPositivePrompt;
+      faceDetailer.value.negativePrompt =
+        state.promptTemplates.faceDetailerNegativePrompt;
+    }
     void saveSession();
   }
 

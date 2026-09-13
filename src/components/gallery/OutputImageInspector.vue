@@ -12,6 +12,7 @@ import { useRouter } from 'vue-router';
 import { invoke } from '@tauri-apps/api/core';
 import { formatFileSize } from '@/utils/formatters';
 import {
+  ArrowLeftRight,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -33,6 +34,9 @@ import {
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import ImageComparison from '@/components/common/ImageComparison.vue';
+import ImageComparisonModes from '@/components/common/ImageComparisonModes.vue';
+import type { ImageComparisonMode } from '@/types/imageBatch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,6 +74,11 @@ const selectedImage = ref<OutputImage>();
 const { style: overlayStyle } = useOverlayLayer(() =>
   Boolean(selectedImage.value)
 );
+// A/B comparison: `selectedImage` is A (left/original), `compareImage` is B.
+const compareImage = ref<OutputImage>();
+const compareMode = ref<ImageComparisonMode>('split');
+const splitPosition = ref(50);
+const isComparing = computed(() => Boolean(compareImage.value));
 const metadata = ref<OutputImageMetadata>();
 const metadataLoading = ref(false);
 const showRaw = ref(false);
@@ -108,6 +117,10 @@ function resetPanAndZoom() {
   panX.value = 0;
   panY.value = 0;
 }
+const transformStyle = computed(
+  () =>
+    `translate3d(${panX.value}px, ${panY.value}px, 0px) scale(${zoom.value})`
+);
 function handlePointerDown(event: PointerEvent) {
   if (event.button !== 0) return;
   stopPanning();
@@ -167,7 +180,34 @@ async function openImage(image: OutputImage) {
     metadataLoading.value = false;
   }
 }
+/** Opens A with B alongside in split-compare mode. */
+async function openCompare(a: OutputImage, b: OutputImage) {
+  if (a.localId === b.localId) {
+    await openImage(a);
+    return;
+  }
+  compareMode.value = 'split';
+  splitPosition.value = 50;
+  await openImage(a);
+  compareImage.value = b;
+}
+function exitCompare() {
+  compareImage.value = undefined;
+  resetPanAndZoom();
+}
+function swapCompare() {
+  const a = selectedImage.value;
+  const b = compareImage.value;
+  if (!a || !b) return;
+  compareImage.value = a;
+  void openImage(b);
+  splitPosition.value = 100 - splitPosition.value;
+}
+function nudgeSplit(delta: number) {
+  splitPosition.value = Math.max(0, Math.min(100, splitPosition.value + delta));
+}
 function navigateViewer(direction: number) {
+  if (isComparing.value) return;
   const nextIndex = selectedIndex.value + direction;
   const image = filteredImages.value[nextIndex];
   if (image) {
@@ -177,7 +217,13 @@ function navigateViewer(direction: number) {
 }
 function handleKeydown(event: KeyboardEvent) {
   if (!selectedImage.value) return;
-  if (event.key === 'Escape') selectedImage.value = undefined;
+  if (event.key === 'Escape') {
+    if (isComparing.value) exitCompare();
+    else selectedImage.value = undefined;
+  } else if (isComparing.value && (event.key === 's' || event.key === 'S')) {
+    swapCompare();
+  } else if (isComparing.value && event.key === '[') nudgeSplit(-5);
+  else if (isComparing.value && event.key === ']') nudgeSplit(5);
   else if (event.key === 'ArrowLeft') navigateViewer(-1);
   else if (event.key === 'ArrowRight') navigateViewer(1);
   else if (event.key === 'i' || event.key === 'I') {
@@ -308,7 +354,10 @@ watch(
     selectedImage.value = undefined;
   }
 );
-defineExpose({ open: openImage });
+watch(selectedImage, (image) => {
+  if (!image) compareImage.value = undefined;
+});
+defineExpose({ open: openImage, openCompare });
 </script>
 <template>
   <Teleport defer to="#app-content">
@@ -337,22 +386,80 @@ defineExpose({ open: openImage });
             class="absolute top-0 right-0 left-0 z-20 flex items-center justify-between bg-linear-to-b from-black/80 via-black/40 to-transparent p-4"
             @click.stop
           >
-            <div class="flex items-center gap-3">
-              <Badge
-                variant="outline"
-                class="border-white/20 bg-black/50 font-mono text-xs text-white/90 backdrop-blur-md"
-              >
-                {{ selectedIndex + 1 }} / {{ filteredImages.length }}
-              </Badge>
-              <span
-                class="max-w-md truncate font-mono text-xs font-semibold text-white/90"
-                :title="selectedImage.filename"
-              >
-                {{ selectedImage.filename }}
-              </span>
+            <div class="flex min-w-0 items-center gap-3">
+              <template v-if="compareImage">
+                <Badge
+                  class="border-primary/40 bg-primary/25 font-mono text-xs text-white backdrop-blur-md"
+                >
+                  A / B Compare
+                </Badge>
+                <span
+                  class="flex min-w-0 items-center gap-2 font-mono text-xs font-semibold text-white/90"
+                >
+                  <span
+                    class="max-w-56 truncate"
+                    :title="selectedImage.filename"
+                  >
+                    {{ selectedImage.filename }}
+                  </span>
+                  <ArrowLeftRight class="h-3 w-3 shrink-0 text-white/50" />
+                  <span
+                    class="text-primary max-w-56 truncate"
+                    :title="compareImage.filename"
+                  >
+                    {{ compareImage.filename }}
+                  </span>
+                </span>
+              </template>
+              <template v-else>
+                <Badge
+                  variant="outline"
+                  class="border-white/20 bg-black/50 font-mono text-xs text-white/90 backdrop-blur-md"
+                >
+                  {{ selectedIndex + 1 }} / {{ filteredImages.length }}
+                </Badge>
+                <span
+                  class="max-w-md truncate font-mono text-xs font-semibold text-white/90"
+                  :title="selectedImage.filename"
+                >
+                  {{ selectedImage.filename }}
+                </span>
+              </template>
             </div>
 
             <div class="flex items-center gap-2">
+              <template v-if="compareImage">
+                <ImageComparisonModes
+                  v-model="compareMode"
+                  :modes="['split', 'side-by-side']"
+                />
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      size="iconSm"
+                      variant="ghost"
+                      class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
+                      aria-label="Swap A and B"
+                      @click="swapCompare"
+                    >
+                      <ArrowLeftRight class="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p class="text-xs">Swap A / B (S)</p>
+                  </TooltipContent>
+                </Tooltip>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  class="h-8 text-xs text-white/80 hover:bg-white/10 hover:text-white"
+                  title="Back to single view (Esc)"
+                  @click="exitCompare"
+                >
+                  Exit compare
+                </Button>
+                <Separator orientation="vertical" class="h-4 bg-white/20" />
+              </template>
               <Badge
                 variant="secondary"
                 class="border-white/10 bg-black/50 font-mono text-xs text-white/80 backdrop-blur-md"
@@ -487,6 +594,7 @@ defineExpose({ open: openImage });
           >
             <!-- Previous Button -->
             <Button
+              v-if="!compareImage"
               size="icon"
               variant="secondary"
               :disabled="selectedIndex <= 0"
@@ -497,8 +605,39 @@ defineExpose({ open: openImage });
               <ChevronLeft class="h-6 w-6" />
             </Button>
 
+            <!-- A/B Comparison: both layers share the same pan/zoom transform -->
+            <div
+              v-if="compareImage"
+              class="h-full w-full select-none"
+              :class="isPanning ? 'cursor-grabbing' : 'cursor-grab'"
+              @pointerdown.stop="handlePointerDown"
+              @dblclick.stop="zoom === 1 ? (zoom = 2) : resetPanAndZoom()"
+            >
+              <ImageComparison
+                v-model:position="splitPosition"
+                :preview-url="imageUrl(selectedImage, false)"
+                :result-url="imageUrl(compareImage, false)"
+                :alt="`${selectedImage.filename} vs ${compareImage.filename}`"
+                :mode="compareMode"
+                :original-label="selectedImage.filename"
+                :result-label="compareImage.filename"
+                :image-transform="transformStyle"
+                :image-class="
+                  isPanning
+                    ? 'duration-0'
+                    : 'transition-transform duration-100 ease-out'
+                "
+              >
+                <template #original-label>{{
+                  selectedImage.filename
+                }}</template>
+                <template #result-label>{{ compareImage.filename }}</template>
+              </ImageComparison>
+            </div>
+
             <!-- Full Rendered Image with Pan/Drag & Zoom -->
             <img
+              v-else
               :src="imageUrl(selectedImage, false)"
               :alt="selectedImage.filename"
               draggable="false"
@@ -517,6 +656,7 @@ defineExpose({ open: openImage });
 
             <!-- Next Button -->
             <Button
+              v-if="!compareImage"
               size="icon"
               variant="secondary"
               :disabled="selectedIndex >= filteredImages.length - 1"

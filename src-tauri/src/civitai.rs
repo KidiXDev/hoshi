@@ -31,7 +31,7 @@ fn cached_json(
     Ok(value)
 }
 
-fn client() -> Result<Client, String> {
+pub(crate) fn client() -> Result<Client, String> {
     Client::builder()
         .user_agent("ComfyGUI/1.0")
         .connect_timeout(Duration::from_secs(20))
@@ -40,7 +40,7 @@ fn client() -> Result<Client, String> {
         .map_err(|error| error.to_string())
 }
 
-fn authorized(
+pub(crate) fn authorized(
     request: reqwest::blocking::RequestBuilder,
     api_key: &str,
 ) -> reqwest::blocking::RequestBuilder {
@@ -199,29 +199,126 @@ pub async fn enums(app_handle: AppHandle) -> Result<Value, String> {
     .map_err(|error| error.to_string())?
 }
 
+pub(crate) fn fetch_model_by_id(app: &AppHandle, id: u64, api_key: &str) -> Result<Value, String> {
+    let url = format!("{API_BASE}/models/{id}");
+    cached_json(app, &format!("{url}|{api_key}"), MODEL_TTL_SECONDS, || {
+        let client = client()?;
+        response_json(
+            authorized(client.get(&url), api_key)
+                .send()
+                .map_err(|error| error.to_string())?,
+        )
+    })
+}
+
 #[tauri::command]
 pub async fn model_by_id(app_handle: AppHandle, id: u64, api_key: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || fetch_model_by_id(&app_handle, id, &api_key))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Cached `GET /model-versions/...` used by the downloader and the Model Manager.
+/// A 404 is reported as the `NOT_FOUND` sentinel and never cached.
+pub(crate) fn fetch_model_version(
+    app: &AppHandle,
+    url: &str,
+    api_key: &str,
+) -> Result<Value, String> {
+    cached_json(app, &format!("{url}|{api_key}"), MODEL_TTL_SECONDS, || {
+        let response = authorized(client()?.get(url), api_key)
+            .send()
+            .map_err(|error| error.to_string())?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err("NOT_FOUND".into());
+        }
+        response_json(response)
+    })
+}
+
+pub(crate) fn model_version_url(version_id: u64) -> String {
+    format!("{API_BASE}/model-versions/{version_id}")
+}
+
+pub(crate) fn model_version_by_hash_url(sha256: &str) -> Result<String, String> {
+    let hash = sha256.trim();
+    if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("A full SHA256 hash (64 hex characters) is required.".into());
+    }
+    Ok(format!(
+        "{API_BASE}/model-versions/by-hash/{}",
+        hash.to_ascii_uppercase()
+    ))
+}
+
+#[tauri::command]
+pub async fn model_version_by_id(
+    app_handle: AppHandle,
+    version_id: u64,
+    api_key: String,
+) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let url = format!("{API_BASE}/models/{id}");
-        cached_json(
-            &app_handle,
-            &format!("{url}|{api_key}"),
-            MODEL_TTL_SECONDS,
-            || {
-                let client = client()?;
-                response_json(
-                    authorized(client.get(&url), &api_key)
-                        .send()
-                        .map_err(|error| error.to_string())?,
-                )
-            },
-        )
+        fetch_model_version(&app_handle, &model_version_url(version_id), &api_key)
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
-fn comfy_dir(working_dir: &str) -> Result<PathBuf, String> {
+#[tauri::command]
+pub async fn model_version_by_hash(
+    app_handle: AppHandle,
+    sha256: String,
+    api_key: String,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = model_version_by_hash_url(&sha256)?;
+        fetch_model_version(&app_handle, &url, &api_key)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Writes `<stem>.civitai.info` and `<stem>.cm-info.json` next to a model file.
+pub(crate) fn write_sidecars(directory: &Path, stem: &str, metadata: &Value) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(metadata).map_err(|error| error.to_string())?;
+    fs::write(directory.join(format!("{stem}.civitai.info")), &bytes)
+        .map_err(|error| error.to_string())?;
+    fs::write(directory.join(format!("{stem}.cm-info.json")), bytes)
+        .map_err(|error| error.to_string())
+}
+
+/// Downloads the first image sample of a model version as `<stem>.preview.<ext>`.
+/// Returns `Ok(None)` when the version has no usable image.
+pub(crate) fn download_preview(
+    client: &Client,
+    metadata: &Value,
+    directory: &Path,
+    stem: &str,
+) -> Result<Option<PathBuf>, String> {
+    let Some(url) = metadata["images"]
+        .as_array()
+        .and_then(|images| images.iter().find(|image| is_image_item(image)))
+        .and_then(|image| image["url"].as_str())
+        .and_then(|url| reqwest::Url::parse(url).ok())
+        .filter(|url| url.scheme() == "https" && is_civitai_host(url))
+    else {
+        return Ok(None);
+    };
+    let extension = preview_extension(&url);
+    let response = client.get(url).send().map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Preview download failed with {}",
+            response.status()
+        ));
+    }
+    let bytes = response.bytes().map_err(|error| error.to_string())?;
+    let path = directory.join(format!("{stem}.preview.{extension}"));
+    fs::write(&path, bytes).map_err(|error| error.to_string())?;
+    Ok(Some(path))
+}
+
+pub(crate) fn comfy_dir(working_dir: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
     if path.as_os_str().is_empty() {
         return Err("Select a ComfyUI directory in Settings first.".into());
@@ -282,7 +379,7 @@ fn model_folder(
     }
 }
 
-fn safe_filename(name: &str) -> String {
+pub(crate) fn safe_filename(name: &str) -> String {
     let name = Path::new(name)
         .file_name()
         .and_then(|value| value.to_str())
@@ -302,7 +399,7 @@ fn safe_filename(name: &str) -> String {
     }
 }
 
-fn preview_extension(url: &reqwest::Url) -> &'static str {
+pub(crate) fn preview_extension(url: &reqwest::Url) -> &'static str {
     match Path::new(url.path())
         .extension()
         .and_then(|value| value.to_str())
@@ -320,12 +417,12 @@ fn preview_extension(url: &reqwest::Url) -> &'static str {
     }
 }
 
-fn is_civitai_host(url: &reqwest::Url) -> bool {
+pub(crate) fn is_civitai_host(url: &reqwest::Url) -> bool {
     url.domain()
         .is_some_and(|host| host == "civitai.com" || host.ends_with(".civitai.com"))
 }
 
-fn is_image_item(item: &serde_json::Value) -> bool {
+pub(crate) fn is_image_item(item: &serde_json::Value) -> bool {
     let is_video_type = item["type"].as_str() == Some("video");
     if is_video_type {
         return false;
@@ -353,12 +450,7 @@ fn download_blocking(
         return Err("Select a valid model version before downloading.".into());
     }
     let client = client()?;
-    let metadata_url = format!("{API_BASE}/model-versions/{version_id}");
-    let metadata = response_json(
-        authorized(client.get(metadata_url), &api_key)
-            .send()
-            .map_err(|error| error.to_string())?,
-    )?;
+    let metadata = fetch_model_version(&app_handle, &model_version_url(version_id), &api_key)?;
     let primary_file = metadata["files"]
         .as_array()
         .and_then(|files| {
@@ -406,50 +498,14 @@ fn download_blocking(
         .as_array()
         .and_then(|images| images.iter().find(|image| is_image_item(image)));
 
-    let preview = preview_image
-        .and_then(|image| image["url"].as_str())
-        .and_then(|url| reqwest::Url::parse(url).ok())
-        .filter(|url| url.scheme() == "https" && is_civitai_host(url))
-        .map(|url| {
-            let extension = preview_extension(&url);
-            let response = client.get(url).send().map_err(|error| error.to_string())?;
-            if !response.status().is_success() {
-                return Err(format!(
-                    "Preview download failed with {}",
-                    response.status()
-                ));
-            }
-            Ok((
-                extension,
-                response.bytes().map_err(|error| error.to_string())?,
-            ))
-        })
-        .transpose()
-        .unwrap_or_else(|error: String| {
-            eprintln!("Civitai preview unavailable; continuing model download: {error}");
-            None
-        });
-
     let stem = model_path
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("model");
-    let metadata_path = directory.join(format!("{stem}.civitai.info"));
-    let metadata_bytes = serde_json::to_vec_pretty(&metadata).map_err(|error| error.to_string())?;
-    fs::write(&metadata_path, &metadata_bytes).map_err(|error| error.to_string())?;
-    fs::write(
-        directory.join(format!("{stem}.cm-info.json")),
-        metadata_bytes,
-    )
-    .map_err(|error| error.to_string())?;
-
-    preview
-        .map(|(extension, bytes)| {
-            let path = directory.join(format!("{stem}.preview.{extension}"));
-            fs::write(&path, bytes).map_err(|error| error.to_string())?;
-            Ok::<String, String>(path.to_string_lossy().to_string())
-        })
-        .transpose()?;
+    write_sidecars(&directory, stem, &metadata)?;
+    if let Err(error) = download_preview(&client, &metadata, &directory, stem) {
+        eprintln!("Civitai preview unavailable; continuing model download: {error}");
+    }
 
     manager.add(
         &app_handle,

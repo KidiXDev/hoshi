@@ -327,10 +327,7 @@ async function handleSaveCharacterToLibrary() {
 </script>
 
 <template>
-  <Dialog
-    :open="open && !charModalOpen"
-    @update:open="handleDetailOpenChange"
-  >
+  <Dialog :open="open && !charModalOpen" @update:open="handleDetailOpenChange">
     <DialogContent
       class="border-border/60 bg-background/95 min-w-[60vw] overflow-hidden p-0 shadow-2xl backdrop-blur-xl sm:rounded-2xl"
     >
@@ -685,7 +682,12 @@ async function handleSaveCharacterToLibrary() {
   <!-- Save Character to Library Modal -->
   <Dialog
     :open="charModalOpen"
-    @update:open="(v) => { if (!v) closeCharModal(); else charModalOpen = true; }"
+    @update:open="
+      (v) => {
+        if (!v) closeCharModal();
+        else charModalOpen = true;
+      }
+    "
   >
     <DialogContent
       class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0 shadow-2xl"
@@ -701,10 +703,10 @@ async function handleSaveCharacterToLibrary() {
         </DialogTitle>
       </DialogHeader>
 
-      <div class="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+      <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
           <!-- Left (2 cols): Character Inputs -->
-          <div class="md:col-span-2 flex flex-col gap-4">
+          <div class="flex flex-col gap-4 md:col-span-2">
             <!-- Character Name -->
             <div class="flex flex-col gap-1.5">
               <Label class="text-foreground text-xs font-bold">
@@ -753,16 +755,16 @@ async function handleSaveCharacterToLibrary() {
                 v-model="charTags"
                 rows="4"
                 placeholder="twin tails, sleeveless shirt, necktie..."
-                class="font-mono text-xs bg-background"
+                class="bg-background font-mono text-xs"
               />
             </div>
           </div>
 
           <!-- Right (1 col): Portrait Thumbnail Preview -->
-          <div class="md:col-span-1 flex flex-col gap-2">
+          <div class="flex flex-col gap-2 md:col-span-1">
             <Label class="text-foreground text-xs font-bold">Thumbnail</Label>
             <div
-              class="relative aspect-3/4 w-full overflow-hidden rounded-xl border border-border bg-muted/30"
+              class="border-border bg-muted/30 relative aspect-3/4 w-full overflow-hidden rounded-xl border"
             >
               <img
                 v-if="charThumbnailUrl"
@@ -772,7 +774,7 @@ async function handleSaveCharacterToLibrary() {
               />
               <div
                 v-else
-                class="flex h-full w-full items-center justify-center text-muted-foreground text-xs"
+                class="text-muted-foreground flex h-full w-full items-center justify-center text-xs"
               >
                 No image selected
               </div>

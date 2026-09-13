@@ -177,12 +177,14 @@ async function navigate(event: MouseEvent) {
     <header v-if="title" class="border-border/50 border-b pb-3">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 class="text-xl font-bold tracking-tight text-foreground capitalize">
+          <h1
+            class="text-foreground text-xl font-bold tracking-tight capitalize"
+          >
             {{ displayTitle }}
           </h1>
           <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
             <span
-              class="border-border bg-secondary/80 font-mono text-secondary-foreground rounded px-1.5 py-0.5 text-xs font-medium"
+              class="border-border bg-secondary/80 text-secondary-foreground rounded px-1.5 py-0.5 font-mono text-xs font-medium"
             >
               {{ rawTag }}
             </span>

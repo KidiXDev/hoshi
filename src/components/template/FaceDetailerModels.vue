@@ -10,7 +10,10 @@ const detailer = useFaceDetailerStore();
 <template>
   <div class="flex flex-col gap-3">
     <ModelSection :models="detailer.state.models" />
-    <LoraChainSection v-model:loras="detailer.state.loras" />
+    <LoraChainSection
+      v-model:loras="detailer.state.loras"
+      v-model:positive-prompt="detailer.state.settings.positivePrompt"
+    />
     <SeedControl v-model="detailer.state.seed" />
   </div>
 </template>

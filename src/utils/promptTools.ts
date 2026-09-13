@@ -174,17 +174,14 @@ export function adjustPromptWeight(
 }
 
 /**
- * Cleans and formats prompt string:
- * - Trims whitespace around tags
- * - Fixes dangling/multiple commas
- * - Optionally removes duplicate tags
+ * Splits a prompt into raw tags on commas/newlines while keeping `()`, `[]`
+ * and `{}` groups (and `\`-escaped characters) intact, so `{a, b|c}` stays one
+ * tag. With `keepNewlines`, a standalone `'\n'` entry marks each line break.
  */
-export function formatAndCleanPrompt(
+export function splitPromptTags(
   prompt: string,
-  options?: FormatOptions
-): string {
-  if (!prompt.trim()) return '';
-  const settings = { ...DEFAULT_FORMAT_OPTIONS, ...options };
+  keepNewlines = false
+): string[] {
   const rawTags: string[] = [];
   let tag = '';
   const groups: string[] = [];
@@ -203,13 +200,29 @@ export function formatAndCleanPrompt(
       (char === ',' || char === '，' || char === '\n')
     ) {
       rawTags.push(tag);
-      if (char === '\n' && settings.keepNewlines) rawTags.push('\n');
+      if (char === '\n' && keepNewlines) rawTags.push('\n');
       tag = '';
     } else {
-      tag += char === '\n' && !settings.keepNewlines ? ' ' : char;
+      tag += char === '\n' && !keepNewlines ? ' ' : char;
     }
   }
   rawTags.push(tag);
+  return rawTags;
+}
+
+/**
+ * Cleans and formats prompt string:
+ * - Trims whitespace around tags
+ * - Fixes dangling/multiple commas
+ * - Optionally removes duplicate tags
+ */
+export function formatAndCleanPrompt(
+  prompt: string,
+  options?: FormatOptions
+): string {
+  if (!prompt.trim()) return '';
+  const settings = { ...DEFAULT_FORMAT_OPTIONS, ...options };
+  const rawTags = splitPromptTags(prompt, settings.keepNewlines);
   const seen = new Set<string>();
   const cleaned: string[] = [];
 
@@ -298,7 +311,7 @@ export function estimateClipTokens(prompt: string): {
 export function parsePromptToChips(prompt: string): PromptTag[] {
   if (!prompt.trim()) return [];
 
-  const rawTags = prompt.split(/[,，\n]+/u);
+  const rawTags = splitPromptTags(prompt);
   const result: PromptTag[] = [];
 
   for (let i = 0; i < rawTags.length; i++) {
@@ -327,4 +340,123 @@ export function reconstructPromptFromChips(chips: PromptTag[]): string {
     .map((c) => formatTagWeight(c.text, c.weight))
     .filter(Boolean)
     .join(', ');
+}
+
+function normalizeTerm(term: string): string {
+  return parseTagWeight(term)
+    .text.toLowerCase()
+    .replaceAll(/\s+/gu, ' ')
+    .replaceAll('_', ' ')
+    .trim();
+}
+
+/**
+ * Every normalized tag in a prompt, including tags inside `{a|b}` groups so
+ * a trigger word counts as present whichever option is picked.
+ */
+export function promptTermSet(prompt: string): Set<string> {
+  const terms = new Set<string>();
+  const add = (value: string) => {
+    const normalized = normalizeTerm(value);
+    if (normalized) terms.add(normalized);
+  };
+  for (const raw of splitPromptTags(prompt)) {
+    const tag = raw.trim();
+    if (!tag) continue;
+    if (tag.startsWith('{') && tag.endsWith('}')) {
+      const options = tag.slice(1, -1).split('|');
+      for (const option of options) {
+        for (const nested of splitPromptTags(option)) add(nested);
+      }
+      continue;
+    }
+    add(tag);
+  }
+  return terms;
+}
+
+/**
+ * Whether `term` (which may itself be a comma-separated phrase) is already in
+ * the prompt — case-insensitive, weight-stripped, `_`/space agnostic.
+ */
+export function promptContainsTerm(prompt: string, term: string): boolean {
+  const present = promptTermSet(prompt);
+  const parts = splitPromptTags(term)
+    .map((part) => normalizeTerm(part))
+    .filter(Boolean);
+  return parts.length > 0 && parts.every((part) => present.has(part));
+}
+
+/**
+ * Appends terms not already present, joining with `, ` and respecting a
+ * trailing comma/newline in the existing prompt.
+ */
+export function appendPromptTerms(prompt: string, terms: string[]): string {
+  const missing = terms
+    .map((term) => term.trim())
+    .filter((term) => term && !promptContainsTerm(prompt, term));
+  if (missing.length === 0) return prompt;
+  const current = prompt.replace(/[ \t]+$/u, '');
+  if (!current.trim()) return missing.join(', ');
+  const separator = /[,，]$/u.test(current)
+    ? ' '
+    : current.endsWith('\n')
+      ? ''
+      : ', ';
+  return `${current}${separator}${missing.join(', ')}`;
+}
+
+/**
+ * Removes every top-level tag equal to `term` (normalized comparison) while
+ * leaving the rest of the prompt's formatting untouched. Tags inside `{a|b}`
+ * groups are not touched.
+ */
+export function removePromptTerm(prompt: string, term: string): string {
+  const wanted = normalizeTerm(term);
+  if (!wanted) return prompt;
+  const source = prompt.replaceAll(/\r\n?/gu, '\n');
+  const ranges: { start: number; end: number }[] = [];
+  const closing: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
+  const groups: string[] = [];
+  let tagStart = 0;
+  const pushTag = (end: number) => {
+    const raw = source.slice(tagStart, end);
+    if (normalizeTerm(raw) === wanted) ranges.push({ start: tagStart, end });
+  };
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (char === '\\' && index + 1 < source.length) {
+      index++;
+      continue;
+    }
+    if (closing[char]) groups.push(closing[char]);
+    else if (char === groups.at(-1)) groups.pop();
+    if (
+      groups.length === 0 &&
+      (char === ',' || char === '，' || char === '\n')
+    ) {
+      pushTag(index);
+      tagStart = index + 1;
+    }
+  }
+  pushTag(source.length);
+  if (ranges.length === 0) return prompt;
+
+  let result = source;
+  // Remove from the end so earlier offsets stay valid.
+  for (let index = ranges.length - 1; index >= 0; index--) {
+    const range = ranges[index];
+    let { start, end } = range;
+    // Drop one separator: the preceding comma (and its spacing) if present,
+    // otherwise the following one. Newlines are preserved.
+    const before = /[^\S\n]*[,，][^\S\n]*$/u.exec(result.slice(0, start));
+    if (before) {
+      start -= before[0].length;
+    } else {
+      const after = /^[^\S\n]*[,，][^\S\n]*/u.exec(result.slice(end));
+      if (after) end += after[0].length;
+    }
+    result = result.slice(0, start) + result.slice(end);
+  }
+  return result.replaceAll(/^[^\S\n]*[,，][^\S\n]*/gmu, '').trim();
 }

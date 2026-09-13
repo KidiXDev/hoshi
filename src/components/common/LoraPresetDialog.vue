@@ -31,7 +31,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatShortDate } from '@/utils/formatters';
 import { LibraryService } from '../../services/libraryService';
 import { useWorkflowStore } from '../../stores/workflowStore';
-import type { LibraryItem, LibraryListEntry, LoraData } from '../../types/library';
+import type {
+  LibraryItem,
+  LibraryListEntry,
+  LoraData
+} from '../../types/library';
 import type { LoraItem } from '../../types/workflow';
 
 const props = defineProps<{
@@ -203,7 +207,10 @@ async function requestDelete(entry: LibraryListEntry) {
             variant="outline"
             title="Open full Library"
             class="border-border bg-secondary hover:bg-accent h-7.5 gap-1 px-2.5 text-xs"
-            @click="emit('update:open', false); $router.push('/library?tab=loras')"
+            @click="
+              emit('update:open', false);
+              $router.push('/library?tab=loras');
+            "
           >
             <Library class="h-3.5 w-3.5" />
             <span>Open Library</span>
@@ -328,7 +335,7 @@ async function requestDelete(entry: LibraryListEntry) {
                   <div>
                     <div class="flex items-center justify-between gap-2">
                       <span
-                        class="border-violet-500/30 bg-violet-500/15 text-violet-400 rounded-md border px-1.5 py-0.5 font-mono text-xs font-bold uppercase"
+                        class="rounded-md border border-violet-500/30 bg-violet-500/15 px-1.5 py-0.5 font-mono text-xs font-bold text-violet-400 uppercase"
                       >
                         LoRA
                       </span>
@@ -376,7 +383,9 @@ async function requestDelete(entry: LibraryListEntry) {
                     </div>
 
                     <!-- Right: Apply Buttons -->
-                    <div class="flex flex-wrap items-center justify-end gap-1.5">
+                    <div
+                      class="flex flex-wrap items-center justify-end gap-1.5"
+                    >
                       <Button
                         size="sm"
                         variant="outline"
@@ -523,7 +532,9 @@ async function requestDelete(entry: LibraryListEntry) {
           >
             <span class="text-muted-foreground text-xs">
               Saved to your
-              <code class="text-foreground font-mono font-semibold">Library / LoRAs</code>.
+              <code class="text-foreground font-mono font-semibold"
+                >Library / LoRAs</code
+              >.
             </span>
 
             <Button
@@ -539,5 +550,4 @@ async function requestDelete(entry: LibraryListEntry) {
       </Tabs>
     </DialogContent>
   </Dialog>
-
 </template>

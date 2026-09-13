@@ -46,11 +46,21 @@ export const queryKeys = {
       ['civitai', 'model', Number(id)] as const,
     baseModels: () => ['civitai', 'baseModels'] as const
   },
+  models: {
+    all: ['models'] as const,
+    index: (comfyRoot: string) => ['models', 'index', comfyRoot] as const,
+    byName: (comfyRoot: string, category: string, name: string) =>
+      ['models', 'byName', comfyRoot, category, name] as const,
+    metadata: (id: string) => ['models', 'metadata', id] as const
+  },
   danbooru: {
     all: ['danbooru'] as const,
     wiki: (title: string) => ['danbooru', 'wiki', title] as const,
     posts: (ids: number[]) =>
-      // eslint-disable-next-line unicorn/no-array-sort
-      ['danbooru', 'posts', [...ids].sort((a: number, b: number) => a - b).join(',')] as const
+      [
+        'danbooru',
+        'posts',
+        [...ids].sort((a: number, b: number) => a - b).join(',')
+      ] as const
   }
 };

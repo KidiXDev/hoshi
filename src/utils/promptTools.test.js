@@ -1,12 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import {
   adjustPromptWeight,
+  appendPromptTerms,
   estimateClipTokens,
   formatAndCleanPrompt,
   formatTagWeight,
   parsePromptToChips,
   parseTagWeight,
-  reconstructPromptFromChips
+  promptContainsTerm,
+  reconstructPromptFromChips,
+  removePromptTerm
 } from './promptTools';
 
 describe('promptTools', () => {
@@ -113,5 +116,38 @@ describe('promptTools', () => {
 
     const reconstructed = reconstructPromptFromChips(chips);
     expect(reconstructed).toBe('1girl, (masterpiece:1.2), (solo:0.8)');
+  });
+});
+
+describe('prompt term helpers', () => {
+  test('detects present terms regardless of weight, case and underscores', () => {
+    expect(promptContainsTerm('(foo:1.2), bar', 'foo')).toBe(true);
+    expect(promptContainsTerm('Foo Bar, baz', 'foo_bar')).toBe(true);
+    expect(promptContainsTerm('{foo|bar}, baz', 'foo')).toBe(true);
+    expect(promptContainsTerm('foo, bar', 'foo, bar')).toBe(true);
+    expect(promptContainsTerm('foo', 'foo, bar')).toBe(false);
+    expect(promptContainsTerm('foobar', 'foo')).toBe(false);
+    expect(promptContainsTerm('', 'foo')).toBe(false);
+  });
+
+  test('appends only missing terms with a sensible separator', () => {
+    expect(appendPromptTerms('', ['a'])).toBe('a');
+    expect(appendPromptTerms('x,', ['a'])).toBe('x, a');
+    expect(appendPromptTerms('x', ['x', 'y'])).toBe('x, y');
+    expect(appendPromptTerms('x\n', ['y'])).toBe('x\ny');
+    expect(appendPromptTerms('x, y', ['X', 'y'])).toBe('x, y');
+    expect(appendPromptTerms('x', ['a', 'b'])).toBe('x, a, b');
+  });
+});
+
+describe('removePromptTerm', () => {
+  test('removes a tag and one separator without reformatting', () => {
+    expect(removePromptTerm('a, foo, b', 'foo')).toBe('a, b');
+    expect(removePromptTerm('a, (foo:1.2)', 'foo')).toBe('a');
+    expect(removePromptTerm('foo, a', 'Foo')).toBe('a');
+    expect(removePromptTerm('a,  foo_bar ,b', 'foo bar')).toBe('a,b');
+    expect(removePromptTerm('a\nfoo\nb', 'foo')).toBe('a\n\nb');
+    expect(removePromptTerm('{foo|bar}, foo', 'foo')).toBe('{foo|bar}');
+    expect(removePromptTerm('a, b', 'zzz')).toBe('a, b');
   });
 });

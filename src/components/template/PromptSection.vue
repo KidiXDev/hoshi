@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
 import PromptChips from '@/components/prompt/PromptChips.vue';
-import PromptFindHighlight from '@/components/prompt/PromptFindHighlight.vue';
+import PromptFindHighlight, {
+  type HighlightRange
+} from '@/components/prompt/PromptFindHighlight.vue';
 import PromptTagCatalog from '@/components/prompt/PromptTagCatalog.vue';
 import {
   usePromptTextEditing,
@@ -11,6 +13,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import {
   ArrowRightLeft,
   Bookmark,
+  Braces,
   Check,
   ChevronDown,
   ChevronUp,
@@ -53,8 +56,14 @@ import {
   formatAndCleanPrompt,
   DEFAULT_FORMAT_OPTIONS
 } from '../../utils/promptTools';
+import {
+  countDynamicVariants,
+  findDynamicGroups,
+  resolveDynamicPrompt
+} from '../../utils/dynamicPrompt';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { loadAppData, saveAppData } from '../../services/appStorage';
+import { toast } from 'vue-sonner';
 
 const workflowStore = useWorkflowStore();
 
@@ -336,6 +345,37 @@ const positiveTokenInfo = computed(() =>
 const negativeTokenInfo = computed(() =>
   estimateClipTokens(workflowStore.negativePrompt)
 );
+
+// Dynamic prompt `{a|b}` groups: highlighted in the editor and summarized in
+// the field header. Outermost groups only, so nested groups share one mark.
+function dynamicRanges(text: string): HighlightRange[] {
+  return findDynamicGroups(text)
+    .filter((group) => group.depth === 0)
+    .map((group) => ({ start: group.start, end: group.end, cls: 'ps-group' }));
+}
+const positiveDynamicRanges = computed(() =>
+  dynamicRanges(workflowStore.positivePrompt)
+);
+const negativeDynamicRanges = computed(() =>
+  dynamicRanges(workflowStore.negativePrompt)
+);
+const positiveVariants = computed(() =>
+  countDynamicVariants(workflowStore.positivePrompt)
+);
+const negativeVariants = computed(() =>
+  countDynamicVariants(workflowStore.negativePrompt)
+);
+
+function previewDynamicRoll(field: PromptField) {
+  const text =
+    field === 'positive'
+      ? workflowStore.positivePrompt
+      : workflowStore.negativePrompt;
+  toast(resolveDynamicPrompt(text, Math.random), {
+    description: 'Example roll — each generation picks options from its seed.',
+    duration: 6000
+  });
+}
 </script>
 
 <template>
@@ -479,6 +519,30 @@ const negativeTokenInfo = computed(() =>
 
     <!-- 1. POSITIVE PROMPT SECTION -->
     <WorkflowField label="Positive Prompt">
+      <template #label-extra>
+        <Tooltip v-if="positiveDynamicRanges.length > 0">
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 inline-flex h-5 cursor-pointer items-center gap-1 rounded-md border px-1.5 font-mono text-xs transition-colors"
+              aria-label="Dynamic prompt groups in positive prompt"
+              @click="previewDynamicRoll('positive')"
+            >
+              <Braces class="h-3 w-3" />
+              <span>{{ positiveDynamicRanges.length }}</span>
+              <span class="text-primary/70">·</span>
+              <span>{{ positiveVariants.toLocaleString() }}</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" class="max-w-xs text-xs">
+            {{ positiveDynamicRanges.length }} dynamic
+            {{ positiveDynamicRanges.length === 1 ? 'group' : 'groups' }} ·
+            {{ positiveVariants.toLocaleString() }} possible variants. One
+            option per group is picked from the seed at generation time. Click
+            to preview a roll.
+          </TooltipContent>
+        </Tooltip>
+      </template>
       <template #action>
         <div class="flex items-center gap-1.5">
           <!-- Shortcut Tip Tooltip -->
@@ -652,9 +716,10 @@ const negativeTokenInfo = computed(() =>
               class="field-sizing-fixed min-h-24 w-full resize-y font-mono text-xs leading-relaxed"
               :class="{
                 'caret-foreground bg-transparent':
-                  isFindBarOpen &&
-                  findTarget === 'positive' &&
-                  findMatches.length > 0
+                  positiveDynamicRanges.length > 0 ||
+                  (isFindBarOpen &&
+                    findTarget === 'positive' &&
+                    findMatches.length > 0)
               }"
               @input="handleInput('positive', $event)"
               @scroll="handleTextareaScroll('positive', $event)"
@@ -697,6 +762,7 @@ const negativeTokenInfo = computed(() =>
           :matches="findMatches"
           :current-match-index="currentMatchIndex"
           :active="isFindBarOpen && findTarget === 'positive'"
+          :ranges="positiveDynamicRanges"
         />
 
         <!-- Autocomplete Floating Dropdown -->
@@ -779,6 +845,29 @@ const negativeTokenInfo = computed(() =>
 
     <!-- 2. NEGATIVE PROMPT SECTION -->
     <WorkflowField label="Negative Prompt">
+      <template #label-extra>
+        <Tooltip v-if="negativeDynamicRanges.length > 0">
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 inline-flex h-5 cursor-pointer items-center gap-1 rounded-md border px-1.5 font-mono text-xs transition-colors"
+              aria-label="Dynamic prompt groups in negative prompt"
+              @click="previewDynamicRoll('negative')"
+            >
+              <Braces class="h-3 w-3" />
+              <span>{{ negativeDynamicRanges.length }}</span>
+              <span class="text-primary/70">·</span>
+              <span>{{ negativeVariants.toLocaleString() }}</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" class="max-w-xs text-xs">
+            {{ negativeDynamicRanges.length }} dynamic
+            {{ negativeDynamicRanges.length === 1 ? 'group' : 'groups' }} ·
+            {{ negativeVariants.toLocaleString() }} possible variants. Click to
+            preview a roll.
+          </TooltipContent>
+        </Tooltip>
+      </template>
       <template #action>
         <div class="flex items-center gap-1.5">
           <!-- Negative Presets Dropdown -->
@@ -912,9 +1001,10 @@ const negativeTokenInfo = computed(() =>
               class="field-sizing-fixed min-h-20 w-full resize-y font-mono text-xs leading-relaxed"
               :class="{
                 'caret-foreground bg-transparent':
-                  isFindBarOpen &&
-                  findTarget === 'negative' &&
-                  findMatches.length > 0
+                  negativeDynamicRanges.length > 0 ||
+                  (isFindBarOpen &&
+                    findTarget === 'negative' &&
+                    findMatches.length > 0)
               }"
               @input="handleInput('negative', $event)"
               @scroll="handleTextareaScroll('negative', $event)"
@@ -957,6 +1047,7 @@ const negativeTokenInfo = computed(() =>
           :matches="findMatches"
           :current-match-index="currentMatchIndex"
           :active="isFindBarOpen && findTarget === 'negative'"
+          :ranges="negativeDynamicRanges"
         />
 
         <!-- Autocomplete Floating Dropdown for Negative -->

@@ -3,6 +3,7 @@ import StudioToolbar from '@/components/layout/StudioToolbar.vue';
 import { useImageClipboard } from '@/composables/useImageClipboard';
 import ImageComparisonModes from '@/components/common/ImageComparisonModes.vue';
 import StudioLayout from '@/components/layout/StudioLayout.vue';
+import { resolveDynamicPromptWithSeed } from '@/utils/dynamicPrompt';
 import ImageBatchQueue from '@/components/common/ImageBatchQueue.vue';
 import ImageComparison from '@/components/common/ImageComparison.vue';
 import { useImageBatch } from '@/composables/useImageBatch';
@@ -169,9 +170,28 @@ async function queueItem(
       item.file,
       `comfy-gui-face-detailer-${item.id}${extension}`
     );
+    const resolvedSettings: FaceDetailerSettings = {
+      ...settings,
+      positivePrompt: resolveDynamicPromptWithSeed(
+        settings.positivePrompt ?? '',
+        seed,
+        'fd-positive'
+      ),
+      negativePrompt: resolveDynamicPromptWithSeed(
+        settings.negativePrompt ?? '',
+        seed,
+        'fd-negative'
+      )
+    };
     const queued = await ComfyApi.queuePrompt(
       launcherStore.config.serverUrl,
-      buildFaceDetailerPrompt(uploaded.name, settings, models, loras, seed),
+      buildFaceDetailerPrompt(
+        uploaded.name,
+        resolvedSettings,
+        models,
+        loras,
+        seed
+      ),
       `comfy-gui-face-detailer-${crypto.randomUUID()}`
     );
     item.status = 'queued';
@@ -264,9 +284,7 @@ onUnmounted(() => {
           v-if="!comfyStore.isConnected || !comfyStore.isFaceDetailerAvailable"
           tone="amber"
           :label="
-            !comfyStore.isConnected
-              ? 'ComfyUI Offline'
-              : 'Impact Unavailable'
+            !comfyStore.isConnected ? 'ComfyUI Offline' : 'Impact Unavailable'
           "
         />
 

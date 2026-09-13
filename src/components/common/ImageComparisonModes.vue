@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { Columns2, Eye, Layers, SplitSquareVertical } from '@lucide/vue';
 import {
   Tooltip,
@@ -8,7 +9,14 @@ import {
 import type { ImageComparisonMode } from '@/types/imageBatch';
 
 const mode = defineModel<ImageComparisonMode>({ required: true });
-const modes = [
+const props = withDefaults(
+  defineProps<{
+    /** Restrict the available modes (defaults to all four). */
+    modes?: ImageComparisonMode[];
+  }>(),
+  { modes: () => ['split', 'side-by-side', 'result', 'original'] }
+);
+const allModes = [
   {
     value: 'split',
     label: 'Split Compare',
@@ -34,6 +42,9 @@ const modes = [
     icon: Layers
   }
 ] as const;
+const modes = computed(() =>
+  allModes.filter((option) => props.modes.includes(option.value))
+);
 </script>
 
 <template>

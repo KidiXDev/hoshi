@@ -97,9 +97,13 @@ export const ComfyApi = {
 
   async shutdown(serverUrl: string): Promise<boolean> {
     try {
-      await http.post(`${this.cleanUrl(serverUrl)}/comfygui/shutdown`, undefined, {
-        timeout: 3000
-      });
+      await http.post(
+        `${this.cleanUrl(serverUrl)}/comfygui/shutdown`,
+        undefined,
+        {
+          timeout: 3000
+        }
+      );
       return true;
     } catch {
       return false;

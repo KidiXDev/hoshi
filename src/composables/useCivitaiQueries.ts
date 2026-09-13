@@ -45,7 +45,9 @@ export function useCivitaiModelDetailQuery(
   return useQuery({
     queryKey: computed(() => {
       const currentId = toValue(id);
-      return currentId ? queryKeys.civitai.modelDetail(currentId) : ['civitai', 'model', null];
+      return currentId
+        ? queryKeys.civitai.modelDetail(currentId)
+        : ['civitai', 'model', null];
     }),
     queryFn: () => {
       const currentId = toValue(id);
