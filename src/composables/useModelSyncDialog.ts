@@ -88,8 +88,9 @@ export function useModelSyncDialog() {
   /** Closes only once the sync has finished; the dialog is not dismissible. */
   function close() {
     if (!isTerminal()) return;
+    // Keep the final stage/content while the dialog animates out; `run()`
+    // resets everything before the next sync.
     state.open = false;
-    state.stage = 'idle';
   }
 
   onMounted(() => {

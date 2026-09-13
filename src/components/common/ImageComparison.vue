@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onDeactivated, onUnmounted } from 'vue';
+import { ref, onDeactivated, onUnmounted, type StyleValue } from 'vue';
 import { ChevronLeft, ChevronRight } from '@lucide/vue';
 import type { ImageComparisonMode } from '@/types/imageBatch';
 
@@ -12,11 +12,18 @@ withDefaults(
     resultLabel: string;
     /** Label for the left/original side in split mode. */
     originalLabel?: string;
-    /** CSS transform applied to every image layer (zoom/pan from the host). */
-    imageTransform?: string;
-    imageClass?: string;
+    /**
+     * Style applied to both side-by-side images (e.g. a shared zoom/pan
+     * transform) so they stay in sync.
+     */
+    sideBySideImageStyle?: StyleValue;
+    sideBySideImageClass?: string;
   }>(),
-  { originalLabel: 'BEFORE (ORIGINAL)', imageTransform: '', imageClass: '' }
+  {
+    originalLabel: 'BEFORE (ORIGINAL)',
+    sideBySideImageStyle: undefined,
+    sideBySideImageClass: ''
+  }
 );
 /** Split divider position in percent; bindable via `v-model:position`. */
 const splitSliderPos = defineModel<number>('position', { default: 50 });
@@ -69,8 +76,6 @@ onUnmounted(() => stopDragging());
         :src="resultUrl"
         :alt="alt"
         class="pointer-events-none max-h-full max-w-full object-contain drop-shadow-md"
-        :class="imageClass"
-        :style="imageTransform ? { transform: imageTransform } : undefined"
         draggable="false"
       />
 
@@ -85,8 +90,6 @@ onUnmounted(() => stopDragging());
           :src="previewUrl"
           :alt="alt"
           class="pointer-events-none max-h-full max-w-full object-contain"
-          :class="imageClass"
-          :style="imageTransform ? { transform: imageTransform } : undefined"
           draggable="false"
         />
       </div>
@@ -135,39 +138,39 @@ onUnmounted(() => stopDragging());
     class="grid h-full w-full grid-cols-2 gap-3 overflow-hidden"
   >
     <div
-      class="border-border bg-background/50 relative flex h-full flex-col items-center justify-center overflow-hidden rounded-lg border p-2"
+      class="relative flex h-full min-w-0 flex-col items-center justify-center overflow-hidden"
     >
-      <span
-        class="bg-background/80 text-muted-foreground absolute top-2 left-2 rounded-md px-2 py-0.5 font-mono text-xs font-semibold"
-      >
-        <slot name="original-label">Original</slot>
-      </span>
       <img
         :src="previewUrl"
         :alt="alt"
         class="max-h-full max-w-full object-contain"
-        :class="imageClass"
-        :style="imageTransform ? { transform: imageTransform } : undefined"
+        :class="sideBySideImageClass"
+        :style="sideBySideImageStyle"
         draggable="false"
       />
+      <span
+        class="bg-background/80 text-muted-foreground pointer-events-none absolute top-2 left-2 z-10 max-w-[90%] truncate rounded-md px-2 py-0.5 font-mono text-xs font-semibold backdrop-blur-xs"
+      >
+        <slot name="original-label">Original</slot>
+      </span>
     </div>
 
     <div
-      class="border-border bg-background/50 relative flex h-full flex-col items-center justify-center overflow-hidden rounded-lg border p-2"
+      class="relative flex h-full min-w-0 flex-col items-center justify-center overflow-hidden"
     >
-      <span
-        class="border-primary/40 bg-primary/20 text-primary absolute top-2 left-2 rounded-md border px-2 py-0.5 font-mono text-xs font-bold"
-      >
-        <slot name="result-label">{{ resultLabel }}</slot>
-      </span>
       <img
         :src="resultUrl"
         :alt="alt"
         class="max-h-full max-w-full object-contain drop-shadow-md"
-        :class="imageClass"
-        :style="imageTransform ? { transform: imageTransform } : undefined"
+        :class="sideBySideImageClass"
+        :style="sideBySideImageStyle"
         draggable="false"
       />
+      <span
+        class="border-primary/40 bg-primary/20 text-primary pointer-events-none absolute top-2 left-2 z-10 max-w-[90%] truncate rounded-md border px-2 py-0.5 font-mono text-xs font-bold backdrop-blur-xs"
+      >
+        <slot name="result-label">{{ resultLabel }}</slot>
+      </span>
     </div>
   </div>
 

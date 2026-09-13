@@ -79,6 +79,11 @@ const compareImage = ref<OutputImage>();
 const compareMode = ref<ImageComparisonMode>('split');
 const splitPosition = ref(50);
 const isComparing = computed(() => Boolean(compareImage.value));
+// Zoom/pan works for a single image and for side-by-side (applied to both
+// images in sync); the split slider always shows the images fitted.
+const zoomEnabled = computed(
+  () => !isComparing.value || compareMode.value === 'side-by-side'
+);
 const metadata = ref<OutputImageMetadata>();
 const metadataLoading = ref(false);
 const showRaw = ref(false);
@@ -121,6 +126,7 @@ const transformStyle = computed(
   () =>
     `translate3d(${panX.value}px, ${panY.value}px, 0px) scale(${zoom.value})`
 );
+watch(compareMode, resetPanAndZoom);
 function handlePointerDown(event: PointerEvent) {
   if (event.button !== 0) return;
   stopPanning();
@@ -218,8 +224,8 @@ function navigateViewer(direction: number) {
 function handleKeydown(event: KeyboardEvent) {
   if (!selectedImage.value) return;
   if (event.key === 'Escape') {
-    if (isComparing.value) exitCompare();
-    else selectedImage.value = undefined;
+    // Esc always closes the viewer; "Exit" in the header drops back to one image.
+    selectedImage.value = undefined;
   } else if (isComparing.value && (event.key === 's' || event.key === 'S')) {
     swapCompare();
   } else if (isComparing.value && event.key === '[') nudgeSplit(-5);
@@ -228,15 +234,15 @@ function handleKeydown(event: KeyboardEvent) {
   else if (event.key === 'ArrowRight') navigateViewer(1);
   else if (event.key === 'i' || event.key === 'I') {
     showInspector.value = !showInspector.value;
-  } else if (event.key === '+' || event.key === '=') {
+  } else if (zoomEnabled.value && (event.key === '+' || event.key === '=')) {
     zoom.value = Math.min(5, Number((zoom.value + 0.25).toFixed(2)));
-  } else if (event.key === '-') {
+  } else if (zoomEnabled.value && event.key === '-') {
     zoom.value = Math.max(1, Number((zoom.value - 0.25).toFixed(2)));
     if (zoom.value === 1) {
       panX.value = 0;
       panY.value = 0;
     }
-  } else if (event.key === '0') {
+  } else if (zoomEnabled.value && event.key === '0') {
     resetPanAndZoom();
   }
 }
@@ -383,28 +389,28 @@ defineExpose({ open: openImage, openCompare });
         >
           <!-- Top Canvas Header Overlay -->
           <div
-            class="absolute top-0 right-0 left-0 z-20 flex items-center justify-between bg-linear-to-b from-black/80 via-black/40 to-transparent p-4"
+            class="absolute top-0 right-0 left-0 z-20 flex items-center justify-between gap-4 bg-linear-to-b from-black/80 via-black/40 to-transparent p-4"
             @click.stop
           >
-            <div class="flex min-w-0 items-center gap-3">
+            <div class="flex min-w-0 flex-1 items-center gap-3">
               <template v-if="compareImage">
                 <Badge
-                  class="border-primary/40 bg-primary/25 font-mono text-xs text-white backdrop-blur-md"
+                  class="border-primary/40 bg-primary/25 shrink-0 font-mono text-xs text-white backdrop-blur-md"
                 >
-                  A / B Compare
+                  A / B
                 </Badge>
                 <span
                   class="flex min-w-0 items-center gap-2 font-mono text-xs font-semibold text-white/90"
                 >
                   <span
-                    class="max-w-56 truncate"
+                    class="min-w-0 truncate"
                     :title="selectedImage.filename"
                   >
                     {{ selectedImage.filename }}
                   </span>
                   <ArrowLeftRight class="h-3 w-3 shrink-0 text-white/50" />
                   <span
-                    class="text-primary max-w-56 truncate"
+                    class="text-primary min-w-0 truncate"
                     :title="compareImage.filename"
                   >
                     {{ compareImage.filename }}
@@ -427,7 +433,7 @@ defineExpose({ open: openImage, openCompare });
               </template>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex shrink-0 items-center gap-2">
               <template v-if="compareImage">
                 <ImageComparisonModes
                   v-model="compareMode"
@@ -453,55 +459,58 @@ defineExpose({ open: openImage, openCompare });
                   size="sm"
                   variant="ghost"
                   class="h-8 text-xs text-white/80 hover:bg-white/10 hover:text-white"
-                  title="Back to single view (Esc)"
+                  title="Back to single-image view"
                   @click="exitCompare"
                 >
-                  Exit compare
+                  Exit
                 </Button>
                 <Separator orientation="vertical" class="h-4 bg-white/20" />
               </template>
-              <Badge
-                variant="secondary"
-                class="border-white/10 bg-black/50 font-mono text-xs text-white/80 backdrop-blur-md"
-              >
-                Zoom: {{ Math.round(zoom * 100) }}%
-              </Badge>
-              <Button
-                size="iconSm"
-                variant="ghost"
-                class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
-                title="Zoom Out (-)"
-                @click="
-                  zoom = Math.max(1, Number((zoom - 0.25).toFixed(2)));
-                  if (zoom === 1) {
-                    panX = 0;
-                    panY = 0;
-                  }
-                "
-              >
-                <ZoomOut class="h-4 w-4" />
-              </Button>
-              <Button
-                size="iconSm"
-                variant="ghost"
-                class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
-                title="Zoom In (+)"
-                @click="zoom = Math.min(5, Number((zoom + 0.25).toFixed(2)))"
-              >
-                <ZoomIn class="h-4 w-4" />
-              </Button>
-              <Button
-                v-if="zoom !== 1 || panX !== 0 || panY !== 0"
-                size="iconSm"
-                variant="ghost"
-                class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
-                title="Reset Zoom & Pan (0)"
-                @click="resetPanAndZoom"
-              >
-                <RotateCcw class="h-3.5 w-3.5" />
-              </Button>
+              <!-- Zoom / pan is single-image only; compare fits both to the stage -->
+              <template v-if="zoomEnabled">
+                <Badge
+                  variant="secondary"
+                  class="border-white/10 bg-black/50 font-mono text-xs text-white/80 backdrop-blur-md"
+                >
+                  Zoom: {{ Math.round(zoom * 100) }}%
+                </Badge>
+                <Button
+                  size="iconSm"
+                  variant="ghost"
+                  class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
+                  title="Zoom Out (-)"
+                  @click="
+                    zoom = Math.max(1, Number((zoom - 0.25).toFixed(2)));
+                    if (zoom === 1) {
+                      panX = 0;
+                      panY = 0;
+                    }
+                  "
+                >
+                  <ZoomOut class="h-4 w-4" />
+                </Button>
+                <Button
+                  size="iconSm"
+                  variant="ghost"
+                  class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
+                  title="Zoom In (+)"
+                  @click="zoom = Math.min(5, Number((zoom + 0.25).toFixed(2)))"
+                >
+                  <ZoomIn class="h-4 w-4" />
+                </Button>
+                <Button
+                  v-if="zoom !== 1 || panX !== 0 || panY !== 0"
+                  size="iconSm"
+                  variant="ghost"
+                  class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
+                  title="Reset Zoom & Pan (0)"
+                  @click="resetPanAndZoom"
+                >
+                  <RotateCcw class="h-3.5 w-3.5" />
+                </Button>
 
-              <Separator orientation="vertical" class="h-4 bg-white/20" />
+                <Separator orientation="vertical" class="h-4 bg-white/20" />
+              </template>
 
               <!-- Toggle Inspector Button -->
               <Tooltip>
@@ -589,7 +598,7 @@ defineExpose({ open: openImage, openCompare });
           <!-- Main Interactive Image Area -->
           <div
             class="relative flex flex-1 items-center justify-center overflow-hidden p-6"
-            @wheel="handleZoom"
+            @wheel="zoomEnabled && handleZoom($event)"
             @click="handleBackdropClick"
           >
             <!-- Previous Button -->
@@ -608,10 +617,19 @@ defineExpose({ open: openImage, openCompare });
             <!-- A/B Comparison: both layers share the same pan/zoom transform -->
             <div
               v-if="compareImage"
-              class="h-full w-full select-none"
-              :class="isPanning ? 'cursor-grabbing' : 'cursor-grab'"
-              @pointerdown.stop="handlePointerDown"
-              @dblclick.stop="zoom === 1 ? (zoom = 2) : resetPanAndZoom()"
+              class="h-full w-full pt-12 pb-2 select-none"
+              :class="
+                zoomEnabled
+                  ? isPanning
+                    ? 'cursor-grabbing'
+                    : 'cursor-grab'
+                  : ''
+              "
+              @click.stop
+              @pointerdown.stop="zoomEnabled && handlePointerDown($event)"
+              @dblclick.stop="
+                zoomEnabled && (zoom === 1 ? (zoom = 2) : resetPanAndZoom())
+              "
             >
               <ImageComparison
                 v-model:position="splitPosition"
@@ -621,8 +639,8 @@ defineExpose({ open: openImage, openCompare });
                 :mode="compareMode"
                 :original-label="selectedImage.filename"
                 :result-label="compareImage.filename"
-                :image-transform="transformStyle"
-                :image-class="
+                :side-by-side-image-style="{ transform: transformStyle }"
+                :side-by-side-image-class="
                   isPanning
                     ? 'duration-0'
                     : 'transition-transform duration-100 ease-out'

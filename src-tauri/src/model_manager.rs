@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
+use std::sync::mpsc;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, RwLock};
@@ -66,7 +67,9 @@ const IGNORED_YAML_KEYS: &[&str] = &[
 ];
 const MAX_SIDECAR_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_SAFETENSORS_HEADER: u64 = 32 * 1024 * 1024;
-const HASH_BUFFER: usize = 4 * 1024 * 1024;
+const HASH_BUFFER: usize = 8 * 1024 * 1024;
+/// Chunks read ahead of the hasher; keeps the disk busy while SHA-256 runs.
+const HASH_PIPELINE_DEPTH: usize = 3;
 const MAX_SUGGESTED_WORDS: usize = 24;
 const SYNC_SPACING: Duration = Duration::from_millis(250);
 const MAX_CONCURRENT_THUMBNAILS: usize = 4;
@@ -1261,23 +1264,80 @@ pub(crate) fn header_info(header: &Value) -> ModelHeaderInfo {
 pub(crate) const CANCELLED: &str = "CANCELLED";
 
 /// Streams the file through SHA-256. `on_progress` returns `false` to abort.
+/// Opens a file for one linear pass, hinting the OS to read ahead aggressively.
+fn open_sequential(path: &Path) -> std::io::Result<File> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_SEQUENTIAL_SCAN: u32 = 0x0800_0000;
+        fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(FILE_FLAG_SEQUENTIAL_SCAN)
+            .open(path)
+    }
+    #[cfg(not(windows))]
+    {
+        File::open(path)
+    }
+}
+
+/// Streams the file through SHA-256 with disk reads and hashing overlapped: a
+/// reader thread fills recycled buffers ahead of the hasher, so throughput is
+/// bounded by the slower of the two instead of their sum. `on_progress`
+/// returns `false` to abort.
 fn hash_file(path: &Path, mut on_progress: impl FnMut(u64, u64) -> bool) -> Result<String, String> {
-    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let mut file = open_sequential(path).map_err(|error| error.to_string())?;
     let total = file.metadata().map_err(|error| error.to_string())?.len();
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; HASH_BUFFER];
-    let mut processed = 0u64;
-    loop {
-        let read = file.read(&mut buffer).map_err(|error| error.to_string())?;
-        if read == 0 {
-            break;
+
+    let (chunk_tx, chunk_rx) = mpsc::sync_channel::<std::io::Result<Vec<u8>>>(HASH_PIPELINE_DEPTH);
+    let (recycle_tx, recycle_rx) = mpsc::channel::<Vec<u8>>();
+    for _ in 0..=HASH_PIPELINE_DEPTH {
+        let _ = recycle_tx.send(vec![0u8; HASH_BUFFER]);
+    }
+    let reader = std::thread::spawn(move || loop {
+        let mut buffer = recycle_rx
+            .recv()
+            .unwrap_or_else(|_| vec![0u8; HASH_BUFFER]);
+        buffer.resize(HASH_BUFFER, 0);
+        match file.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read) => {
+                buffer.truncate(read);
+                if chunk_tx.send(Ok(buffer)).is_err() {
+                    break; // hasher gave up (cancelled or failed)
+                }
+            }
+            Err(error) => {
+                let _ = chunk_tx.send(Err(error));
+                break;
+            }
         }
-        hasher.update(&buffer[..read]);
-        processed += read as u64;
-        if !on_progress(processed, total) {
-            return Err(CANCELLED.into());
+    });
+
+    let mut hasher = Sha256::new();
+    let mut processed = 0u64;
+    let mut outcome: Result<(), String> = Ok(());
+    for chunk in chunk_rx.iter() {
+        match chunk {
+            Ok(buffer) => {
+                hasher.update(&buffer);
+                processed += buffer.len() as u64;
+                let _ = recycle_tx.send(buffer);
+                if !on_progress(processed, total) {
+                    outcome = Err(CANCELLED.into());
+                    break;
+                }
+            }
+            Err(error) => {
+                outcome = Err(error.to_string());
+                break;
+            }
         }
     }
+    drop(recycle_tx);
+    // Dropping the receiver makes the reader's next send fail, ending it.
+    let _ = reader.join();
+    outcome?;
     Ok(hasher
         .finalize()
         .iter()
@@ -1949,6 +2009,33 @@ mod tests {
             true
         })
         .unwrap();
+        // Multi-chunk input: pipeline must preserve order and byte count.
+        let big = dir.join("big.bin");
+        let chunk = vec![0xabu8; 1024 * 1024];
+        let mut expected = Sha256::new();
+        {
+            let mut out = File::create(&big).unwrap();
+            for _ in 0..(HASH_BUFFER / chunk.len() * 3 + 1) {
+                std::io::Write::write_all(&mut out, &chunk).unwrap();
+                expected.update(&chunk);
+            }
+        }
+        let expected: String = expected.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        let mut seen_total = 0;
+        assert_eq!(
+            hash_file(&big, |processed, total| {
+                seen_total = total;
+                processed <= total
+            })
+            .unwrap(),
+            expected
+        );
+        assert_eq!(seen_total, fs::metadata(&big).unwrap().len());
+        let mut first = true;
+        assert_eq!(
+            hash_file(&big, |_, _| std::mem::replace(&mut first, false)).unwrap_err(),
+            CANCELLED
+        );
         assert_eq!(
             hash_file(&path, |_, _| false).unwrap_err(),
             CANCELLED,
@@ -2036,6 +2123,31 @@ mod tests {
         assert_eq!(find("loras", "other/foo.safetensors"), Some("b".into()));
         assert_eq!(find("loras", "bar.safetensors"), Some("c".into()));
         assert_eq!(find("unet", "missing.safetensors"), None);
+    }
+
+    /// Manual benchmark: `cargo test hash_throughput -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn hash_throughput() {
+        let dir = temp_dir("bench");
+        let path = dir.join("model.safetensors");
+        let size: u64 = 1024 * 1024 * 1024;
+        {
+            let mut out = std::io::BufWriter::new(File::create(&path).unwrap());
+            let block = vec![0x5au8; 4 * 1024 * 1024];
+            for _ in 0..(size / block.len() as u64) {
+                std::io::Write::write_all(&mut out, &block).unwrap();
+            }
+        }
+        let started = std::time::Instant::now();
+        hash_file(&path, |_, _| true).unwrap();
+        let secs = started.elapsed().as_secs_f64();
+        println!(
+            "hashed {} MiB in {secs:.2}s = {:.0} MiB/s",
+            size / 1024 / 1024,
+            size as f64 / 1024.0 / 1024.0 / secs
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

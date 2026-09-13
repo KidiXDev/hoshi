@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue';
 import { Box, Layers, Maximize2 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
+import ModelPreviewImage from './ModelPreviewImage.vue';
 import { modelPreviewUrl, type LocalModel } from '@/services/modelManager';
 
 const props = defineProps<{ model: LocalModel }>();
@@ -32,12 +33,14 @@ watch(
   <div
     class="border-border/60 group relative aspect-3/4 max-h-150 w-full overflow-hidden rounded-2xl border bg-black/40 shadow-md"
   >
-    <img
+    <ModelPreviewImage
       v-if="src"
+      :key="src"
       :src="src"
       :alt="`${model.filename} preview`"
-      class="h-full w-full cursor-zoom-in object-contain"
-      draggable="false"
+      :icon="icon"
+      fit="contain"
+      image-class="cursor-zoom-in"
       @error="failed = true"
       @click="lightboxOpen = true"
     />

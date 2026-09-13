@@ -68,6 +68,7 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import ModelPreviewImage from '@/components/models/ModelPreviewImage.vue';
 import ModelSyncDialog from '@/components/models/ModelSyncDialog.vue';
 import { useConfirmDialog } from '@/composables/useConfirmDialog';
 import { useModelSyncDialog } from '@/composables/useModelSyncDialog';
@@ -849,15 +850,13 @@ onUnmounted(() => {
                 <div
                   class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
                 >
-                  <img
+                  <ModelPreviewImage
                     v-if="model.previewPath && !failedImages.has(model.id)"
                     :key="previewSrc(model)"
                     :src="previewSrc(model)"
                     :alt="`${displayName(model)} preview`"
-                    class="h-full w-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                    draggable="false"
+                    :icon="categoryIcon(model)"
+                    fit="cover"
                     @error="onImageError(model)"
                   />
                   <div

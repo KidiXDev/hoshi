@@ -30,3 +30,21 @@ serde_yaml = "0.9"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
+
+# Hot codec/hash crates are unusably slow unoptimized (SHA-256 ~65 MiB/s vs
+# ~1.7 GiB/s), which made `tauri dev` model hashing and thumbnailing crawl.
+# Optimizing only these keeps the rest of the dev build fast to compile.
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.image-webp]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
