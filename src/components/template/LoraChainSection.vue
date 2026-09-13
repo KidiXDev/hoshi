@@ -88,6 +88,22 @@ function getLoraPreviewUrl(name: string, res = 200): string {
     res
   );
 }
+
+// Floating preview on thumbnail hover — same geometry as SearchableSelect
+const PREVIEW_W = 180;
+const PREVIEW_H = 240;
+const hovered = ref<{ name: string; x: number; y: number } | null>(null);
+
+function showPreview(name: string, event: PointerEvent) {
+  if (failedImageSet.value.has(name)) return;
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const fitsRight = rect.right + 8 + PREVIEW_W <= window.innerWidth;
+  hovered.value = {
+    name,
+    x: fitsRight ? rect.right + 8 : rect.left - 8 - PREVIEW_W,
+    y: Math.min(rect.top, window.innerHeight - PREVIEW_H - 8)
+  };
+}
 </script>
 
 <template>
@@ -254,6 +270,8 @@ function getLoraPreviewUrl(name: string, res = 200): string {
                   : 'Connect ComfyUI server to browse'
               "
               @click="comfyStore.isConnected && openLoraGrid(index)"
+              @pointerenter="showPreview(lora.name, $event)"
+              @pointerleave="hovered = null"
             >
               <img
                 v-if="!failedImageSet.has(lora.name)"
@@ -375,5 +393,27 @@ function getLoraPreviewUrl(name: string, res = 200): string {
       "
       @select="handleLoraSelect"
     />
+
+    <!-- Floating hover preview -->
+    <Teleport defer to="#app-content">
+      <div
+        v-if="hovered"
+        class="border-border bg-popover pointer-events-none fixed z-60 overflow-hidden rounded-md border shadow-lg"
+        :style="{
+          left: `${hovered.x}px`,
+          top: `${hovered.y}px`,
+          width: `${PREVIEW_W}px`,
+          height: `${PREVIEW_H}px`
+        }"
+      >
+        <img
+          :key="hovered.name"
+          :src="getLoraPreviewUrl(hovered.name, 300)"
+          :alt="hovered.name"
+          decoding="async"
+          class="h-full w-full object-cover"
+        />
+      </div>
+    </Teleport>
   </div>
 </template>

@@ -7,6 +7,7 @@ import {
 import { useComfyStore } from '@/stores/comfyStore';
 import { useLauncherStore } from '@/stores/launcherStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
+import { getCaretCoordinates } from '@/utils/caretCoordinates';
 import { adjustPromptWeight } from '@/utils/promptTools';
 import { computed, nextTick, onUnmounted, ref, watch, type Ref } from 'vue';
 export type PromptField = 'positive' | 'negative';
@@ -36,87 +37,6 @@ export function usePromptTextEditing(
       (comp.$el instanceof HTMLTextAreaElement ? comp.$el : null) ??
       (comp as unknown as HTMLTextAreaElement)
     );
-  }
-  const caretPropertiesToCopy = [
-    'direction',
-    'boxSizing',
-    'width',
-    'overflowX',
-    'overflowY',
-    'borderTopWidth',
-    'borderRightWidth',
-    'borderBottomWidth',
-    'borderLeftWidth',
-    'borderStyle',
-    'paddingTop',
-    'paddingRight',
-    'paddingBottom',
-    'paddingLeft',
-    'fontStyle',
-    'fontVariant',
-    'fontWeight',
-    'fontStretch',
-    'fontSize',
-    'fontSizeAdjust',
-    'lineHeight',
-    'fontFamily',
-    'textAlign',
-    'textTransform',
-    'textIndent',
-    'textDecoration',
-    'letterSpacing',
-    'wordSpacing',
-    'tabSize'
-  ] as const;
-  let mirrorDiv: HTMLDivElement | null = null;
-  function getCaretCoordinates(
-    element: HTMLTextAreaElement,
-    position: number
-  ): { top: number; left: number; height: number } {
-    if (typeof document === 'undefined') {
-      return { top: 0, left: 0, height: 20 };
-    }
-
-    if (!mirrorDiv) {
-      mirrorDiv = document.createElement('div');
-      mirrorDiv.id = 'prompt-textarea-caret-position-mirror';
-      document.body.append(mirrorDiv);
-    }
-
-    const style = mirrorDiv.style;
-    const computedStyle = window.getComputedStyle(element);
-
-    style.whiteSpace = 'pre-wrap';
-    style.wordWrap = 'break-word';
-    style.overflowWrap = 'break-word';
-    style.position = 'absolute';
-    style.top = '-9999px';
-    style.left = '-9999px';
-    style.visibility = 'hidden';
-
-    for (const prop of caretPropertiesToCopy) {
-      style[prop] = computedStyle[prop];
-    }
-
-    style.width = `${element.clientWidth}px`;
-    mirrorDiv.textContent = element.value.slice(0, position);
-
-    const span = document.createElement('span');
-    span.textContent = element.value.slice(position) || '.';
-    mirrorDiv.append(span);
-
-    const parsedLineHeight = Math.trunc(
-      Number(computedStyle.lineHeight.replace('px', ''))
-    );
-    const coordinates = {
-      top: span.offsetTop - element.scrollTop,
-      left: span.offsetLeft - element.scrollLeft,
-      height:
-        span.offsetHeight ||
-        (Number.isNaN(parsedLineHeight) ? 18 : parsedLineHeight)
-    };
-
-    return coordinates;
   }
   const caretCoords = ref<{ top: number; left: number; height: number }>({
     top: 0,
@@ -544,7 +464,6 @@ export function usePromptTextEditing(
   onUnmounted(() => {
     clearTimeout(searchTimer);
     searchController?.abort();
-    mirrorDiv?.remove();
   });
   return {
     positiveTextarea,

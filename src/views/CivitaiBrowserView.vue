@@ -26,6 +26,7 @@ import {
   Video,
   X
 } from '@lucide/vue';
+import FilterField from '@/components/common/FilterField.vue';
 import FilterPopover from '@/components/common/FilterPopover.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,16 +67,6 @@ defineOptions({ name: 'CivitaiBrowserView' });
 
 const SUPPORTED_TYPES =
   'Checkpoint,LORA,LoCon,DoRA,TextualInversion,Hypernetwork,Controlnet,VAE,Upscaler';
-
-const TYPE_SHORTCUTS = [
-  { label: 'All', value: 'all' },
-  { label: 'Checkpoint', value: 'Checkpoint' },
-  { label: 'LoRA', value: 'LORA' },
-  { label: 'ControlNet', value: 'Controlnet' },
-  { label: 'VAE', value: 'VAE' },
-  { label: 'Upscaler', value: 'Upscaler' },
-  { label: 'Embedding', value: 'TextualInversion' }
-];
 
 const GRID_GAP = 14;
 const CARD_ASPECT_RATIO = 4 / 3;
@@ -260,12 +251,6 @@ function openDetail(model: CivitaiModel) {
   router.push(`/civitai/model/${model.id}`);
 }
 
-function selectModelType(type: string) {
-  if (modelType.value === type) return;
-  modelType.value = type;
-  void loadModels();
-}
-
 function clearSearch() {
   query.value = '';
   void loadModels();
@@ -279,7 +264,6 @@ function resetFilters() {
 const activeFilterCount = computed(
   () =>
     [
-      modelType.value !== 'all',
       baseModel.value !== 'all',
       sort.value !== 'Most Downloaded',
       period.value !== 'AllTime'
@@ -287,7 +271,6 @@ const activeFilterCount = computed(
 );
 
 function resetFilterPopover() {
-  modelType.value = 'all';
   baseModel.value = 'all';
   sort.value = 'Most Downloaded';
   period.value = 'AllTime';
@@ -488,7 +471,7 @@ onUnmounted(() => {
         <!-- Search & Filters -->
         <div class="flex flex-col gap-2.5">
           <form
-            class="flex flex-wrap items-center gap-2"
+            class="flex flex-wrap items-center gap-2.5"
             @submit.prevent="loadModels(false)"
           >
             <div class="relative min-w-60 flex-1">
@@ -510,113 +493,102 @@ onUnmounted(() => {
               </button>
             </div>
 
+            <Select
+              v-model="modelType"
+              @update:model-value="() => loadModels(false)"
+            >
+              <SelectTrigger class="h-9 w-38 text-xs">
+                <SelectValue placeholder="Model type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup class="max-h-40 overflow-y-auto">
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="Checkpoint">Checkpoint</SelectItem>
+                  <SelectItem value="LORA">LoRA</SelectItem>
+                  <SelectItem value="Controlnet">ControlNet</SelectItem>
+                  <SelectItem value="VAE">VAE</SelectItem>
+                  <SelectItem value="Upscaler">Upscaler</SelectItem>
+                  <SelectItem value="TextualInversion">Embedding</SelectItem>
+                  <SelectItem value="Hypernetwork">Hypernetwork</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+
             <FilterPopover
               :count="activeFilterCount"
+              content-class="w-64"
               @reset="resetFilterPopover"
             >
-              <div class="grid grid-cols-2 gap-2">
-                <div class="flex flex-col gap-1">
-                  <span class="text-muted-foreground text-xs">Type</span>
-                  <Select
-                    v-model="modelType"
-                    @update:model-value="() => loadModels(false)"
-                  >
-                    <SelectTrigger class="w-full text-xs">
-                      <SelectValue placeholder="Model type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup class="max-h-40 overflow-y-auto">
-                        <SelectItem value="all">All types</SelectItem>
-                        <SelectItem value="Checkpoint">Checkpoint</SelectItem>
-                        <SelectItem value="LORA">LoRA</SelectItem>
-                        <SelectItem value="Controlnet">ControlNet</SelectItem>
-                        <SelectItem value="VAE">VAE</SelectItem>
-                        <SelectItem value="Upscaler">Upscaler</SelectItem>
-                        <SelectItem value="TextualInversion"
-                          >Embedding</SelectItem
-                        >
-                        <SelectItem value="Hypernetwork"
-                          >Hypernetwork</SelectItem
-                        >
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <FilterField label="Base model">
+                <Select
+                  v-model="baseModel"
+                  @update:model-value="() => loadModels(false)"
+                >
+                  <SelectTrigger class="w-full text-xs">
+                    <SelectValue placeholder="Base model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup class="max-h-40 overflow-y-auto">
+                      <SelectItem value="all">All base models</SelectItem>
+                      <SelectItem
+                        v-for="value in baseModels"
+                        :key="value"
+                        :value="value"
+                      >
+                        {{ value }}
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </FilterField>
 
-                <div class="flex flex-col gap-1">
-                  <span class="text-muted-foreground text-xs">Base model</span>
-                  <Select
-                    v-model="baseModel"
-                    @update:model-value="() => loadModels(false)"
-                  >
-                    <SelectTrigger class="w-full text-xs">
-                      <SelectValue placeholder="Base model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup class="max-h-40 overflow-y-auto">
-                        <SelectItem value="all">All base models</SelectItem>
-                        <SelectItem
-                          v-for="value in baseModels"
-                          :key="value"
-                          :value="value"
-                        >
-                          {{ value }}
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <FilterField label="Sort">
+                <Select
+                  v-model="sort"
+                  @update:model-value="() => loadModels(false)"
+                >
+                  <SelectTrigger class="w-full text-xs">
+                    <SelectValue placeholder="Sort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup class="max-h-40 overflow-y-auto">
+                      <SelectItem value="Most Downloaded"
+                        >Most Downloaded</SelectItem
+                      >
+                      <SelectItem value="Highest Rated"
+                        >Highest Rated</SelectItem
+                      >
+                      <SelectItem value="Newest">Newest</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </FilterField>
 
-                <div class="flex flex-col gap-1">
-                  <span class="text-muted-foreground text-xs">Sort</span>
-                  <Select
-                    v-model="sort"
-                    @update:model-value="() => loadModels(false)"
-                  >
-                    <SelectTrigger class="w-full text-xs">
-                      <SelectValue placeholder="Sort" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup class="max-h-40 overflow-y-auto">
-                        <SelectItem value="Most Downloaded"
-                          >Most Downloaded</SelectItem
-                        >
-                        <SelectItem value="Highest Rated"
-                          >Highest Rated</SelectItem
-                        >
-                        <SelectItem value="Newest">Newest</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div class="flex flex-col gap-1">
-                  <span class="text-muted-foreground text-xs">Period</span>
-                  <Select
-                    v-model="period"
-                    @update:model-value="() => loadModels(false)"
-                  >
-                    <SelectTrigger class="w-full text-xs">
-                      <SelectValue placeholder="Period" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup class="max-h-40 overflow-y-auto">
-                        <SelectItem value="AllTime">All time</SelectItem>
-                        <SelectItem value="Year">Year</SelectItem>
-                        <SelectItem value="Month">Month</SelectItem>
-                        <SelectItem value="Week">Week</SelectItem>
-                        <SelectItem value="Day">Day</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <FilterField label="Period">
+                <Select
+                  v-model="period"
+                  @update:model-value="() => loadModels(false)"
+                >
+                  <SelectTrigger class="w-full text-xs">
+                    <SelectValue placeholder="Period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup class="max-h-40 overflow-y-auto">
+                      <SelectItem value="AllTime">All time</SelectItem>
+                      <SelectItem value="Year">Year</SelectItem>
+                      <SelectItem value="Month">Month</SelectItem>
+                      <SelectItem value="Week">Week</SelectItem>
+                      <SelectItem value="Day">Day</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </FilterField>
             </FilterPopover>
 
             <Button
               type="submit"
               size="sm"
-              class="h-8 text-xs"
+              class="bg-primary text-primary-foreground hover:bg-primary/90 h-9 cursor-pointer px-4 text-xs font-semibold shadow-xs"
               :disabled="loading"
             >
               <Loader2 v-if="loading" class="h-3.5 w-3.5 animate-spin" />
@@ -624,25 +596,6 @@ onUnmounted(() => {
               <span>Search</span>
             </Button>
           </form>
-
-          <!-- Category Shortcut Pills -->
-          <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
-            <span class="text-muted-foreground mr-1 text-xs">Filter:</span>
-            <button
-              v-for="shortcut in TYPE_SHORTCUTS"
-              :key="shortcut.value"
-              type="button"
-              class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-              :class="
-                modelType === shortcut.value
-                  ? 'bg-primary text-primary-foreground shadow-xs'
-                  : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-              "
-              @click="selectModelType(shortcut.value)"
-            >
-              {{ shortcut.label }}
-            </button>
-          </div>
         </div>
       </div>
     </template>

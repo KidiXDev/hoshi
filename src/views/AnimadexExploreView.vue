@@ -644,7 +644,6 @@ watch(
           <FilterPopover
             v-if="activeTab !== 'copyrights'"
             :count="activeFilterCount"
-            trigger-class="h-9"
             content-class="w-72"
             @reset="resetAllFilters"
           >

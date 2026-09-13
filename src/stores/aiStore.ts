@@ -16,6 +16,7 @@ import {
   searchCopyrights
 } from '../services/animadexApi';
 import { loadAppData, saveAppData } from '../services/appStorage';
+import { LibraryService } from '../services/libraryService';
 import type {
   AiConfig,
   ChatMessage,
@@ -29,6 +30,7 @@ import type {
 } from '../types/ai';
 import type { CharacterData } from '../types/library';
 import { mentionReference, supportsVision } from '../utils/aiMentions';
+import { searchCharacterEntries } from '../utils/librarySearch';
 import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
 
@@ -790,10 +792,6 @@ export const useAiStore = defineStore('ai', () => {
           }),
           execute: async ({ query }) => {
             try {
-              const { LibraryService } =
-                await import('../services/libraryService');
-              const { searchCharacterEntries } =
-                await import('../utils/librarySearch');
               const entries =
                 await LibraryService.listItems<CharacterData>('characters');
               const results = searchCharacterEntries(entries, query)

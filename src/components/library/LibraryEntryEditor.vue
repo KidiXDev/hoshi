@@ -20,6 +20,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import TagAutocompleteField from '@/components/prompt/TagAutocompleteField.vue';
 import {
   Select,
   SelectContent,
@@ -396,8 +397,9 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
                   class="font-mono text-xs font-bold text-emerald-400 uppercase"
                   >Positive Prompt</Label
                 >
-                <Textarea
+                <TagAutocompleteField
                   v-model="editorPositive"
+                  multiline
                   rows="3"
                   placeholder="Positive prompt text..."
                   class="bg-background font-mono text-xs"
@@ -412,8 +414,9 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
                   class="font-mono text-xs font-bold text-rose-400 uppercase"
                   >Negative Prompt</Label
                 >
-                <Textarea
+                <TagAutocompleteField
                   v-model="editorNegative"
+                  multiline
                   rows="3"
                   placeholder="Negative prompt text..."
                   class="bg-background font-mono text-xs"
@@ -487,7 +490,7 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
                 <Label class="text-foreground text-xs font-bold">
                   Trigger Tag <span class="text-destructive">*</span>
                 </Label>
-                <Input
+                <TagAutocompleteField
                   v-model="editorCharTrigger"
                   placeholder="e.g. hatsune_miku"
                   class="font-mono text-xs"
@@ -509,8 +512,9 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
                 <Label class="text-foreground text-xs font-bold">
                   Additional Tags
                 </Label>
-                <Textarea
+                <TagAutocompleteField
                   v-model="editorCharTags"
+                  multiline
                   rows="3"
                   placeholder="long hair, blue hair, twin tails, teal eyes, detached sleeves, ..."
                   class="bg-background font-mono text-xs"

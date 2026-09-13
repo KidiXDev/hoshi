@@ -12,6 +12,7 @@ import {
   ref,
   watch
 } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import {
@@ -69,10 +70,26 @@ function openDetail(post: BooruPost) {
   detailDialog.value?.open(post);
 }
 
+const route = useRoute();
+const router = useRouter();
 const sources = ref<BooruSource[]>([]);
 const settings = ref<BooruSettings | null>(null);
 const selectedSource = ref('');
 const query = ref('');
+
+// `?q=` from other views (e.g. wiki "Search Booru"): fill the field and run.
+// Query is consumed via replace so re-sending the same tag triggers again.
+watch(
+  () => (route.name === 'booru' ? route.query.q : undefined),
+  (q) => {
+    if (typeof q !== 'string' || !q) return;
+    query.value = q;
+    void router.replace({ path: '/booru' });
+    // Before sources load, loadSources() runs the first search with query.value.
+    if (sources.value.length > 0) void runSearch(true);
+  },
+  { immediate: true }
+);
 const selectedSort = ref('latest');
 const selectedRatings = ref<string[]>([]);
 const posts = ref<BooruPost[]>([]);

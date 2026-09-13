@@ -11,10 +11,10 @@ import {
   Layers,
   Paintbrush,
   Palette,
+  Pin,
   Search,
   SearchX,
   Shirt,
-  Sparkles,
   Tag,
   User,
   Users,
@@ -24,7 +24,7 @@ import { toast } from 'vue-sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { wikiPath, type WikiGroup } from '@/services/danbooruWiki';
-import { useWorkflowStore } from '@/stores/workflowStore';
+import { useWikiPins } from '@/composables/useWikiPins';
 
 interface Section {
   title: string;
@@ -34,10 +34,9 @@ interface Section {
 const props = defineProps<{ groups: WikiGroup[] }>();
 
 const router = useRouter();
-const workflowStore = useWorkflowStore();
+const { isPinned, togglePin } = useWikiPins();
 
 const groupQuery = ref('');
-const topicQuery = ref('');
 const activeGroupKey = ref('');
 
 // Match context-aware icons for collection categories
@@ -130,7 +129,6 @@ watch(
 
 function selectGroup(group: WikiGroup) {
   activeGroupKey.value = `${group.category}:${group.title}`;
-  topicQuery.value = '';
 }
 
 // Group links into natural sections based on hierarchy
@@ -173,26 +171,20 @@ const sections = computed<Section[]>(() => {
   return result;
 });
 
-// Filter topics when searching inside active collection
+// Topics across all collections matching the sidebar filter
 const searchResults = computed(() => {
-  if (!activeGroup.value) return [];
-  const q = topicQuery.value.trim().toLowerCase();
+  const q = groupQuery.value.trim().toLowerCase();
   if (!q) return [];
-
-  return activeGroup.value.links.filter((link) =>
-    `${link.label} ${link.title}`.toLowerCase().includes(q)
+  return props.groups.flatMap((group) =>
+    group.links
+      .filter((link) => `${link.label} ${link.title}`.toLowerCase().includes(q))
+      .map((link) => ({ ...link, group: group.title }))
   );
 });
 
-function handleUsePrompt(tag: string, event?: Event) {
+function handlePin(tag: string, event?: Event) {
   event?.stopPropagation();
-  const current = workflowStore.positivePrompt.trim();
-  if (current) {
-    workflowStore.positivePrompt = `${current}, ${tag}`;
-  } else {
-    workflowStore.positivePrompt = tag;
-  }
-  toast.success(`Added "${tag}" to prompt`);
+  toast.success(togglePin(tag) ? `Pinned "${tag}"` : `Unpinned "${tag}"`);
 }
 
 function handleCopyTag(tag: string, event?: Event) {
@@ -346,26 +338,6 @@ function handleCopyTag(tag: string, event?: Event) {
         </div>
 
         <div class="flex flex-wrap items-center gap-2.5">
-          <!-- In-group Search -->
-          <div class="relative w-52 sm:w-64">
-            <Search
-              class="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-            />
-            <Input
-              v-model="topicQuery"
-              class="border-border/60 bg-secondary/40 focus:bg-background h-8 pr-6 pl-8 text-xs transition-colors"
-              placeholder="Filter topics in this collection…"
-            />
-            <button
-              v-if="topicQuery"
-              type="button"
-              class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer"
-              @click="topicQuery = ''"
-            >
-              <X class="size-3" />
-            </button>
-          </div>
-
           <!-- Open Main Wiki Button -->
           <Button
             variant="outline"
@@ -382,7 +354,7 @@ function handleCopyTag(tag: string, event?: Event) {
       <!-- Topics Content Area -->
       <div v-if="activeGroup" class="flex-1 overflow-y-auto p-6">
         <!-- Search Filtered Results State -->
-        <div v-if="topicQuery" class="space-y-4">
+        <div v-if="groupQuery.trim()" class="space-y-4">
           <div
             class="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
           >
@@ -392,7 +364,7 @@ function handleCopyTag(tag: string, event?: Event) {
           <div v-if="searchResults.length" class="flex flex-wrap gap-2">
             <div
               v-for="link in searchResults"
-              :key="link.title"
+              :key="`${link.group}:${link.title}`"
               class="group border-border/60 bg-secondary/30 hover:bg-secondary/70 hover:border-primary/50 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors"
               @click="router.push(wikiPath(link.title))"
             >
@@ -400,6 +372,9 @@ function handleCopyTag(tag: string, event?: Event) {
                 class="text-foreground group-hover:text-primary font-medium capitalize transition-colors"
               >
                 {{ link.label }}
+              </span>
+              <span class="text-muted-foreground/70 truncate text-xs">
+                {{ link.group }}
               </span>
 
               <!-- Hover Quick Actions -->
@@ -416,11 +391,16 @@ function handleCopyTag(tag: string, event?: Event) {
                 </button>
                 <button
                   type="button"
-                  title="Use in prompt"
-                  class="text-muted-foreground cursor-pointer p-0.5 transition-colors hover:text-amber-400"
-                  @click="handleUsePrompt(link.title, $event)"
+                  :title="isPinned(link.title) ? 'Unpin' : 'Pin'"
+                  class="cursor-pointer p-0.5 transition-colors hover:text-amber-400"
+                  :class="
+                    isPinned(link.title)
+                      ? 'text-amber-400'
+                      : 'text-muted-foreground'
+                  "
+                  @click="handlePin(link.title, $event)"
                 >
-                  <Sparkles class="size-3" />
+                  <Pin class="size-3" />
                 </button>
               </div>
             </div>
@@ -433,7 +413,7 @@ function handleCopyTag(tag: string, event?: Event) {
           >
             <SearchX class="mb-2.5 size-7 opacity-40" />
             <p class="text-sm font-medium">
-              No topics match “{{ topicQuery }}”
+              No topics match “{{ groupQuery }}”
             </p>
             <p class="text-muted-foreground mt-1 text-xs">
               Try a different keyword or clear the filter.
@@ -442,7 +422,7 @@ function handleCopyTag(tag: string, event?: Event) {
               variant="ghost"
               size="sm"
               class="mt-3 h-7 text-xs"
-              @click="topicQuery = ''"
+              @click="groupQuery = ''"
             >
               Clear search
             </Button>
@@ -498,11 +478,16 @@ function handleCopyTag(tag: string, event?: Event) {
                   </button>
                   <button
                     type="button"
-                    title="Use in prompt"
-                    class="text-muted-foreground cursor-pointer p-0.5 transition-colors hover:text-amber-400"
-                    @click="handleUsePrompt(link.title, $event)"
+                    :title="isPinned(link.title) ? 'Unpin' : 'Pin'"
+                    class="cursor-pointer p-0.5 transition-colors hover:text-amber-400"
+                    :class="
+                      isPinned(link.title)
+                        ? 'text-amber-400'
+                        : 'text-muted-foreground'
+                    "
+                    @click="handlePin(link.title, $event)"
                   >
-                    <Sparkles class="size-3" />
+                    <Pin class="size-3" />
                   </button>
                 </div>
               </div>

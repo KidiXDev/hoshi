@@ -7,7 +7,8 @@ import {
   Copy,
   ExternalLink,
   Image as ImageIcon,
-  Sparkles
+  Pin,
+  PinOff
 } from '@lucide/vue';
 import { toast } from 'vue-sonner';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -15,7 +16,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
 import { renderWikiDtext } from '@/services/danbooruDtext';
 import { DANBOORU_URL, type WikiPost } from '@/services/danbooruWiki';
-import { useWorkflowStore } from '@/stores/workflowStore';
+import { useWikiPins } from '@/composables/useWikiPins';
 
 const props = withDefaults(
   defineProps<{
@@ -31,7 +32,7 @@ const props = withDefaults(
 );
 
 const router = useRouter();
-const workflowStore = useWorkflowStore();
+const { isPinned, togglePin } = useWikiPins();
 
 const displayTitle = computed(() =>
   props.title ? props.title.replaceAll('_', ' ') : ''
@@ -40,6 +41,7 @@ const displayTitle = computed(() =>
 const rawTag = computed(() =>
   props.title ? props.title.replaceAll(' ', '_').toLowerCase() : ''
 );
+const pinned = computed(() => isPinned(rawTag.value));
 
 const formattedDate = computed(() => {
   if (!props.updatedAt) return '';
@@ -117,15 +119,12 @@ function handleCopyTag() {
   toast.success(`Copied "${rawTag.value}" to clipboard!`);
 }
 
-function handleSendToWorkflow() {
+function handleTogglePin() {
   if (!rawTag.value) return;
-  const current = workflowStore.positivePrompt.trim();
-  if (current) {
-    workflowStore.positivePrompt = `${current}, ${rawTag.value}`;
-  } else {
-    workflowStore.positivePrompt = rawTag.value;
-  }
-  toast.success(`Appended "${rawTag.value}" to Workflow Generator prompt!`);
+  const nowPinned = togglePin(rawTag.value);
+  toast.success(
+    nowPinned ? `Pinned "${rawTag.value}"` : `Unpinned "${rawTag.value}"`
+  );
 }
 
 function handleSearchInBooru() {
@@ -201,13 +200,14 @@ async function navigate(event: MouseEvent) {
         <!-- Document Quick Actions -->
         <div class="flex flex-wrap items-center gap-1.5">
           <Button
-            variant="outline"
+            :variant="pinned ? 'secondary' : 'outline'"
             size="sm"
             class="h-7 gap-1.5 text-xs font-medium"
-            @click="handleSendToWorkflow"
+            @click="handleTogglePin"
           >
-            <Sparkles class="size-3 text-amber-400" />
-            <span>Use in Prompt</span>
+            <PinOff v-if="pinned" class="size-3" />
+            <Pin v-else class="size-3 text-amber-400" />
+            <span>{{ pinned ? 'Unpin' : 'Pin' }}</span>
           </Button>
 
           <Button

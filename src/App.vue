@@ -176,7 +176,7 @@ onUnmounted(() => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Toaster position="bottom-right" richColors />
+          <Toaster position="bottom-right" theme="dark" richColors />
         </div>
       </div>
     </ConfirmDialogProvider>

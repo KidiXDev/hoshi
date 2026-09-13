@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Layers,
   Loader2,
+  Pin,
   RefreshCw,
   RotateCcw,
   Search,
@@ -47,6 +48,7 @@ import {
 } from '@/services/danbooruWiki';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { isTauri } from '@tauri-apps/api/core';
+import { useWikiPins } from '@/composables/useWikiPins';
 
 defineOptions({ name: 'DanbooruWikiView' });
 
@@ -83,13 +85,7 @@ const displayTitle = computed(() =>
   (page.value?.title || title.value).replaceAll('_', ' ')
 );
 
-const QUICK_GROUPS = [
-  { label: 'All Groups', path: '/danbooru-wiki' },
-  { label: 'Hair Styles', path: '/danbooru-wiki/hair_styles' },
-  { label: 'Eye Colors', path: '/danbooru-wiki/eye_colors' },
-  { label: 'Clothing', path: '/danbooru-wiki/clothing' },
-  { label: 'Poses', path: '/danbooru-wiki/poses' }
-];
+const { pins, togglePin } = useWikiPins();
 
 watch(
   [title, retry],
@@ -212,55 +208,36 @@ async function openOfficial() {
 
     <template #below-header>
       <div
-        class="border-border/80 bg-card/70 shrink-0 border-b px-5 py-3.5 backdrop-blur-md"
+        class="border-border/80 bg-card/70 shrink-0 space-y-2.5 border-b px-5 py-3 backdrop-blur-md"
       >
-        <!-- Row 2: Breadcrumb Navigation & Search Controls -->
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <!-- Breadcrumbs & Quick Jumps -->
-          <div class="flex flex-wrap items-center gap-3">
-            <Breadcrumb class="text-xs">
-              <BreadcrumbList>
+          <Breadcrumb class="text-xs">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink as-child>
+                  <RouterLink
+                    to="/danbooru-wiki"
+                    class="hover:text-primary flex items-center gap-1.5 font-medium transition-colors"
+                  >
+                    <Layers class="size-3.5" />
+                    <span>Tag Groups</span>
+                  </RouterLink>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <template v-if="!isIndex">
+                <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbLink as-child>
-                    <RouterLink
-                      to="/danbooru-wiki"
-                      class="hover:text-primary flex items-center gap-1.5 font-medium transition-colors"
-                    >
-                      <Layers class="size-3.5" />
-                      <span>Tag Groups</span>
-                    </RouterLink>
-                  </BreadcrumbLink>
+                  <BreadcrumbPage
+                    class="text-foreground max-w-64 truncate font-semibold capitalize"
+                  >
+                    {{ displayTitle }}
+                  </BreadcrumbPage>
                 </BreadcrumbItem>
-                <template v-if="!isIndex">
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage
-                      class="text-foreground max-w-64 truncate font-semibold capitalize"
-                    >
-                      {{ displayTitle }}
-                    </BreadcrumbPage>
-                  </BreadcrumbItem>
-                </template>
-              </BreadcrumbList>
-            </Breadcrumb>
+              </template>
+            </BreadcrumbList>
+          </Breadcrumb>
 
-            <!-- Quick Group Links (only shown on index) -->
-            <div
-              v-if="isIndex"
-              class="hidden items-center gap-1 border-l pl-3 md:flex"
-            >
-              <RouterLink
-                v-for="grp in QUICK_GROUPS.slice(1)"
-                :key="grp.path"
-                :to="grp.path"
-                class="text-muted-foreground hover:bg-muted hover:text-foreground rounded-md px-2 py-0.5 text-xs font-medium transition-colors"
-              >
-                {{ grp.label }}
-              </RouterLink>
-            </div>
-          </div>
-
-          <!-- Search Bar -->
+          <!-- Global jump-to-tag search -->
           <form
             class="flex w-full max-w-xs items-center gap-2 sm:max-w-sm"
             @submit.prevent="handleSearch"
@@ -271,9 +248,9 @@ async function openOfficial() {
               />
               <Input
                 v-model="search"
-                placeholder="Jump to tag wiki (e.g. blue eyes)..."
+                placeholder="Open tag wiki (e.g. blue eyes)…"
                 class="border-border bg-secondary/50 focus:bg-background h-8 pr-7 pl-8 text-xs transition-colors"
-                aria-label="Search or jump to tag wiki"
+                aria-label="Open tag wiki page"
               />
               <button
                 v-if="search"
@@ -293,6 +270,37 @@ async function openOfficial() {
               Go
             </Button>
           </form>
+        </div>
+
+        <!-- Pinned tags -->
+        <div v-if="pins.length" class="flex flex-wrap items-center gap-1.5">
+          <span
+            class="text-muted-foreground flex items-center gap-1 pr-1 text-xs font-medium"
+          >
+            <Pin class="size-3 text-amber-400" />
+            Pinned
+          </span>
+          <div
+            v-for="tag in pins"
+            :key="tag"
+            class="group border-border/60 bg-secondary/40 hover:border-primary/50 hover:bg-secondary/80 flex items-center gap-1 rounded-md border pl-2 text-xs transition-colors"
+            :class="{ 'border-primary/60 text-primary': tag === title }"
+          >
+            <RouterLink
+              :to="wikiPath(tag)"
+              class="py-0.5 font-medium capitalize"
+            >
+              {{ tag.replaceAll('_', ' ') }}
+            </RouterLink>
+            <button
+              type="button"
+              :title="`Unpin ${tag}`"
+              class="text-muted-foreground hover:text-foreground cursor-pointer px-1.5 py-1 opacity-0 transition-opacity group-hover:opacity-100"
+              @click="togglePin(tag)"
+            >
+              <X class="size-3" />
+            </button>
+          </div>
         </div>
       </div>
     </template>

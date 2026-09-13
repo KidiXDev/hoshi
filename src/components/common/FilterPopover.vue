@@ -8,12 +8,18 @@ import {
   PopoverTrigger
 } from '@/components/ui/popover';
 
-defineProps<{
-  /** Number of non-default filters; shown as a badge and enables Reset. */
-  count: number;
-  triggerClass?: string;
-  contentClass?: string;
-}>();
+withDefaults(
+  defineProps<{
+    /** Number of non-default filters; shown as a badge and enables Reset. */
+    count: number;
+    label?: string;
+    /** Lay out slot content in a 2-column grid instead of a single column. */
+    columns?: 1 | 2;
+    triggerClass?: string;
+    contentClass?: string;
+  }>(),
+  { label: 'Filters', columns: 1 }
+);
 const emit = defineEmits<{ reset: [] }>();
 </script>
 
@@ -24,14 +30,14 @@ const emit = defineEmits<{ reset: [] }>();
         type="button"
         variant="outline"
         size="sm"
-        class="h-8 cursor-pointer gap-1.5 px-3 text-xs"
+        class="h-9 cursor-pointer gap-1.5 px-3 text-xs"
         :class="[
           triggerClass,
           { 'bg-primary/10 text-primary border-primary/30': count > 0 }
         ]"
       >
         <Filter class="h-3.5 w-3.5" />
-        <span>Filters</span>
+        <span>{{ label }}</span>
         <Badge
           v-if="count > 0"
           variant="default"
@@ -43,7 +49,13 @@ const emit = defineEmits<{ reset: [] }>();
     </PopoverTrigger>
     <PopoverContent align="end" class="w-80 p-3" :class="contentClass">
       <div class="flex flex-col gap-3">
-        <slot />
+        <div
+          :class="
+            columns === 2 ? 'grid grid-cols-2 gap-2' : 'flex flex-col gap-2'
+          "
+        >
+          <slot />
+        </div>
         <Button
           v-if="count > 0"
           type="button"
@@ -53,7 +65,7 @@ const emit = defineEmits<{ reset: [] }>();
           @click="emit('reset')"
         >
           <RotateCcw class="h-3 w-3" />
-          <span>Reset filters</span>
+          <span>Reset {{ label.toLowerCase() }}</span>
         </Button>
       </div>
     </PopoverContent>

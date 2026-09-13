@@ -7,6 +7,7 @@ type AppDataName =
   | 'chat_sessions'
   | 'civitai_browser_state'
   | 'civitai_settings'
+  | 'danbooru_wiki_state'
   | 'face_detailer_preferences'
   | 'launcher_config'
   | 'lora_presets'
@@ -27,6 +28,7 @@ const dataFiles: Record<AppDataName, DataFile> = {
   chat_sessions: 'chat',
   civitai_browser_state: 'state',
   civitai_settings: 'config',
+  danbooru_wiki_state: 'state',
   face_detailer_preferences: 'state',
   launcher_config: 'config',
   lora_presets: 'state',
