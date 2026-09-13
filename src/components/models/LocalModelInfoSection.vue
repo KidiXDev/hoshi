@@ -6,16 +6,23 @@ import { Check, Copy, Hash, Loader2 } from '@lucide/vue';
 import { toast } from 'vue-sonner';
 import { Button } from '@/components/ui/button';
 import { useLocalModelsIndexQuery } from '@/composables/useModelManagerQueries';
+import ModelFileActions from './ModelFileActions.vue';
 import {
   hashModel,
   modelCategoryLabel,
   onModelHashProgress,
-  showModelInFolder,
   type LocalModel
 } from '@/services/modelManager';
 import { formatFileSize, formatShortDate } from '@/utils/formatters';
 
-const props = defineProps<{ model: LocalModel }>();
+const props = withDefaults(
+  defineProps<{
+    model: LocalModel;
+    /** Show folder/delete buttons here (off when the host places them elsewhere). */
+    showActions?: boolean;
+  }>(),
+  { showActions: true }
+);
 
 const indexQuery = useLocalModelsIndexQuery();
 const copied = ref('');
@@ -74,14 +81,7 @@ onUnmounted(() => unlistenHash?.());
   >
     <div class="flex items-center justify-between gap-2">
       <h3 class="text-xs font-bold tracking-wider uppercase">Local file</h3>
-      <Button
-        variant="ghost"
-        size="sm"
-        class="h-7 text-xs"
-        @click="showModelInFolder(model.path)"
-      >
-        Show in Explorer
-      </Button>
+      <ModelFileActions v-if="showActions" :model="model" />
     </div>
     <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
       <dt class="text-muted-foreground">Path</dt>

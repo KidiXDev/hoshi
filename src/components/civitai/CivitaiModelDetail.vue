@@ -714,40 +714,42 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Not downloading button -->
-          <Button
-            v-if="!props.isDownloading"
-            class="h-10 w-full cursor-pointer text-xs font-semibold shadow-sm"
-            size="default"
-            :variant="props.isInstalled ? 'secondary' : 'default'"
-            :disabled="
-              !primaryModelFile ||
-              props.isQueueing ||
-              props.isInstalled ||
-              props.downloadDisabled
-            "
-            @click="emit('download', model, currentVersion)"
-          >
-            <template v-if="props.isQueueing">
-              <Loader2 class="mr-2 h-4 w-4 animate-spin" />
-              <span>Processing...</span>
-            </template>
-            <template v-else-if="props.isInstalled">
-              <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />
-              <span>Installed in ComfyUI</span>
-            </template>
-            <template v-else-if="!primaryModelFile"
-              >No downloadable file</template
+          <!-- Not downloading button (+ host actions when installed) -->
+          <div v-if="!props.isDownloading" class="flex items-center gap-2">
+            <Button
+              class="h-10 min-w-0 flex-1 cursor-pointer text-xs font-semibold shadow-sm"
+              size="default"
+              :variant="props.isInstalled ? 'secondary' : 'default'"
+              :disabled="
+                !primaryModelFile ||
+                props.isQueueing ||
+                props.isInstalled ||
+                props.downloadDisabled
+              "
+              @click="emit('download', model, currentVersion)"
             >
-            <template v-else>
-              <Download class="mr-2 h-4 w-4" />
-              <span
-                >Download to ComfyUI ({{
-                  formatSize(primaryModelFile?.sizeKB)
-                }})</span
+              <template v-if="props.isQueueing">
+                <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+                <span>Processing...</span>
+              </template>
+              <template v-else-if="props.isInstalled">
+                <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />
+                <span>Installed in ComfyUI</span>
+              </template>
+              <template v-else-if="!primaryModelFile"
+                >No downloadable file</template
               >
-            </template>
-          </Button>
+              <template v-else>
+                <Download class="mr-2 h-4 w-4" />
+                <span
+                  >Download to ComfyUI ({{
+                    formatSize(primaryModelFile?.sizeKB)
+                  }})</span
+                >
+              </template>
+            </Button>
+            <slot v-if="props.isInstalled" name="installed-actions" />
+          </div>
 
           <div
             v-if="props.downloadMessage"
@@ -767,9 +769,11 @@ onUnmounted(() => {
             {{ props.errorMessage }}
           </p>
 
-          <!-- Show in folder button if downloaded -->
+          <!-- Show in folder button if downloaded (unless the host adds its own file actions) -->
           <Button
-            v-if="props.downloadedRecord?.modelPath"
+            v-if="
+              props.downloadedRecord?.modelPath && !$slots['installed-actions']
+            "
             variant="outline"
             size="sm"
             class="h-9 w-full cursor-pointer gap-1.5 text-xs"

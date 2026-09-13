@@ -156,6 +156,8 @@ const syncDialogOpen = ref(false);
 const syncProgress = ref<ModelSyncProgress | null>(null);
 const syncResult = ref<SyncAllResult | null>(null);
 const syncRunning = ref(false);
+/** Per-model problems collected during a bulk sync, shown in the summary. */
+const syncIssues = ref<{ file: string; reason: string }[]>([]);
 let resizeObserver: ResizeObserver | null = null;
 let savedScrollTop = 0;
 let unlistenIndex: UnlistenFn | null = null;
@@ -360,6 +362,7 @@ async function runSyncAll() {
   syncDialogOpen.value = true;
   syncRunning.value = true;
   syncResult.value = null;
+  syncIssues.value = [];
   syncProgress.value = {
     stage: 'syncing',
     processed: 0,
@@ -466,6 +469,12 @@ onMounted(async () => {
   });
   unlistenSync = await onModelSyncProgress((progress) => {
     syncProgress.value = progress;
+    if (progress.error && progress.current) {
+      syncIssues.value = [
+        ...syncIssues.value,
+        { file: progress.current, reason: progress.error }
+      ];
+    }
   });
   await restoreScroll();
 });
@@ -1014,8 +1023,7 @@ onUnmounted(() => {
         <DialogHeader>
           <DialogTitle>Sync with Civitai</DialogTitle>
           <DialogDescription>
-            Each model is hashed (SHA-256) and looked up by hash. Large
-            checkpoints can take a while.
+            Large checkpoints can take a while.
           </DialogDescription>
         </DialogHeader>
 
@@ -1024,7 +1032,10 @@ onUnmounted(() => {
           <div
             class="text-muted-foreground flex items-center justify-between gap-3 font-mono text-xs"
           >
-            <span class="truncate">
+            <span
+              class="min-w-0 flex-1 truncate"
+              :title="syncRunning ? syncProgress?.current : undefined"
+            >
               {{
                 syncRunning
                   ? syncProgress?.current || 'Preparing…'
@@ -1036,14 +1047,12 @@ onUnmounted(() => {
             <span class="shrink-0">
               {{ syncProgress?.processed ?? 0 }} /
               {{ syncProgress?.total ?? 0 }}
+              <template v-if="syncRunning && syncIssues.length > 0">
+                · {{ syncIssues.length }}
+                {{ syncIssues.length === 1 ? 'issue' : 'issues' }}
+              </template>
             </span>
           </div>
-          <p
-            v-if="syncProgress?.error && syncRunning"
-            class="text-xs text-amber-300"
-          >
-            {{ syncProgress.current }}: {{ syncProgress.error }}
-          </p>
           <div
             v-if="syncResult"
             class="border-border bg-muted/40 grid grid-cols-3 gap-2 rounded-lg border p-3 text-center text-xs"
@@ -1067,9 +1076,40 @@ onUnmounted(() => {
               <div class="text-muted-foreground">failed</div>
             </div>
           </div>
-          <p v-if="syncResult?.error" class="text-destructive text-xs">
+          <p
+            v-if="syncResult?.error"
+            class="text-destructive text-xs wrap-break-word"
+          >
             {{ syncResult.error }}
           </p>
+          <div
+            v-if="syncResult && syncIssues.length > 0"
+            class="border-border/60 bg-background/60 max-h-48 overflow-y-auto rounded-lg border"
+          >
+            <div
+              v-for="(issue, index) in syncIssues"
+              :key="`${issue.file}-${index}`"
+              class="border-border/40 flex min-w-0 items-baseline gap-2 border-b px-3 py-1.5 text-xs last:border-b-0"
+            >
+              <span
+                class="min-w-0 flex-1 truncate font-mono"
+                :title="issue.file"
+              >
+                {{ issue.file }}
+              </span>
+              <span
+                class="max-w-[45%] shrink-0 truncate"
+                :class="
+                  issue.reason === 'Not on Civitai'
+                    ? 'text-amber-300'
+                    : 'text-destructive'
+                "
+                :title="issue.reason"
+              >
+                {{ issue.reason }}
+              </span>
+            </div>
+          </div>
         </div>
 
         <DialogFooter>

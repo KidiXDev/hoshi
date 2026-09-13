@@ -16,12 +16,12 @@ import {
 import { useRouter } from 'vue-router';
 import CivitaiModelDetail from '@/components/civitai/CivitaiModelDetail.vue';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
-import LocalModelDangerSection from '@/components/models/LocalModelDangerSection.vue';
 import LocalModelInfoSection from '@/components/models/LocalModelInfoSection.vue';
 import LocalModelMetadataSection from '@/components/models/LocalModelMetadataSection.vue';
 import LocalModelStage from '@/components/models/LocalModelStage.vue';
 import ModelDetailShell from '@/components/models/ModelDetailShell.vue';
 import ModelDetailSkeleton from '@/components/models/ModelDetailSkeleton.vue';
+import ModelFileActions from '@/components/models/ModelFileActions.vue';
 import ModelPreviewMenu from '@/components/models/ModelPreviewMenu.vue';
 import ModelSyncDialog from '@/components/models/ModelSyncDialog.vue';
 import { Badge } from '@/components/ui/badge';
@@ -289,6 +289,9 @@ onMounted(async () => {
         <span>Re-sync</span>
       </Button>
     </template>
+    <template #installed-actions>
+      <ModelFileActions :model="model" />
+    </template>
     <template #sidebar-bottom>
       <NoticeBanner v-if="summary && !summary.verified" tone="amber">
         <span>
@@ -298,9 +301,8 @@ onMounted(async () => {
           this exact file.
         </span>
       </NoticeBanner>
-      <LocalModelInfoSection :model="model" />
+      <LocalModelInfoSection :model="model" :show-actions="false" />
       <LocalModelMetadataSection :model="model" />
-      <LocalModelDangerSection :model="model" />
     </template>
   </CivitaiModelDetail>
 
@@ -427,7 +429,6 @@ onMounted(async () => {
 
       <LocalModelMetadataSection :model="model" show-suggested-words />
       <LocalModelInfoSection :model="model" />
-      <LocalModelDangerSection :model="model" />
     </template>
   </ModelDetailShell>
 

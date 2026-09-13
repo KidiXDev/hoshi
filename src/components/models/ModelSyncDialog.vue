@@ -110,7 +110,10 @@ function onOpenChange(open: boolean) {
           />
           <DialogTitle>{{ title }}</DialogTitle>
         </div>
-        <DialogDescription class="truncate font-mono text-xs">
+        <DialogDescription
+          class="min-w-0 truncate font-mono text-xs"
+          :title="state.model?.filename"
+        >
           {{ state.model?.filename }}
         </DialogDescription>
       </DialogHeader>
@@ -122,7 +125,7 @@ function onOpenChange(open: boolean) {
           :class="{ 'opacity-40': !running && state.stage !== 'done' }"
         />
         <p
-          class="text-xs"
+          class="text-xs break-words"
           :class="
             state.stage === 'error'
               ? 'text-destructive'
