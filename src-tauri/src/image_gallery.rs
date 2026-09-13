@@ -24,6 +24,8 @@ pub struct OutputImage {
     extension: String,
     file_size: u64,
     modified_ms: u64,
+    prompt: String,
+    model: String,
 }
 
 #[derive(Clone)]
@@ -389,6 +391,8 @@ fn collect_images(
             extension,
             file_size: metadata.len(),
             modified_ms,
+            prompt: String::new(),
+            model: String::new(),
         });
     }
 }
@@ -425,6 +429,17 @@ fn scan_output_images(
     let mut images = Vec::new();
     let mut allowed_files = HashMap::new();
     collect_images(&output_root, &output_root, &mut images, &mut allowed_files);
+    // Index searchable metadata (prompt + model) so the viewer can filter without per-image reads.
+    images
+        .par_iter_mut()
+        .filter(|image| image.extension == "png")
+        .for_each(|image| {
+            let mut metadata = ImageMetadata::default();
+            if read_png_text(Path::new(&image.path), &mut metadata).is_ok() {
+                image.prompt = metadata.prompt;
+                image.model = metadata.model;
+            }
+        });
     images.sort_unstable_by(|left, right| {
         right
             .modified_ms

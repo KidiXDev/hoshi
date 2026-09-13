@@ -208,9 +208,19 @@ const filteredImages = computed<OutputImage[]>(() => {
   }
 
   if (search) {
-    result = result.filter((img) =>
-      `${img.subfolder}/${img.filename}`.toLowerCase().includes(search)
-    );
+    // Terms are ANDed. `model:name` matches the checkpoint; anything else matches
+    // the path or the positive prompt (so tags like `1girl` work).
+    const terms = search.split(/\s+/u);
+    result = result.filter((img) => {
+      const path = `${img.subfolder}/${img.filename}`.toLowerCase();
+      const prompt = img.prompt.toLowerCase();
+      const model = img.model.toLowerCase();
+      return terms.every((term) =>
+        term.startsWith('model:')
+          ? model.includes(term.slice(6))
+          : path.includes(term) || prompt.includes(term)
+      );
+    });
   }
 
   const sortedList = [...result];
@@ -452,7 +462,7 @@ onUnmounted(() => {
           />
           <Input
             v-model="query"
-            placeholder="Search images or folder..."
+            placeholder="Search tags, files, or model:name..."
             class="border-border/80 bg-background/80 focus-visible:ring-primary/40 h-8 pr-7 pl-8 font-mono text-xs shadow-2xs"
           />
           <button

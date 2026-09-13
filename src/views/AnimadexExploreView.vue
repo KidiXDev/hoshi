@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FilterPopover from '@/components/common/FilterPopover.vue';
 import GalleryFilterSelect from '@/components/common/GalleryFilterSelect.vue';
 import {
   computed,
@@ -14,12 +15,10 @@ import { useVirtualizer } from '@tanstack/vue-virtual';
 import {
   BookOpen,
   Dices,
-  Filter,
   ImageOff,
   Layers,
   Loader2,
   Palette,
-  RotateCcw,
   Search,
   Sparkles,
   User,
@@ -115,16 +114,10 @@ const filterFields = [
   { label: 'Score', model: selectedScoreBucket },
   { label: 'Category', model: selectedArtistCategory }
 ];
-const activeFilters = computed(() =>
-  filterFields.filter(({ model }) => model.value !== 'all')
-);
 
 // Facets cache
 const characterFacets = ref<CharacterFacetsResponse['facets'] | null>(null);
 const artistFacets = ref<ArtistFacetsResponse['facets'] | null>(null);
-
-// Filter panel expanded state
-const isFiltersExpanded = ref(false);
 
 // Data Results Lists
 const charactersList = ref<AnimaDexCharacter[]>([]);
@@ -647,28 +640,105 @@ watch(
             <span>Re-roll</span>
           </Button>
 
-          <!-- Filter Toggle Button -->
-          <Button
+          <!-- Filters Popover -->
+          <FilterPopover
             v-if="activeTab !== 'copyrights'"
-            type="button"
-            variant="outline"
-            size="sm"
-            class="h-9 cursor-pointer gap-1.5 px-3 text-xs"
-            :class="{
-              'bg-primary/10 text-primary border-primary/30': isFiltersExpanded
-            }"
-            @click="isFiltersExpanded = !isFiltersExpanded"
+            :count="activeFilterCount"
+            trigger-class="h-9"
+            content-class="w-72"
+            @reset="resetAllFilters"
           >
-            <Filter class="h-3.5 w-3.5" />
-            <span>Filters</span>
-            <Badge
-              v-if="activeFilterCount > 0"
-              variant="default"
-              class="h-4 min-w-4 rounded-full px-1 text-xs font-semibold"
-            >
-              {{ activeFilterCount }}
-            </Badge>
-          </Button>
+            <!-- Character Filters -->
+            <template v-if="activeTab === 'characters'">
+              <GalleryFilterSelect
+                v-model="selectedSeries"
+                label="Series"
+                placeholder="All Series"
+                :options="characterFacets?.copyright?.values || []"
+                class="justify-between"
+                trigger-class="w-44"
+                show-counts
+              />
+              <GalleryFilterSelect
+                v-model="selectedGender"
+                label="Gender"
+                placeholder="All"
+                :options="[
+                  { value: '1girl', label: 'Female (1girl)' },
+                  { value: '1boy', label: 'Male (1boy)' },
+                  { value: '1other', label: 'Ambiguous' },
+                  { value: 'no humans', label: 'Non-Human' }
+                ]"
+                class="justify-between"
+                trigger-class="w-44"
+              />
+              <GalleryFilterSelect
+                v-model="selectedHairColor"
+                label="Hair"
+                placeholder="Any Color"
+                :options="characterFacets?.hair_color?.values || []"
+                class="justify-between"
+                trigger-class="w-44"
+              />
+              <GalleryFilterSelect
+                v-model="selectedHairLength"
+                label="Length"
+                placeholder="Any Length"
+                :options="characterFacets?.hair_length?.values || []"
+                class="justify-between"
+                trigger-class="w-44"
+              />
+              <GalleryFilterSelect
+                v-model="selectedEyeColor"
+                label="Eyes"
+                placeholder="Any Color"
+                :options="characterFacets?.eye_color?.values || []"
+                class="justify-between"
+                trigger-class="w-44"
+              />
+              <div class="flex items-center justify-between gap-2">
+                <label
+                  for="loras-switch"
+                  class="text-foreground flex cursor-pointer items-center gap-1 text-xs font-medium"
+                >
+                  <Layers class="h-3.5 w-3.5 text-purple-400" />
+                  <span>LoRA Only</span>
+                </label>
+                <Switch
+                  id="loras-switch"
+                  :checked="filterLorasOnly"
+                  @update:checked="(val: boolean) => (filterLorasOnly = val)"
+                />
+              </div>
+            </template>
+
+            <!-- Artist Filters -->
+            <template v-else-if="activeTab === 'artists'">
+              <GalleryFilterSelect
+                v-model="selectedScoreBucket"
+                label="Score"
+                placeholder="All Scores"
+                :options="[
+                  { value: '5', label: '50% and up' },
+                  { value: '4', label: '40% – 50%' },
+                  { value: '3', label: '30% – 40%' },
+                  { value: '2', label: '20% – 30%' },
+                  { value: '1', label: 'Under 20%' }
+                ]"
+                class="justify-between"
+                trigger-class="w-44"
+              />
+              <GalleryFilterSelect
+                v-model="selectedArtistCategory"
+                label="Category"
+                placeholder="All Categories"
+                :options="artistFacets?.category?.values || []"
+                class="justify-between"
+                trigger-class="w-44"
+                show-counts
+              />
+            </template>
+          </FilterPopover>
 
           <!-- Search Submit Button -->
           <Button
@@ -685,172 +755,6 @@ watch(
             <span>Search</span>
           </Button>
         </form>
-
-        <!-- Expandable Filters Row -->
-        <div
-          v-if="isFiltersExpanded && activeTab !== 'copyrights'"
-          class="border-border/50 bg-muted/20 flex flex-col gap-3 rounded-xl border p-3"
-        >
-          <!-- Character Filters -->
-          <div
-            v-if="activeTab === 'characters'"
-            class="flex flex-wrap items-center gap-2.5"
-          >
-            <!-- Series -->
-            <GalleryFilterSelect
-              v-model="selectedSeries"
-              label="Series"
-              placeholder="All Series"
-              :options="characterFacets?.copyright?.values || []"
-              class="min-w-40"
-              trigger-class="max-w-50"
-              show-counts
-            />
-
-            <!-- Gender -->
-            <GalleryFilterSelect
-              v-model="selectedGender"
-              label="Gender"
-              placeholder="All"
-              :options="[
-                { value: '1girl', label: 'Female (1girl)' },
-                { value: '1boy', label: 'Male (1boy)' },
-                { value: '1other', label: 'Ambiguous' },
-                { value: 'no humans', label: 'Non-Human' }
-              ]"
-              class="min-w-35"
-              trigger-class="max-w-37.5"
-            />
-
-            <!-- Hair Color -->
-            <GalleryFilterSelect
-              v-model="selectedHairColor"
-              label="Hair"
-              placeholder="Any Color"
-              :options="characterFacets?.hair_color?.values || []"
-              class="min-w-37.5"
-              trigger-class="max-w-37.5"
-            />
-
-            <!-- Hair Length -->
-            <GalleryFilterSelect
-              v-model="selectedHairLength"
-              label="Length"
-              placeholder="Any Length"
-              :options="characterFacets?.hair_length?.values || []"
-              class="min-w-37.5"
-              trigger-class="max-w-37.5"
-            />
-
-            <!-- Eye Color -->
-            <GalleryFilterSelect
-              v-model="selectedEyeColor"
-              label="Eyes"
-              placeholder="Any Color"
-              :options="characterFacets?.eye_color?.values || []"
-              class="min-w-37.5"
-              trigger-class="max-w-37.5"
-            />
-
-            <!-- LoRA Only Switch -->
-            <div class="ml-auto flex items-center gap-2">
-              <Switch
-                id="loras-switch"
-                :checked="filterLorasOnly"
-                @update:checked="(val: boolean) => (filterLorasOnly = val)"
-              />
-              <label
-                for="loras-switch"
-                class="text-foreground flex cursor-pointer items-center gap-1 text-xs font-medium"
-              >
-                <Layers class="h-3.5 w-3.5 text-purple-400" />
-                <span>LoRA Only</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Artist Filters -->
-          <div
-            v-else-if="activeTab === 'artists'"
-            class="flex flex-wrap items-center gap-3"
-          >
-            <!-- Score Bucket -->
-            <GalleryFilterSelect
-              v-model="selectedScoreBucket"
-              label="Classifier Score"
-              placeholder="All Scores"
-              :options="[
-                { value: '5', label: '50% and up' },
-                { value: '4', label: '40% – 50%' },
-                { value: '3', label: '30% – 40%' },
-                { value: '2', label: '20% – 30%' },
-                { value: '1', label: 'Under 20%' }
-              ]"
-              class="min-w-40"
-              trigger-class="max-w-45"
-            />
-
-            <!-- Category -->
-            <GalleryFilterSelect
-              v-model="selectedArtistCategory"
-              label="Category"
-              placeholder="All Categories"
-              :options="artistFacets?.category?.values || []"
-              class="min-w-45"
-              trigger-class="max-w-50"
-              show-counts
-            />
-          </div>
-
-          <!-- Active Filter Pills & Reset Button -->
-          <div
-            v-if="activeFilterCount > 0"
-            class="border-border/30 flex items-center justify-between gap-2 border-t pt-1"
-          >
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span class="text-muted-foreground text-xs">Active filters:</span>
-
-              <Badge
-                v-for="filter in activeFilters"
-                :key="filter.label"
-                variant="secondary"
-                class="h-6 gap-1 text-xs font-normal"
-              >
-                <span>{{ filter.label }}: {{ filter.model.value }}</span>
-                <button
-                  type="button"
-                  :aria-label="'Clear ' + filter.label"
-                  @click="filter.model.value = 'all'"
-                >
-                  <X class="h-3 w-3" />
-                </button>
-              </Badge>
-
-              <Badge
-                v-if="filterLorasOnly"
-                variant="secondary"
-                class="h-6 gap-1 bg-purple-500/20 text-xs font-normal text-purple-300"
-              >
-                <span>Has LoRA</span>
-                <X
-                  class="h-3 w-3 cursor-pointer"
-                  @click="filterLorasOnly = false"
-                />
-              </Badge>
-            </div>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              class="text-muted-foreground hover:text-foreground h-6 cursor-pointer gap-1 px-2 text-xs"
-              @click="resetAllFilters"
-            >
-              <RotateCcw class="h-3 w-3" />
-              <span>Reset All</span>
-            </Button>
-          </div>
-        </div>
       </div>
     </template>
 

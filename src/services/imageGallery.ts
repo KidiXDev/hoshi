@@ -56,6 +56,8 @@ export interface OutputImage {
   extension: string;
   fileSize: number;
   modifiedMs: number;
+  prompt: string;
+  model: string;
 }
 
 export interface OutputImageMetadata {

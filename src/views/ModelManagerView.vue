@@ -35,6 +35,7 @@ import { useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import PageLayout from '@/components/layout/PageLayout.vue';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
+import FilterPopover from '@/components/common/FilterPopover.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -136,6 +137,18 @@ const store = useModelManagerStore();
 const { category, search, baseModel, sync, preview, sort, sortDir } =
   storeToRefs(store);
 const { confirm } = useConfirmDialog();
+
+const activeFilterCount = computed(
+  () =>
+    [baseModel.value, sync.value, preview.value].filter((v) => v !== 'all')
+      .length
+);
+
+function resetFilterPopover() {
+  baseModel.value = 'all';
+  sync.value = 'all';
+  preview.value = 'all';
+}
 
 const indexQuery = useLocalModelsIndexQuery();
 const rescan = useRescanModelsMutation();
@@ -578,84 +591,105 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <Select v-model="baseModel">
-              <SelectTrigger class="w-42 text-xs">
-                <SelectValue placeholder="Base model" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all">All base models</SelectItem>
-                  <SelectItem
-                    v-for="value in baseModels"
-                    :key="value"
-                    :value="value"
-                  >
-                    {{ value }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            <FilterPopover
+              :count="activeFilterCount"
+              @reset="resetFilterPopover"
+            >
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground text-xs">Base model</span>
+                  <Select v-model="baseModel">
+                    <SelectTrigger class="w-full text-xs">
+                      <SelectValue placeholder="Base model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup class="max-h-40 overflow-y-auto">
+                        <SelectItem value="all">All base models</SelectItem>
+                        <SelectItem
+                          v-for="value in baseModels"
+                          :key="value"
+                          :value="value"
+                        >
+                          {{ value }}
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <Select v-model="sync">
-              <SelectTrigger class="w-36 text-xs">
-                <SelectValue placeholder="Civitai" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all">Any sync state</SelectItem>
-                  <SelectItem value="synced">Verified on Civitai</SelectItem>
-                  <SelectItem value="unsynced">Not verified</SelectItem>
-                  <SelectItem value="update">Update available</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground text-xs">Civitai</span>
+                  <Select v-model="sync">
+                    <SelectTrigger class="w-full text-xs">
+                      <SelectValue placeholder="Civitai" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup class="max-h-40 overflow-y-auto">
+                        <SelectItem value="all">Any sync state</SelectItem>
+                        <SelectItem value="synced"
+                          >Verified on Civitai</SelectItem
+                        >
+                        <SelectItem value="unsynced">Not verified</SelectItem>
+                        <SelectItem value="update">Update available</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <Select v-model="preview">
-              <SelectTrigger class="w-34 text-xs">
-                <SelectValue placeholder="Preview" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all">Any preview</SelectItem>
-                  <SelectItem value="with">With preview</SelectItem>
-                  <SelectItem value="without">Missing preview</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground text-xs">Preview</span>
+                  <Select v-model="preview">
+                    <SelectTrigger class="w-full text-xs">
+                      <SelectValue placeholder="Preview" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup class="max-h-40 overflow-y-auto">
+                        <SelectItem value="all">Any preview</SelectItem>
+                        <SelectItem value="with">With preview</SelectItem>
+                        <SelectItem value="without">Missing preview</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div class="flex items-center gap-1">
-              <Select v-model="sort">
-                <SelectTrigger class="w-28 text-xs">
-                  <SelectValue placeholder="Sort" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup class="max-h-40 overflow-y-auto">
-                    <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="size">File size</SelectItem>
-                    <SelectItem value="date">Modified</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    class="h-8 w-8"
-                    :aria-label="`Sort ${sortDir === 'asc' ? 'ascending' : 'descending'}`"
-                    @click="toggleSortDir"
-                  >
-                    <ArrowDownUp
-                      class="h-3.5 w-3.5 transition-transform"
-                      :class="{ 'rotate-180': sortDir === 'desc' }"
-                    />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {{ sortDir === 'asc' ? 'Ascending' : 'Descending' }}
-                </TooltipContent>
-              </Tooltip>
-            </div>
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground text-xs">Sort</span>
+                  <div class="flex items-center gap-1">
+                    <Select v-model="sort">
+                      <SelectTrigger class="w-full text-xs">
+                        <SelectValue placeholder="Sort" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup class="max-h-40 overflow-y-auto">
+                          <SelectItem value="name">Name</SelectItem>
+                          <SelectItem value="size">File size</SelectItem>
+                          <SelectItem value="date">Modified</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          class="h-8 w-8 shrink-0"
+                          :aria-label="`Sort ${sortDir === 'asc' ? 'ascending' : 'descending'}`"
+                          @click="toggleSortDir"
+                        >
+                          <ArrowDownUp
+                            class="h-3.5 w-3.5 transition-transform"
+                            :class="{ 'rotate-180': sortDir === 'desc' }"
+                          />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {{ sortDir === 'asc' ? 'Ascending' : 'Descending' }}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+              </div>
+            </FilterPopover>
           </div>
 
           <!-- Category Pills -->

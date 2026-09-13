@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useElementSize } from '@vueuse/core';
+import { useVirtualizer } from '@tanstack/vue-virtual';
 import {
   Check,
   Folder,
@@ -22,7 +24,6 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -64,8 +65,9 @@ const activeFolderTab = ref('All');
 const activeModelType = ref('All');
 const modelTypeByName = ref(new Map<string, string>());
 const viewMode = ref<'grid' | 'list'>('grid');
-const failedImageSet = ref(new Set<string>());
-const loadedImageSet = ref(new Set<string>());
+// Plain Set on purpose: a reactive one re-rendered the whole (unvirtualized)
+// grid on every img load/error, which stalled the dialog's open animation.
+const failedImageSet = new Set<string>();
 
 // Reset filters when opened
 watch(
@@ -101,12 +103,9 @@ async function loadModelMetadata() {
   modelTypeByName.value = metadata;
 }
 
-function handleImageError(modelName: string) {
-  failedImageSet.value.add(modelName);
-}
-
-function handleImageLoad(modelName: string) {
-  loadedImageSet.value.add(modelName);
+function handleImageError(modelName: string, event: Event) {
+  failedImageSet.add(modelName);
+  (event.target as HTMLImageElement).hidden = true;
 }
 
 function cleanModelTitle(name: string): string {
@@ -163,6 +162,39 @@ const filteredModels = computed(() => {
     return true;
   });
 });
+
+// Virtualized grid: same card geometry as CivitaiBrowserView (3:4 thumb + footer).
+const GRID_GAP = 14;
+const CARD_ASPECT_RATIO = 4 / 3;
+const CARD_FOOTER_HEIGHT = 53;
+const scrollViewport = ref<HTMLElement | null>(null);
+const gridEl = ref<HTMLElement | null>(null);
+const { width: gridWidth } = useElementSize(gridEl);
+const columns = computed(() => {
+  if (gridWidth.value < 640) return 2;
+  if (gridWidth.value < 768) return 3;
+  if (gridWidth.value < 1024) return 4;
+  return 5;
+});
+const rowHeight = computed(() => {
+  const cardWidth =
+    (gridWidth.value - GRID_GAP * (columns.value - 1)) / columns.value;
+  return cardWidth * CARD_ASPECT_RATIO + CARD_FOOTER_HEIGHT + GRID_GAP;
+});
+const rowVirtualizer = useVirtualizer(
+  computed(() => ({
+    count: Math.ceil(filteredModels.value.length / columns.value),
+    getScrollElement: () => scrollViewport.value,
+    estimateSize: () => rowHeight.value,
+    overscan: 2
+  }))
+);
+const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems());
+const totalVirtualHeight = computed(() => rowVirtualizer.value.getTotalSize());
+// estimateSize changes don't invalidate cached row sizes; remeasure on resize.
+watch(rowHeight, () => rowVirtualizer.value.measure());
+// Filter changes shrink the list; jump back to the top so rows stay in view.
+watch(filteredModels, () => scrollViewport.value?.scrollTo({ top: 0 }));
 
 function selectModel(model: string) {
   emit('select', model);
@@ -329,7 +361,10 @@ function getPreviewUrl(model: string, res = 300): string {
       </div>
 
       <!-- Main Models Scroll Area -->
-      <ScrollArea class="min-h-0 flex-1 px-5 py-4">
+      <div
+        ref="scrollViewport"
+        class="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+      >
         <!-- Empty State -->
         <div
           v-if="filteredModels.length === 0"
@@ -349,101 +384,114 @@ function getPreviewUrl(model: string, res = 300): string {
           </p>
         </div>
 
-        <!-- 1. Grid View Mode -->
+        <!-- 1. Grid View Mode (virtualized by row) -->
         <div
           v-else-if="viewMode === 'grid'"
-          class="grid grid-cols-2 gap-3.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+          ref="gridEl"
+          class="relative w-full"
+          :style="{ height: `${totalVirtualHeight}px` }"
         >
           <div
-            v-for="model in filteredModels"
-            :key="model"
-            class="group/card border-border bg-card hover:border-primary/60 relative flex cursor-pointer flex-col overflow-hidden rounded-xl border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-            :class="{
-              'border-primary ring-primary/30 shadow-md ring-2':
-                model === selectedModel
+            v-for="virtualRow in virtualRows"
+            :key="virtualRow.index"
+            class="absolute top-0 left-0 grid w-full gap-3.5"
+            :style="{
+              height: `${virtualRow.size - GRID_GAP}px`,
+              transform: `translateY(${virtualRow.start}px)`,
+              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
             }"
-            @click="selectModel(model)"
           >
-            <!-- Card Thumbnail / Preview Container (3:4 Portrait) -->
             <div
-              class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
+              v-for="model in filteredModels.slice(
+                virtualRow.index * columns,
+                (virtualRow.index + 1) * columns
+              )"
+              :key="model"
+              class="group/card border-border bg-card hover:border-primary/60 relative flex cursor-pointer flex-col overflow-hidden rounded-xl border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+              :class="{
+                'border-primary ring-primary/30 shadow-md ring-2':
+                  model === selectedModel
+              }"
+              @click="selectModel(model)"
             >
-              <!-- Real Image Preview -->
-              <img
-                v-if="!failedImageSet.has(model)"
-                :src="getPreviewUrl(model, 300)"
-                :alt="model"
-                loading="lazy"
-                decoding="async"
-                class="h-full w-full object-cover"
-                :class="loadedImageSet.has(model) ? 'opacity-100' : 'opacity-0'"
-                @load="handleImageLoad(model)"
-                @error="handleImageError(model)"
-              />
-
-              <!-- Stylized Fallback Placeholder (when no thumbnail exists) -->
+              <!-- Card Thumbnail / Preview Container (3:4 Portrait) -->
               <div
-                v-else
-                class="from-card via-muted to-secondary/80 flex h-full w-full flex-col items-center justify-center gap-2 bg-linear-to-b p-3 text-center"
+                class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
               >
+                <!-- Stylized Fallback Placeholder (shown until the thumbnail covers it) -->
                 <div
-                  class="bg-primary/10 text-primary border-primary/20 flex h-10 w-10 items-center justify-center rounded-xl border shadow-xs"
+                  class="from-card via-muted to-secondary/80 flex h-full w-full flex-col items-center justify-center gap-2 bg-linear-to-b p-3 text-center"
                 >
-                  <Sparkles class="h-5 w-5 opacity-70" />
+                  <div
+                    class="bg-primary/10 text-primary border-primary/20 flex h-10 w-10 items-center justify-center rounded-xl border shadow-xs"
+                  >
+                    <Sparkles class="h-5 w-5 opacity-70" />
+                  </div>
+                  <span
+                    class="text-muted-foreground/70 font-mono text-xs font-bold uppercase"
+                  >
+                    {{ category }}
+                  </span>
                 </div>
-                <span
-                  class="text-muted-foreground/70 font-mono text-xs font-bold uppercase"
+
+                <!-- Real Image Preview (transparent until loaded, hidden on 404) -->
+                <img
+                  v-if="!failedImageSet.has(model)"
+                  :src="getPreviewUrl(model, 300)"
+                  :alt="model"
+                  loading="lazy"
+                  decoding="async"
+                  class="absolute inset-0 h-full w-full object-cover"
+                  @error="handleImageError(model, $event)"
+                />
+
+                <!-- Top Floating Badges: Folder & Selected Checkmark (shadcn Badge) -->
+                <div
+                  class="absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-1"
                 >
-                  {{ category }}
-                </span>
+                  <Badge
+                    v-if="getModelFolder(model)"
+                    variant="secondary"
+                    class="border-border/80 bg-background/80 text-foreground flex items-center gap-1 font-mono text-xs font-bold shadow-xs backdrop-blur-md"
+                  >
+                    <Folder class="h-2.5 w-2.5 text-sky-400" />
+                    <span class="max-w-20 truncate">{{
+                      getModelFolder(model)
+                    }}</span>
+                  </Badge>
+                  <div v-else />
+
+                  <!-- Selected Indicator Badge -->
+                  <Badge
+                    v-if="model === selectedModel"
+                    class="flex items-center gap-1 bg-emerald-600 font-mono text-xs font-bold text-white shadow-md hover:bg-emerald-600"
+                  >
+                    <Check class="h-2.5 w-2.5 stroke-3" />
+                    ACTIVE
+                  </Badge>
+                </div>
+
+                <!-- Dark Gradient Bottom Shadow for text contrast -->
+                <div
+                  class="from-background/90 via-background/40 pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t to-transparent"
+                />
               </div>
 
-              <!-- Top Floating Badges: Folder & Selected Checkmark (shadcn Badge) -->
-              <div
-                class="absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-1"
-              >
-                <Badge
-                  v-if="getModelFolder(model)"
-                  variant="secondary"
-                  class="border-border/80 bg-background/80 text-foreground flex items-center gap-1 font-mono text-xs font-bold shadow-xs backdrop-blur-md"
+              <!-- Card Bottom Info -->
+              <div class="flex flex-col gap-0.5 p-2.5">
+                <h4
+                  class="text-foreground group-hover/card:text-primary truncate text-xs font-bold transition-colors"
+                  :title="model"
                 >
-                  <Folder class="h-2.5 w-2.5 text-sky-400" />
-                  <span class="max-w-20 truncate">{{
-                    getModelFolder(model)
-                  }}</span>
-                </Badge>
-                <div v-else />
-
-                <!-- Selected Indicator Badge -->
-                <Badge
-                  v-if="model === selectedModel"
-                  class="flex items-center gap-1 bg-emerald-600 font-mono text-xs font-bold text-white shadow-md hover:bg-emerald-600"
+                  {{ cleanModelTitle(model) }}
+                </h4>
+                <p
+                  class="text-muted-foreground/70 truncate font-mono text-xs"
+                  :title="model"
                 >
-                  <Check class="h-2.5 w-2.5 stroke-3" />
-                  ACTIVE
-                </Badge>
+                  {{ model }}
+                </p>
               </div>
-
-              <!-- Dark Gradient Bottom Shadow for text contrast -->
-              <div
-                class="from-background/90 via-background/40 pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t to-transparent"
-              />
-            </div>
-
-            <!-- Card Bottom Info -->
-            <div class="flex flex-col gap-0.5 p-2.5">
-              <h4
-                class="text-foreground group-hover/card:text-primary truncate text-xs font-bold transition-colors"
-                :title="model"
-              >
-                {{ cleanModelTitle(model) }}
-              </h4>
-              <p
-                class="text-muted-foreground/70 truncate font-mono text-xs"
-                :title="model"
-              >
-                {{ model }}
-              </p>
             </div>
           </div>
         </div>
@@ -465,25 +513,20 @@ function getPreviewUrl(model: string, res = 300): string {
               <div
                 class="bg-muted border-border relative h-10 w-10 shrink-0 overflow-hidden rounded-md border"
               >
+                <div
+                  class="text-muted-foreground flex h-full w-full items-center justify-center"
+                >
+                  <Sparkles class="h-4 w-4 opacity-50" />
+                </div>
                 <img
                   v-if="!failedImageSet.has(model)"
                   :src="getPreviewUrl(model, 200)"
                   :alt="model"
                   loading="lazy"
                   decoding="async"
-                  class="h-full w-full object-cover transition-opacity duration-200"
-                  :class="
-                    loadedImageSet.has(model) ? 'opacity-100' : 'opacity-0'
-                  "
-                  @load="handleImageLoad(model)"
-                  @error="handleImageError(model)"
+                  class="absolute inset-0 h-full w-full object-cover"
+                  @error="handleImageError(model, $event)"
                 />
-                <div
-                  v-else
-                  class="text-muted-foreground flex h-full w-full items-center justify-center"
-                >
-                  <Sparkles class="h-4 w-4 opacity-50" />
-                </div>
               </div>
 
               <!-- Info -->
@@ -529,7 +572,7 @@ function getPreviewUrl(model: string, res = 300): string {
             </div>
           </div>
         </div>
-      </ScrollArea>
+      </div>
 
       <!-- Footer Details -->
       <div

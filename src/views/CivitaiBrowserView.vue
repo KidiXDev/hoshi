@@ -26,6 +26,7 @@ import {
   Video,
   X
 } from '@lucide/vue';
+import FilterPopover from '@/components/common/FilterPopover.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import PageLayout from '@/components/layout/PageLayout.vue';
@@ -275,6 +276,24 @@ function resetFilters() {
   void loadModels();
 }
 
+const activeFilterCount = computed(
+  () =>
+    [
+      modelType.value !== 'all',
+      baseModel.value !== 'all',
+      sort.value !== 'Most Downloaded',
+      period.value !== 'AllTime'
+    ].filter(Boolean).length
+);
+
+function resetFilterPopover() {
+  modelType.value = 'all';
+  baseModel.value = 'all';
+  sort.value = 'Most Downloaded';
+  period.value = 'AllTime';
+  void loadModels(false);
+}
+
 async function loadModels(append = false) {
   if (append) loadingMore.value = true;
   else loading.value = true;
@@ -491,83 +510,108 @@ onUnmounted(() => {
               </button>
             </div>
 
-            <Select
-              v-model="modelType"
-              @update:model-value="() => loadModels(false)"
+            <FilterPopover
+              :count="activeFilterCount"
+              @reset="resetFilterPopover"
             >
-              <SelectTrigger class="w-38 text-xs">
-                <SelectValue placeholder="Model type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all">All types</SelectItem>
-                  <SelectItem value="Checkpoint">Checkpoint</SelectItem>
-                  <SelectItem value="LORA">LoRA</SelectItem>
-                  <SelectItem value="Controlnet">ControlNet</SelectItem>
-                  <SelectItem value="VAE">VAE</SelectItem>
-                  <SelectItem value="Upscaler">Upscaler</SelectItem>
-                  <SelectItem value="TextualInversion">Embedding</SelectItem>
-                  <SelectItem value="Hypernetwork">Hypernetwork</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-
-            <Select
-              v-model="baseModel"
-              @update:model-value="() => loadModels(false)"
-            >
-              <SelectTrigger class="w-42 text-xs">
-                <SelectValue placeholder="Base model" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="all">All base models</SelectItem>
-                  <SelectItem
-                    v-for="value in baseModels"
-                    :key="value"
-                    :value="value"
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground text-xs">Type</span>
+                  <Select
+                    v-model="modelType"
+                    @update:model-value="() => loadModels(false)"
                   >
-                    {{ value }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+                    <SelectTrigger class="w-full text-xs">
+                      <SelectValue placeholder="Model type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup class="max-h-40 overflow-y-auto">
+                        <SelectItem value="all">All types</SelectItem>
+                        <SelectItem value="Checkpoint">Checkpoint</SelectItem>
+                        <SelectItem value="LORA">LoRA</SelectItem>
+                        <SelectItem value="Controlnet">ControlNet</SelectItem>
+                        <SelectItem value="VAE">VAE</SelectItem>
+                        <SelectItem value="Upscaler">Upscaler</SelectItem>
+                        <SelectItem value="TextualInversion"
+                          >Embedding</SelectItem
+                        >
+                        <SelectItem value="Hypernetwork"
+                          >Hypernetwork</SelectItem
+                        >
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <Select
-              v-model="sort"
-              @update:model-value="() => loadModels(false)"
-            >
-              <SelectTrigger class="w-38 text-xs">
-                <SelectValue placeholder="Sort" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="Most Downloaded"
-                    >Most Downloaded</SelectItem
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground text-xs">Base model</span>
+                  <Select
+                    v-model="baseModel"
+                    @update:model-value="() => loadModels(false)"
                   >
-                  <SelectItem value="Highest Rated">Highest Rated</SelectItem>
-                  <SelectItem value="Newest">Newest</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+                    <SelectTrigger class="w-full text-xs">
+                      <SelectValue placeholder="Base model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup class="max-h-40 overflow-y-auto">
+                        <SelectItem value="all">All base models</SelectItem>
+                        <SelectItem
+                          v-for="value in baseModels"
+                          :key="value"
+                          :value="value"
+                        >
+                          {{ value }}
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <Select
-              v-model="period"
-              @update:model-value="() => loadModels(false)"
-            >
-              <SelectTrigger class="w-32 text-xs">
-                <SelectValue placeholder="Period" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup class="max-h-40 overflow-y-auto">
-                  <SelectItem value="AllTime">All time</SelectItem>
-                  <SelectItem value="Year">Year</SelectItem>
-                  <SelectItem value="Month">Month</SelectItem>
-                  <SelectItem value="Week">Week</SelectItem>
-                  <SelectItem value="Day">Day</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground text-xs">Sort</span>
+                  <Select
+                    v-model="sort"
+                    @update:model-value="() => loadModels(false)"
+                  >
+                    <SelectTrigger class="w-full text-xs">
+                      <SelectValue placeholder="Sort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup class="max-h-40 overflow-y-auto">
+                        <SelectItem value="Most Downloaded"
+                          >Most Downloaded</SelectItem
+                        >
+                        <SelectItem value="Highest Rated"
+                          >Highest Rated</SelectItem
+                        >
+                        <SelectItem value="Newest">Newest</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                  <span class="text-muted-foreground text-xs">Period</span>
+                  <Select
+                    v-model="period"
+                    @update:model-value="() => loadModels(false)"
+                  >
+                    <SelectTrigger class="w-full text-xs">
+                      <SelectValue placeholder="Period" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup class="max-h-40 overflow-y-auto">
+                        <SelectItem value="AllTime">All time</SelectItem>
+                        <SelectItem value="Year">Year</SelectItem>
+                        <SelectItem value="Month">Month</SelectItem>
+                        <SelectItem value="Week">Week</SelectItem>
+                        <SelectItem value="Day">Day</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </FilterPopover>
 
             <Button
               type="submit"
