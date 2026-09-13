@@ -333,6 +333,8 @@ function navigateToSettings() {
       class="border-border bg-sidebar absolute top-0 right-0 z-50 flex h-full w-full max-w-md flex-col border-l shadow-2xl transition-transform duration-300 ease-in-out select-none sm:max-w-lg md:max-w-2xl"
       :style="overlayStyle"
       :class="aiStore.isDrawerOpen ? 'translate-x-0' : 'translate-x-full'"
+      :inert="!aiStore.isDrawerOpen"
+      :aria-hidden="!aiStore.isDrawerOpen"
     >
       <!-- Hidden File Input for Image Attachments -->
       <input

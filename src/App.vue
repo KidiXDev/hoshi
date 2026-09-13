@@ -111,21 +111,21 @@ onUnmounted(() => {
   <TooltipProvider :delay-duration="150">
     <ConfirmDialogProvider>
       <div
-        class="bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden antialiased select-none"
+        class="bg-background text-foreground flex h-screen w-screen flex-col overflow-clip antialiased select-none"
       >
         <!-- Custom Frameless Window Titlebar with Drag Region -->
         <AppTitlebar />
 
-        <!-- Main Application Body: Sidebar + Active Router View -->
+        <!-- Main Application Body: Sidebar + Active Router View. -->
         <div
           id="app-content"
-          class="relative flex min-h-0 w-full flex-1 overflow-hidden"
+          class="relative flex min-h-0 w-full flex-1 overflow-clip"
         >
           <!-- Icon-only Sidebar Rail -->
           <AppSidebar />
 
           <!-- Main Viewport Workspace -->
-          <main class="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+          <main class="flex h-full min-w-0 flex-1 flex-col overflow-clip">
             <ComfyUiWorkspace v-if="comfyUiVisited" v-show="isComfyUi" />
             <RouterView v-slot="{ Component }">
               <KeepAlive
