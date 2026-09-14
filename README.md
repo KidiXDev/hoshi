@@ -77,12 +77,11 @@ Generated graphs use nodes from these packs. Install them into your ComfyUI `cus
 - [ComfyUI_UltimateSDUpscale](https://github.com/ssitu/ComfyUI_UltimateSDUpscale)
 - [ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
 - [ComfyUI-Impact-Subpack](https://github.com/ltdrdata/ComfyUI-Impact-Subpack)
-- [ComfyUI-Aaalice-Nodes](https://github.com/Aaalice233/ComfyUI-Aaalice-Nodes)
 - [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)
 
 ## Install
 
-Windows builds are published on the [Releases](https://github.com/KidiXDev/comfy-gui/releases) page as an NSIS installer (`Hoshi_<version>_windows_x64-setup.exe`) and a portable zip (`Hoshi_<version>_windows_x64_portable.zip`). The Settings → About page can check for updates.
+Windows builds are published on the [Releases](https://github.com/KidiXDev/hoshi/releases) page as an NSIS installer (`Hoshi_<version>_windows_x64-setup.exe`) and a portable zip (`Hoshi_<version>_windows_x64_portable.zip`). The Settings → About page can check for updates.
 
 On first run, open **Settings → ComfyUI** and point Hoshi at your ComfyUI folder (or portable root) and Python executable, then start the server from the titlebar.
 
@@ -97,8 +96,8 @@ On first run, open **Settings → ComfyUI** and point Hoshi at your ComfyUI fold
 ### Setup
 
 ```bash
-git clone https://github.com/KidiXDev/comfy-gui.git
-cd comfy-gui
+git clone https://github.com/KidiXDev/hoshi.git
+cd hoshi
 bun install
 ```
 
