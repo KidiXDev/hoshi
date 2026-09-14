@@ -133,7 +133,7 @@ const isDetailOpen = ref(false);
 // Virtualization geometry parameters (consistent with Booru & Civitai galleries)
 const GRID_GAP = 14;
 const CARD_ASPECT_RATIO = 4 / 3;
-const CARD_FOOTER_HEIGHT = 72;
+const CARD_FOOTER_HEIGHT = 58;
 const OVERSCAN_ROWS = 3;
 
 const scrollViewport = ref<HTMLElement | null>(null);

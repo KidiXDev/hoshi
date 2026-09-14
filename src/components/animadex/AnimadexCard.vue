@@ -262,26 +262,6 @@ function handleSelect() {
             </span>
             <span v-else class="truncate opacity-75"> Series Franchise </span>
           </div>
-
-          <!-- Character tags preview -->
-          <div
-            v-if="character && character.tags && character.tags.length > 0"
-            class="mt-1 flex h-5 flex-wrap gap-1 overflow-hidden"
-          >
-            <span
-              v-for="tag in character.tags.slice(0, 2)"
-              :key="tag"
-              class="bg-muted/50 text-muted-foreground inline-block max-w-28 truncate rounded px-1.5 py-0.5 text-xs"
-            >
-              {{ tag }}
-            </span>
-            <span
-              v-if="character.tags.length > 2"
-              class="text-muted-foreground/60 self-center text-xs"
-            >
-              +{{ character.tags.length - 2 }}
-            </span>
-          </div>
         </div>
       </div>
     </ContextMenuTrigger>

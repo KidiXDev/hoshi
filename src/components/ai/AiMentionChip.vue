@@ -5,13 +5,14 @@ import type { ChatMessageMention } from '@/types/ai';
 defineProps<{
   mention: ChatMessageMention;
   editable?: boolean;
-  showImage?: boolean;
+  hideImage?: boolean;
   visionSupported?: boolean;
 }>();
 
 defineEmits<{
   remove: [];
   toggleImage: [];
+  openImage: [src: string];
 }>();
 </script>
 
@@ -19,12 +20,21 @@ defineEmits<{
   <div
     class="border-primary/25 bg-primary/5 flex max-w-full items-center gap-2 rounded-lg border p-1.5 text-xs"
   >
-    <img
-      v-if="showImage !== false && (mention.imageDataUrl || mention.imageUrl)"
-      :src="mention.imageDataUrl || mention.imageUrl"
-      :alt="mention.label"
-      class="h-9 w-9 shrink-0 rounded object-cover"
-    />
+    <button
+      v-if="!hideImage && (mention.imageDataUrl || mention.imageUrl)"
+      type="button"
+      class="h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded"
+      title="View image"
+      @click="
+        $emit('openImage', mention.imageDataUrl || mention.imageUrl || '')
+      "
+    >
+      <img
+        :src="mention.imageDataUrl || mention.imageUrl"
+        :alt="mention.label"
+        class="h-full w-full object-cover"
+      />
+    </button>
     <div class="min-w-0 flex-1">
       <p class="text-foreground truncate font-medium">{{ mention.label }}</p>
       <p class="text-muted-foreground truncate">{{ mention.detail }}</p>

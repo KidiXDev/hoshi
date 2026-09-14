@@ -219,13 +219,20 @@ export async function generateChatTitle(
     model: getOpenRouterModel(titleConfig),
     system: CHAT_TITLE_SYSTEM_PROMPT,
     prompt: firstMessage.slice(0, 2000),
-    maxOutputTokens: 32,
-    temperature: 0.3
+    // Reasoning models burn the whole budget thinking and return '' at 32 tokens.
+    maxOutputTokens: 256,
+    temperature: 0.3,
+    providerOptions: {
+      openrouter: { reasoning: { enabled: false, effort: 'none' } }
+    }
   });
-  return text
-    .trim()
-    .split('\n')[0]
-    .replaceAll(/^["'`]+|["'`.!?]+$/gu, '')
-    .trim()
-    .slice(0, 60);
+  return (
+    text
+      .replaceAll(/<think>[\s\S]*?<\/think>/gu, '')
+      .split('\n')
+      .map((line) => line.trim())
+      .find(Boolean)
+      ?.replaceAll(/^["'`#*\s]+|["'`.!?*\s]+$/gu, '')
+      .slice(0, 60) ?? ''
+  );
 }

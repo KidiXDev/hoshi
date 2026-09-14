@@ -778,7 +778,7 @@ function navigateToSettings() {
                       v-for="att in msg.attachments"
                       :key="att.id"
                       type="button"
-                      class="border-primary/30 bg-muted/20 hover:border-primary/60 relative max-h-80 w-full max-w-sm cursor-zoom-in overflow-hidden rounded-xl border shadow-xs transition-colors"
+                      class="border-primary/30 bg-muted/20 hover:border-primary/60 relative max-h-80 w-full max-w-sm cursor-pointer overflow-hidden rounded-xl border shadow-xs transition-colors"
                       :aria-label="`View ${att.name || 'attached image'} fullscreen`"
                       @click="openChatImage(att.dataUrl, att.name)"
                     >
@@ -802,7 +802,7 @@ function navigateToSettings() {
                       <button
                         v-if="mention.imageDataUrl || mention.imageUrl"
                         type="button"
-                        class="border-primary/30 bg-muted/20 hover:border-primary/60 max-h-80 w-full cursor-zoom-in overflow-hidden rounded-xl border shadow-xs transition-colors"
+                        class="border-primary/30 bg-muted/20 hover:border-primary/60 max-h-80 w-full cursor-pointer overflow-hidden rounded-xl border shadow-xs transition-colors"
                         :aria-label="`View ${mention.label} fullscreen`"
                         @click="
                           openChatImage(
@@ -817,7 +817,7 @@ function navigateToSettings() {
                           class="max-h-80 w-full object-contain"
                         />
                       </button>
-                      <AiMentionChip :mention="mention" :show-image="false" />
+                      <AiMentionChip :mention="mention" hide-image />
                     </div>
                   </div>
 
@@ -943,6 +943,7 @@ function navigateToSettings() {
               :vision-supported="visionSupported"
               @remove="aiStore.removeDraftMention(mention.id)"
               @toggle-image="aiStore.toggleDraftMentionImage(mention.id)"
+              @open-image="openChatImage($event, mention.label)"
             />
           </div>
 

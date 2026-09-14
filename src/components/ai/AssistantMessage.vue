@@ -588,7 +588,7 @@ function renderMarkdown(content: string): string {
             <button
               v-if="(part.invocation.result as any)?.image?.url"
               type="button"
-              class="mt-2 block w-full cursor-zoom-in"
+              class="mt-2 block w-full cursor-pointer"
               :aria-label="`Open ${(part.invocation.result as any).image.filename || 'generated image'} fullscreen`"
               @click="
                 $emit(

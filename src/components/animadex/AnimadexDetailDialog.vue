@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -8,6 +8,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  Hash,
   Layers,
   Loader2,
   MessageSquare,
@@ -16,7 +17,8 @@ import {
   Replace,
   Search,
   Sparkles,
-  User
+  User,
+  Zap
 } from '@lucide/vue';
 import { toast } from 'vue-sonner';
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import TagAutocompleteField from '@/components/prompt/TagAutocompleteField.vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { resolveAnimadexMediaUrl } from '@/services/animadexApi';
 import { LibraryService } from '@/services/libraryService';
@@ -64,6 +66,13 @@ const aiStore = useAiStore();
 
 const imageLoaded = ref(false);
 const imageError = ref(false);
+watch(
+  () => props.item,
+  () => {
+    imageLoaded.value = false;
+    imageError.value = false;
+  }
+);
 const copiedAll = ref(false);
 const copiedTag = ref<string | null>(null);
 
@@ -124,6 +133,26 @@ const allTags = computed<DisplayTag[]>(() => {
 const combinedPromptText = computed(() => {
   return allTags.value.map((t) => t.text).join(', ');
 });
+
+const coreTags = computed(() => allTags.value.filter((t) => !t.isTrigger));
+
+const typeLabel = computed(() =>
+  props.type === 'character'
+    ? 'Character'
+    : props.type === 'artist'
+      ? 'Artist Style'
+      : 'Series'
+);
+
+const copiedTrigger = ref(false);
+function handleCopyTrigger() {
+  if (!triggerPrompt.value) return;
+  void copyToClipboard(triggerPrompt.value, 'Trigger');
+  copiedTrigger.value = true;
+  setTimeout(() => {
+    copiedTrigger.value = false;
+  }, 2000);
+}
 
 const previewImageUrl = computed(() => {
   if (!props.item) return '';
@@ -329,7 +358,8 @@ async function handleSaveCharacterToLibrary() {
 <template>
   <Dialog :open="open && !charModalOpen" @update:open="handleDetailOpenChange">
     <DialogContent
-      class="border-border/60 bg-background/95 min-w-[60vw] overflow-hidden p-0 shadow-2xl backdrop-blur-xl sm:rounded-2xl"
+      :show-close-button="false"
+      class="border-border/60 bg-background w-[92vw] max-w-5xl min-w-0 overflow-hidden p-0 shadow-2xl sm:max-w-5xl sm:rounded-2xl"
     >
       <DialogHeader class="sr-only">
         <DialogTitle>{{ item?.name ?? 'Detail' }}</DialogTitle>
@@ -344,9 +374,16 @@ async function handleSaveCharacterToLibrary() {
       >
         <!-- Left: Image Preview -->
         <div
-          class="bg-muted/20 relative flex min-h-75 items-center justify-center overflow-hidden md:col-span-5 md:min-h-130"
+          class="bg-muted/30 relative flex min-h-64 items-center justify-center overflow-hidden md:col-span-5 md:min-h-140"
         >
-          <!-- Image skeleton -->
+          <!-- Blurred backdrop fills letterbox space -->
+          <img
+            v-if="previewImageUrl && !imageError"
+            :src="previewImageUrl"
+            alt=""
+            aria-hidden="true"
+            class="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl"
+          />
           <div
             v-if="!imageLoaded && !imageError && previewImageUrl"
             class="bg-muted/40 absolute inset-0 animate-pulse"
@@ -356,8 +393,8 @@ async function handleSaveCharacterToLibrary() {
             v-if="previewImageUrl && !imageError"
             :src="previewImageUrl"
             :alt="item.name"
-            class="h-full w-full object-contain object-center transition-opacity duration-300"
-            :class="{ 'opacity-0': !imageLoaded, 'opacity-100': imageLoaded }"
+            class="relative h-full max-h-[85vh] w-full object-contain object-center transition-opacity duration-300"
+            :class="imageLoaded ? 'opacity-100' : 'opacity-0'"
             @load="imageLoaded = true"
             @error="imageError = true"
           />
@@ -375,12 +412,11 @@ async function handleSaveCharacterToLibrary() {
             <span class="text-xs opacity-50">Image preview unavailable</span>
           </div>
 
-          <!-- Direct Image View Button -->
           <Button
             v-if="previewImageUrl && !imageError"
             variant="secondary"
             size="sm"
-            class="bg-background/80 hover:bg-background absolute right-3 bottom-3 h-7 cursor-pointer gap-1.5 rounded-lg px-2.5 text-xs shadow-xs backdrop-blur-md"
+            class="bg-background/70 hover:bg-background absolute top-3 left-3 h-7 cursor-pointer gap-1.5 rounded-lg px-2.5 text-xs shadow-xs backdrop-blur-md"
             @click="handleOpenExternal(previewImageUrl)"
           >
             <ArrowUpRight class="h-3 w-3" />
@@ -388,239 +424,206 @@ async function handleSaveCharacterToLibrary() {
           </Button>
         </div>
 
-        <!-- Right: Information & Action Details -->
-        <div class="flex max-h-[85vh] flex-col overflow-hidden md:col-span-7">
-          <ScrollArea class="h-full w-full p-6">
-            <div class="flex flex-col gap-5 pr-2">
-              <!-- Top Header & Badges -->
-              <div class="flex flex-col gap-2">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <h2
-                      class="text-foreground text-xl font-bold tracking-tight"
-                    >
-                      {{ item.name }}
-                    </h2>
-                    <div class="mt-1 flex items-center gap-2">
-                      <button
-                        v-if="
-                          character &&
-                          (character.copyright_name || character.copyright)
-                        "
-                        type="button"
-                        class="text-primary cursor-pointer text-xs font-medium hover:underline"
-                        @click="handleFilterBySeries"
-                      >
-                        {{ character.copyright_name || character.copyright }}
-                      </button>
-                      <span
-                        v-else-if="artist"
-                        class="text-muted-foreground text-xs"
-                      >
-                        Artist Style Prompt
-                      </span>
-                      <span v-else class="text-muted-foreground text-xs">
-                        Series Franchise
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- External Reference Button -->
-                  <Button
-                    v-if="'url' in item && item.url"
-                    variant="outline"
-                    size="sm"
-                    class="h-8 shrink-0 cursor-pointer gap-1.5 rounded-lg px-2.5 text-xs"
-                    @click="handleOpenExternal(item.url)"
-                  >
-                    <span>Danbooru</span>
-                    <ExternalLink class="h-3 w-3" />
-                  </Button>
+        <!-- Right: Details -->
+        <div
+          class="flex max-h-[85vh] min-h-0 flex-col overflow-hidden md:col-span-7"
+        >
+          <!-- Header -->
+          <header class="border-border/60 border-b px-6 pt-5 pb-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div
+                  class="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase"
+                >
+                  <User v-if="type === 'character'" class="h-3 w-3" />
+                  <Palette v-else-if="type === 'artist'" class="h-3 w-3" />
+                  <Layers v-else class="h-3 w-3" />
+                  {{ typeLabel }}
                 </div>
-
-                <!-- Metadata badges -->
-                <div class="flex flex-wrap items-center gap-1.5 pt-1">
-                  <Badge variant="secondary" class="text-xs font-normal">
-                    {{ formattedCount }} posts
-                  </Badge>
-
-                  <Badge
-                    v-if="formattedScore"
-                    variant="secondary"
-                    class="border border-emerald-500/30 bg-emerald-500/15 text-xs text-emerald-400"
-                  >
-                    Score: {{ formattedScore }}
-                  </Badge>
-
-                  <Badge
-                    v-if="character?.loras && character.loras.length > 0"
-                    variant="secondary"
-                    class="border border-purple-500/30 bg-purple-600/20 text-xs text-purple-300"
-                  >
-                    {{ character.loras.length }} LoRA{{
-                      character.loras.length > 1 ? 's' : ''
-                    }}
-                    Available
-                  </Badge>
-                </div>
+                <h2
+                  class="text-foreground truncate text-2xl leading-tight font-bold tracking-tight"
+                  :title="item.name"
+                >
+                  {{ item.name }}
+                </h2>
+                <button
+                  v-if="
+                    character &&
+                    (character.copyright_name || character.copyright)
+                  "
+                  type="button"
+                  class="text-primary mt-1 inline-flex cursor-pointer items-center gap-1 text-sm font-medium hover:underline"
+                  title="Browse this series"
+                  @click="handleFilterBySeries"
+                >
+                  <Layers class="h-3.5 w-3.5" />
+                  {{ character.copyright_name || character.copyright }}
+                </button>
               </div>
 
-              <!-- Unified Prompt & Tags Field (Trigger tags placed first) -->
-              <div
-                v-if="allTags.length > 0"
-                class="border-border/60 bg-muted/20 flex flex-col gap-3 rounded-xl border p-4"
+              <Button
+                v-if="'url' in item && item.url"
+                variant="outline"
+                size="sm"
+                class="h-8 shrink-0 cursor-pointer gap-1.5 rounded-lg px-2.5 text-xs"
+                @click="handleOpenExternal(item.url)"
               >
-                <!-- Header -->
+                <span>Danbooru</span>
+                <ExternalLink class="h-3 w-3" />
+              </Button>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center gap-1.5">
+              <Badge
+                v-if="formattedCount"
+                variant="secondary"
+                class="gap-1 text-xs font-normal"
+              >
+                <Hash class="h-3 w-3 opacity-60" />
+                {{ formattedCount }} posts
+              </Badge>
+              <Badge
+                v-if="formattedScore"
+                variant="secondary"
+                class="border border-emerald-500/30 bg-emerald-500/15 text-xs text-emerald-400"
+              >
+                Score {{ formattedScore }}
+              </Badge>
+              <Badge
+                v-if="character?.loras && character.loras.length > 0"
+                variant="secondary"
+                class="border border-purple-500/30 bg-purple-600/20 text-xs text-purple-300"
+              >
+                {{ character.loras.length }} LoRA{{
+                  character.loras.length > 1 ? 's' : ''
+                }}
+              </Badge>
+              <Badge
+                v-if="coreTags.length"
+                variant="secondary"
+                class="text-xs font-normal"
+              >
+                {{ coreTags.length }} tags
+              </Badge>
+            </div>
+          </header>
+
+          <!-- Scrollable body -->
+          <ScrollArea class="min-h-0 flex-1">
+            <div class="flex flex-col gap-6 px-6 py-5">
+              <!-- Trigger -->
+              <section v-if="triggerPrompt" class="flex flex-col gap-2">
                 <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <Sparkles class="text-primary h-4 w-4" />
-                    <span
-                      class="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
-                    >
-                      Prompt & Tags ({{ allTags.length }})
-                    </span>
-                  </div>
-
-                  <div class="flex items-center gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      class="h-7 cursor-pointer gap-1 px-2.5 text-xs font-medium"
-                      @click="handleCopyAllPrompt"
-                    >
-                      <Check
-                        v-if="copiedAll"
-                        class="h-3.5 w-3.5 text-emerald-500"
-                      />
-                      <Copy v-else class="h-3.5 w-3.5" />
-                      <span>{{ copiedAll ? 'Copied' : 'Copy Prompt' }}</span>
-                    </Button>
-                  </div>
+                  <span
+                    class="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase"
+                  >
+                    <Zap class="text-primary h-3.5 w-3.5" />
+                    Trigger
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="h-6 cursor-pointer gap-1 px-2 text-xs"
+                    @click="handleCopyTrigger"
+                  >
+                    <Check
+                      v-if="copiedTrigger"
+                      class="h-3 w-3 text-emerald-500"
+                    />
+                    <Copy v-else class="h-3 w-3" />
+                    {{ copiedTrigger ? 'Copied' : 'Copy' }}
+                  </Button>
                 </div>
-
-                <!-- Combined Full Prompt Box -->
                 <div
-                  class="bg-background/80 border-border/40 text-foreground max-h-36 overflow-y-auto rounded-lg border p-3 font-mono text-xs leading-relaxed select-text"
+                  class="border-primary/30 bg-primary/5 text-foreground rounded-lg border px-3 py-2.5 font-mono text-sm leading-relaxed break-words select-text"
                 >
-                  {{ combinedPromptText }}
+                  {{ triggerPrompt }}
                 </div>
+              </section>
 
-                <!-- Action Buttons to Workflow -->
-                <div class="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="default"
-                    class="h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
-                    @click="handleAppendToWorkflow(combinedPromptText, false)"
+              <!-- Tags -->
+              <section v-if="coreTags.length" class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                  <span
+                    class="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase"
                   >
-                    <Plus class="h-3.5 w-3.5" />
-                    <span>Append to Workflow</span>
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    class="h-8 cursor-pointer gap-1.5 px-3 text-xs"
-                    @click="handleReplaceWorkflow(combinedPromptText, false)"
-                  >
-                    <Replace class="h-3.5 w-3.5" />
-                    <span>Replace Prompt</span>
-                  </Button>
-
-                  <Button
-                    v-if="props.type === 'character'"
-                    size="sm"
-                    variant="outline"
-                    class="border-primary/30 hover:bg-primary/10 text-primary h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
-                    @click="openCreateCharacterFromAnimadex"
-                  >
-                    <BookOpen class="h-3.5 w-3.5" />
-                    <span>Save to Character Library</span>
-                  </Button>
-
-                  <Button
-                    v-if="props.type === 'character'"
-                    size="sm"
-                    variant="outline"
-                    class="border-primary/30 hover:bg-primary/10 text-primary h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
-                    @click="mentionInMaya"
-                  >
-                    <MessageSquare class="h-3.5 w-3.5" />
-                    <span>Mention in Maya</span>
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    class="ml-auto h-8 cursor-pointer gap-1.5 px-3 text-xs"
-                    @click="handleAppendToWorkflow(combinedPromptText, true)"
-                  >
-                    <span>Use & Open Workflow</span>
-                    <ArrowUpRight class="h-3.5 w-3.5" />
-                  </Button>
+                    <Sparkles class="h-3.5 w-3.5 text-amber-400" />
+                    Tags
+                  </span>
+                  <span class="text-muted-foreground/70 text-xs">
+                    Click to copy · hover for more
+                  </span>
                 </div>
-
-                <!-- Interactive Tag Chips (Trigger tags placed first) -->
-                <div
-                  class="border-border/40 flex flex-col gap-1.5 border-t pt-2.5"
-                >
-                  <div class="flex items-center justify-between">
-                    <span class="text-muted-foreground text-xs font-medium">
-                      All Tags (Click to copy, + to append):
-                    </span>
-                    <span class="text-muted-foreground/70 text-xs">
-                      Highlighted tags are triggers
-                    </span>
-                  </div>
-
+                <div class="flex flex-wrap gap-1.5">
                   <div
-                    class="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto pr-1"
+                    v-for="tagItem in coreTags"
+                    :key="tagItem.text"
+                    class="group border-border/60 bg-secondary/40 hover:border-primary/50 hover:bg-secondary inline-flex items-center overflow-hidden rounded-md border text-xs transition-colors"
                   >
                     <button
-                      v-for="tagItem in allTags"
-                      :key="tagItem.text"
                       type="button"
-                      class="group relative inline-flex cursor-pointer items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors"
-                      :class="
-                        tagItem.isTrigger
-                          ? 'border-primary/50 bg-primary/15 text-primary hover:bg-primary/25 font-medium'
-                          : 'border-border/50 bg-secondary/30 text-secondary-foreground hover:border-primary/50 hover:bg-secondary'
-                      "
-                      :title="`Click to copy: ${tagItem.text}`"
+                      class="text-secondary-foreground inline-flex cursor-pointer items-center gap-1 py-1 pr-1.5 pl-2"
+                      :title="`Copy ${tagItem.text}`"
                       @click="handleCopyTag(tagItem.text)"
                     >
-                      <Sparkles
-                        v-if="tagItem.isTrigger"
-                        class="text-primary h-3 w-3 shrink-0"
-                      />
                       <Check
                         v-if="copiedTag === tagItem.text"
                         class="h-3 w-3 shrink-0 text-emerald-500"
                       />
                       <span>{{ tagItem.text }}</span>
-                      <span
-                        class="text-primary hover:text-primary/80 ml-0.5 opacity-0 transition-opacity group-hover:opacity-100"
-                        title="Append tag to workflow prompt"
-                        @click.stop="
-                          handleAppendToWorkflow(tagItem.text, false)
-                        "
+                    </button>
+                    <span
+                      class="flex w-0 items-center gap-0.5 overflow-hidden pr-0 opacity-0 transition-all group-hover:w-auto group-hover:pr-1.5 group-hover:opacity-100"
+                    >
+                      <button
+                        type="button"
+                        class="text-muted-foreground hover:text-primary cursor-pointer p-0.5"
+                        title="Append to workflow prompt"
+                        @click="handleAppendToWorkflow(tagItem.text, false)"
                       >
                         <Plus class="h-3 w-3" />
-                      </span>
-                      <span
-                        class="text-muted-foreground hover:text-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                        title="Search by this tag"
-                        @click.stop="handleFilterByTag(tagItem.text)"
+                      </button>
+                      <button
+                        type="button"
+                        class="text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                        title="Search this tag"
+                        @click="handleFilterByTag(tagItem.text)"
                       >
                         <Search class="h-3 w-3" />
-                      </span>
-                    </button>
+                      </button>
+                    </span>
                   </div>
                 </div>
-              </div>
+              </section>
+
+              <!-- Full prompt -->
+              <section v-if="allTags.length" class="flex flex-col gap-2">
+                <div class="flex items-center justify-between">
+                  <span
+                    class="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
+                  >
+                    Full Prompt
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="h-6 cursor-pointer gap-1 px-2 text-xs"
+                    @click="handleCopyAllPrompt"
+                  >
+                    <Check v-if="copiedAll" class="h-3 w-3 text-emerald-500" />
+                    <Copy v-else class="h-3 w-3" />
+                    {{ copiedAll ? 'Copied' : 'Copy' }}
+                  </Button>
+                </div>
+                <div
+                  class="border-border/60 bg-muted/30 text-muted-foreground max-h-32 overflow-y-auto rounded-lg border px-3 py-2.5 font-mono text-xs leading-relaxed break-words select-text"
+                >
+                  {{ combinedPromptText }}
+                </div>
+              </section>
 
               <!-- Associated LoRAs -->
-              <div
+              <section
                 v-if="
                   character && character.loras && character.loras.length > 0
                 "
@@ -630,50 +633,104 @@ async function handleSaveCharacterToLibrary() {
                   class="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase"
                 >
                   <Layers class="h-3.5 w-3.5 text-purple-400" />
-                  Trained LoRA Models
+                  Trained LoRAs
                 </span>
-
-                <div class="flex flex-col gap-2">
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div
                     v-for="lora in character.loras"
                     :key="lora.name"
-                    class="flex items-center justify-between gap-3 rounded-xl border border-purple-500/20 bg-purple-500/5 p-2.5 transition-colors hover:border-purple-500/40"
+                    class="flex items-center gap-2.5 rounded-lg border border-purple-500/20 bg-purple-500/5 p-2 transition-colors hover:border-purple-500/40"
                   >
-                    <div class="flex items-center gap-2.5 overflow-hidden">
-                      <img
-                        v-if="lora.thumb"
-                        :src="lora.thumb"
-                        :alt="lora.name"
-                        class="bg-muted/40 h-10 w-10 shrink-0 rounded-lg object-cover"
-                      />
-                      <div class="flex flex-col overflow-hidden">
-                        <span
-                          class="text-foreground truncate text-xs font-semibold"
-                          :title="lora.name"
-                        >
-                          {{ lora.name }}
-                        </span>
-                        <span class="text-muted-foreground text-xs"
-                          >Civitai Model</span
-                        >
-                      </div>
+                    <img
+                      v-if="lora.thumb"
+                      :src="lora.thumb"
+                      :alt="lora.name"
+                      class="bg-muted/40 h-10 w-10 shrink-0 rounded-md object-cover"
+                    />
+                    <div
+                      v-else
+                      class="bg-muted/40 flex h-10 w-10 shrink-0 items-center justify-center rounded-md"
+                    >
+                      <Layers class="h-4 w-4 text-purple-400/60" />
                     </div>
-
+                    <div class="flex min-w-0 flex-1 flex-col">
+                      <span
+                        class="text-foreground truncate text-xs font-semibold"
+                        :title="lora.name"
+                      >
+                        {{ lora.name }}
+                      </span>
+                      <span class="text-muted-foreground text-xs">Civitai</span>
+                    </div>
                     <Button
                       v-if="lora.url"
-                      size="sm"
-                      variant="outline"
-                      class="h-7 shrink-0 cursor-pointer gap-1 border-purple-500/30 px-2 text-xs hover:bg-purple-500/10"
+                      size="iconSm"
+                      variant="ghost"
+                      class="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+                      title="Open on Civitai"
                       @click="handleOpenExternal(lora.url)"
                     >
-                      <span>Civitai</span>
-                      <ExternalLink class="h-3 w-3" />
+                      <ExternalLink class="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
-              </div>
+              </section>
             </div>
           </ScrollArea>
+
+          <!-- Action bar -->
+          <footer
+            v-if="allTags.length"
+            class="border-border/60 bg-muted/20 flex flex-wrap items-center gap-2 border-t px-6 py-3"
+          >
+            <Button
+              size="sm"
+              class="h-8 cursor-pointer gap-1.5 px-3 text-xs font-medium"
+              @click="handleAppendToWorkflow(combinedPromptText, false)"
+            >
+              <Plus class="h-3.5 w-3.5" />
+              Append
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              class="h-8 cursor-pointer gap-1.5 px-3 text-xs"
+              @click="handleReplaceWorkflow(combinedPromptText, false)"
+            >
+              <Replace class="h-3.5 w-3.5" />
+              Replace
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              class="h-8 cursor-pointer gap-1.5 px-3 text-xs"
+              @click="handleAppendToWorkflow(combinedPromptText, true)"
+            >
+              Use & Open Workflow
+              <ArrowUpRight class="h-3.5 w-3.5" />
+            </Button>
+
+            <div v-if="character" class="ml-auto flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                class="text-primary hover:bg-primary/10 h-8 cursor-pointer gap-1.5 px-2.5 text-xs font-medium"
+                @click="mentionInMaya"
+              >
+                <MessageSquare class="h-3.5 w-3.5" />
+                Maya
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                class="border-primary/30 hover:bg-primary/10 text-primary h-8 cursor-pointer gap-1.5 px-2.5 text-xs font-medium"
+                @click="openCreateCharacterFromAnimadex"
+              >
+                <BookOpen class="h-3.5 w-3.5" />
+                Save to Library
+              </Button>
+            </div>
+          </footer>
         </div>
       </div>
     </DialogContent>
@@ -724,7 +781,7 @@ async function handleSaveCharacterToLibrary() {
               <Label class="text-foreground text-xs font-bold">
                 Trigger Tag <span class="text-destructive">*</span>
               </Label>
-              <Input
+              <TagAutocompleteField
                 v-model="charTrigger"
                 placeholder="e.g. hatsune_miku"
                 class="font-mono text-xs"
@@ -751,8 +808,9 @@ async function handleSaveCharacterToLibrary() {
                   >(comma-separated)</span
                 >
               </Label>
-              <Textarea
+              <TagAutocompleteField
                 v-model="charTags"
+                multiline
                 rows="4"
                 placeholder="twin tails, sleeveless shirt, necktie..."
                 class="bg-background font-mono text-xs"
