@@ -16,6 +16,8 @@
   <img src="https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat-square" alt="License"/>
 </p>
 
+> **Work in Progress**: Hoshi is currently under active development. Features and interfaces are subject to change, and you may encounter bugs or incomplete functionality.
+
 ## Overview
 
 **Hoshi** (codename _Koharu_) is a desktop frontend for ComfyUI aimed at creators who want to generate images with the **[Anima](https://huggingface.co/circlestone-labs/Anima)** model family without building or maintaining node graphs. It launches and supervises your local ComfyUI, builds the workflow graph for you on every run, and wraps generation, post-processing, model management and reference browsing in one studio-style window.
@@ -57,6 +59,20 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 ### Maya, the AI assistant
 
 An OpenRouter-powered chat assistant that understands Anima prompting, can inspect the current prompt, search Animadex and your character library, inject prompt changes and queue generations. It also drives the inline prompt enhancer and auto-names chat sessions.
+
+## Screenshots
+
+### Workflow Generator
+
+Intuitive controls for Anima model generation, prompt autocomplete, LoRA stacking, and live execution previews.
+
+![Workflow Generator](screenshot/generation.png)
+
+### Civitai Model Browser
+
+Browse models, inspect versions and preview samples, with background download management.
+
+![Civitai Model Browser](screenshot/civitai.png)
 
 ## Requirements
 
