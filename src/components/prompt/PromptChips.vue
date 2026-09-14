@@ -118,8 +118,7 @@ function selectSuggestion(item: AutocompleteItem) {
     newTag.value,
     activeRange,
     item.insert_text,
-    launcherStore.config.autocompleteReplaceUnderscores,
-    launcherStore.config.autocompleteIncludeArtistPrefix
+    launcherStore.config
   );
   newTag.value = result.text;
   closeSuggestions();

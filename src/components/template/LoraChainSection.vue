@@ -68,6 +68,7 @@ const loraOptions = computed(() => {
 });
 
 function openLoraGrid(index?: number) {
+  hovered.value = null;
   editingLoraIndex.value = index === undefined ? null : index;
   isLoraGridOpen.value = true;
 }

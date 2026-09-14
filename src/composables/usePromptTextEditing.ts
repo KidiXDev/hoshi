@@ -111,6 +111,8 @@ export function usePromptTextEditing(
     updateCursor(field, event);
   }
   function closeAutocomplete() {
+    clearTimeout(searchTimer);
+    searchController?.abort();
     suggestions.value = [];
     activeField.value = undefined;
   }
@@ -167,8 +169,7 @@ export function usePromptTextEditing(
       current,
       activeRange,
       item.insert_text,
-      launcherStore.config.autocompleteReplaceUnderscores,
-      launcherStore.config.autocompleteIncludeArtistPrefix
+      launcherStore.config
     );
     input.select();
     document.execCommand('insertText', false, result.text);
@@ -306,16 +307,19 @@ export function usePromptTextEditing(
 
     return matches;
   });
-  watch(findMatches, (newMatches) => {
-    if (newMatches.length === 0) {
-      currentMatchIndex.value = 0;
-    } else if (currentMatchIndex.value >= newMatches.length) {
-      currentMatchIndex.value = 0;
-      highlightCurrentMatch();
-    } else {
-      highlightCurrentMatch();
-    }
+  watch(findMatches, (matches) => {
+    if (currentMatchIndex.value >= matches.length) currentMatchIndex.value = 0;
   });
+  watch([findQuery, findCaseSensitive], () => {
+    if (!isFindBarOpen.value) return;
+    currentMatchIndex.value = nearestMatchIndex();
+    highlightCurrentMatch();
+  });
+  function nearestMatchIndex() {
+    const from = getTextareaElement(findTarget.value)?.selectionStart ?? 0;
+    const index = findMatches.value.findIndex((match) => match.start >= from);
+    return index === -1 ? 0 : index;
+  }
   function highlightCurrentMatch() {
     const matches = findMatches.value;
     if (matches.length === 0) return;
@@ -372,9 +376,8 @@ export function usePromptTextEditing(
     void nextTick(() => {
       findInputRef.value?.focus();
       findInputRef.value?.select();
-      if (findMatches.value.length > 0) {
-        highlightCurrentMatch();
-      }
+      currentMatchIndex.value = nearestMatchIndex();
+      highlightCurrentMatch();
     });
   }
   function setFindTarget(target: PromptField) {

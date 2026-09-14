@@ -12,6 +12,7 @@ export interface LauncherConfig {
   autocompleteLimit: number;
   autocompleteReplaceUnderscores: boolean;
   autocompleteIncludeArtistPrefix: boolean;
+  autocompleteEscapeParentheses: boolean;
 }
 
 export interface LogEntry {

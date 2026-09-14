@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ChevronsUpDown, LayoutGrid } from '@lucide/vue';
-import { ref, type HTMLAttributes } from 'vue';
+import { ref, watch, type HTMLAttributes } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
   Combobox,
@@ -35,18 +35,22 @@ const props = withDefaults(
 
 const launcherStore = useLauncherStore();
 const isGridOpen = ref(false);
+const isOpen = ref(false);
 const hovered = ref<{ name: string; url: string; x: number; y: number } | null>(
   null
 );
+watch(isOpen, (open) => !open && hidePreview());
 const failedPreviews = ref(new Set<string>());
 
 // 3:4 portrait, matches the grid dialog cards
 const PREVIEW_W = 180;
 const PREVIEW_H = 240;
 
+// Items linger through the close animation; ignore hovers once the list is closing.
 function showPreview(name: string, event: PointerEvent) {
   hidePreview();
-  if (!props.previewCategory || failedPreviews.value.has(name)) return;
+  if (!isOpen.value || !props.previewCategory || failedPreviews.value.has(name))
+    return;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const fitsRight = rect.right + 8 + PREVIEW_W <= window.innerWidth;
   hovered.value = {
@@ -73,9 +77,9 @@ function hidePreview() {
   >
     <Combobox
       v-model="model"
+      v-model:open="isOpen"
       :disabled="disabled"
       class="w-full min-w-0 flex-1"
-      @update:open="(open) => !open && hidePreview()"
     >
       <ComboboxAnchor class="w-full">
         <ComboboxTrigger class="w-full" as-child>

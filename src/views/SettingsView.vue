@@ -94,6 +94,9 @@ const autocompleteReplaceUnderscores = ref(
 const autocompleteIncludeArtistPrefix = ref(
   launcherStore.config.autocompleteIncludeArtistPrefix
 );
+const autocompleteEscapeParentheses = ref(
+  launcherStore.config.autocompleteEscapeParentheses
+);
 const civitaiApiKey = ref('');
 const savedCivitaiApiKey = ref('');
 const hasCivitaiApiKey = ref(false);
@@ -215,7 +218,8 @@ async function saveApplicationSettings() {
     autocompleteAlgorithm: autocompleteAlgorithm.value,
     autocompleteLimit: autocompleteLimit.value,
     autocompleteReplaceUnderscores: autocompleteReplaceUnderscores.value,
-    autocompleteIncludeArtistPrefix: autocompleteIncludeArtistPrefix.value
+    autocompleteIncludeArtistPrefix: autocompleteIncludeArtistPrefix.value,
+    autocompleteEscapeParentheses: autocompleteEscapeParentheses.value
   });
   if (!serverChanged && autocompleteEnabled.value && autocompleteReady.value) {
     await ComfyApi.updateTagAutocompleteSettings(
@@ -265,7 +269,8 @@ watch(
     autocompleteAlgorithm,
     autocompleteLimit,
     autocompleteReplaceUnderscores,
-    autocompleteIncludeArtistPrefix
+    autocompleteIncludeArtistPrefix,
+    autocompleteEscapeParentheses
   ],
   () => autosaveApplicationSettings(),
   { deep: true }
@@ -310,6 +315,8 @@ function handleResetDefaults() {
     DEFAULT_LAUNCHER_CONFIG.autocompleteReplaceUnderscores;
   autocompleteIncludeArtistPrefix.value =
     DEFAULT_LAUNCHER_CONFIG.autocompleteIncludeArtistPrefix;
+  autocompleteEscapeParentheses.value =
+    DEFAULT_LAUNCHER_CONFIG.autocompleteEscapeParentheses;
   civitaiApiKey.value = '';
   civitaiNsfw.value = false;
 }
@@ -806,6 +813,13 @@ void loadNetworkCacheStats();
               v-model="autocompleteIncludeArtistPrefix"
               label="Keep @ on artist tags"
               description="Prefix inserted artist tags with @ so Anima treats them as artists."
+              :disabled="!autocompleteEnabled || !autocompleteReady"
+            />
+
+            <SettingsSwitchRow
+              v-model="autocompleteEscapeParentheses"
+              label="Escape parentheses"
+              description="Insert “miku_\(vocaloid\)” so ComfyUI does not read a tag's parentheses as emphasis."
               :disabled="!autocompleteEnabled || !autocompleteReady"
             />
           </SettingsSection>

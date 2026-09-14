@@ -20,7 +20,8 @@ export const DEFAULT_LAUNCHER_CONFIG: LauncherConfig = {
   autocompleteAlgorithm: 'fuzzy',
   autocompleteLimit: 20,
   autocompleteReplaceUnderscores: false,
-  autocompleteIncludeArtistPrefix: true
+  autocompleteIncludeArtistPrefix: true,
+  autocompleteEscapeParentheses: true
 };
 
 export function cleanPath(value: string): string {

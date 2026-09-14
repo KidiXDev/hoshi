@@ -192,7 +192,6 @@ const {
   currentMatchIndex,
   findInputRef,
   findMatches,
-  highlightCurrentMatch,
   findNext,
   findPrev,
   openFindBar,
@@ -473,10 +472,7 @@ function previewDynamicRoll(field: PromptField) {
               : 'border-border/60 text-muted-foreground hover:text-foreground'
           "
           title="Match Case"
-          @click="
-            findCaseSensitive = !findCaseSensitive;
-            highlightCurrentMatch();
-          "
+          @click="findCaseSensitive = !findCaseSensitive"
         >
           Aa
         </button>

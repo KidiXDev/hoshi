@@ -86,7 +86,7 @@ function onOpenChange(open: boolean) {
       @pointer-down-outside="running && $event.preventDefault()"
       @interact-outside="running && $event.preventDefault()"
     >
-      <DialogHeader>
+      <DialogHeader class="min-w-0">
         <div class="flex items-center gap-2">
           <Loader2
             v-if="running"

@@ -123,8 +123,7 @@ function selectSuggestion(item: AutocompleteItem) {
     model.value,
     activeRange,
     item.insert_text,
-    launcherStore.config.autocompleteReplaceUnderscores,
-    launcherStore.config.autocompleteIncludeArtistPrefix
+    launcherStore.config
   );
   model.value = result.text;
   closeSuggestions();
