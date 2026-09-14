@@ -135,6 +135,7 @@ pub struct StatusPayload {
     pub code: Option<i32>,
 }
 
+#[derive(Clone)]
 pub struct ProcessManager {
     child: Arc<Mutex<Option<Child>>>,
 }

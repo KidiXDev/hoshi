@@ -278,12 +278,15 @@ fn start_comfyui(
 }
 
 #[tauri::command]
-fn stop_comfyui(
+async fn stop_comfyui(
     app_handle: AppHandle,
     state: State<'_, ProcessManager>,
     graceful_requested: bool,
 ) -> Result<(), String> {
-    state.stop(app_handle, graceful_requested)
+    let manager = (*state).clone();
+    tauri::async_runtime::spawn_blocking(move || manager.stop(app_handle, graceful_requested))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
