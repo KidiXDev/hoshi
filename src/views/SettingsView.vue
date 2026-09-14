@@ -50,6 +50,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/components/ui/select';
+import { BRAND_NAME, REPO_SLUG } from '@/lib/brand';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import { ComfyApi } from '../services/comfyApi';
 import { useComfyStore } from '../stores/comfyStore';
@@ -345,7 +346,7 @@ async function checkForUpdates() {
   updateResult.value = null;
   try {
     const response = await fetch(
-      'https://api.github.com/repos/KidiXDev/comfy-gui/releases/latest',
+      `https://api.github.com/repos/${REPO_SLUG}/releases/latest`,
       {
         headers: {
           Accept: 'application/vnd.github+json',
@@ -385,9 +386,7 @@ async function checkForUpdates() {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Network Disk Cache (Danbooru & Animadex)
-// ---------------------------------------------------------------------------
 const cacheStats = ref<{ totalEntries: number; totalSizeBytes: number } | null>(
   null
 );
@@ -930,7 +929,7 @@ void loadNetworkCacheStats();
           <!-- About -->
           <SettingsSection
             v-if="activeTab === 'about'"
-            title="About ComfyGUI"
+            :title="`About ${BRAND_NAME}`"
             icon-class="text-violet-400"
           >
             <template #icon>

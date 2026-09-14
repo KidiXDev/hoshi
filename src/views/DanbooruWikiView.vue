@@ -356,10 +356,8 @@ async function openOfficial() {
 
       <!-- Loaded Content State -->
       <template v-else-if="page">
-        <!-- Tag Groups Index Mode: Full-height 2-pane master-detail -->
         <WikiGroups v-if="isIndex" :groups="groups" class="h-full" />
 
-        <!-- Individual Tag Article Mode: Full-width modern document container -->
         <div v-else class="w-full space-y-6 p-6">
           <!-- Image Previews Loading Status -->
           <div

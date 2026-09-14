@@ -183,7 +183,6 @@ let resizeObserver: ResizeObserver | undefined;
 let unlistenProgress: UnlistenFn | undefined;
 let savedScrollTop = 0;
 
-// Unique subfolders for filter dropdown
 const availableSubfolders = computed<string[]>(() => {
   const folders = new Set<string>();
   for (const img of images.value) {
@@ -196,7 +195,6 @@ const availableSubfolders = computed<string[]>(() => {
   return folderList;
 });
 
-// Filtered and sorted images
 const filteredImages = computed<OutputImage[]>(() => {
   const search = query.value.trim().toLowerCase();
   const folder = selectedSubfolder.value;
@@ -245,7 +243,6 @@ const filteredImages = computed<OutputImage[]>(() => {
   return sortedList;
 });
 
-// Dynamic responsive columns based on viewport container width
 const columns = computed(() => {
   if (gridWidth.value < 540) return 2;
   if (gridWidth.value < 840) return 3;
@@ -266,7 +263,6 @@ const totalRows = computed(() =>
   Math.ceil(filteredImages.value.length / columns.value)
 );
 
-// TanStack Vue Virtual for ultra-smooth hardware-accelerated scrolling
 const rowVirtualizer = useVirtualizer(
   computed(() => ({
     count: totalRows.value,
@@ -657,7 +653,6 @@ onUnmounted(() => {
       </Button>
     </div>
 
-    <!-- Main Scroll Viewport with Virtualized 7-Column Portrait Grid -->
     <div
       ref="scrollViewport"
       class="min-h-0 flex-1 overflow-y-auto p-4"
@@ -862,7 +857,6 @@ onUnmounted(() => {
                     </Badge>
                   </div>
 
-                  <!-- Floating Action Overlay on Hover with black-to-transparent gradient to top -->
                   <div
                     class="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-linear-to-t from-black/90 via-black/50 to-transparent px-2.5 pt-6 pb-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
                   >
@@ -926,6 +920,5 @@ onUnmounted(() => {
     </div>
   </PageLayout>
 
-  <!-- High-End Detail Lightbox & Generation Data Inspector Modal -->
   <OutputImageInspector ref="imageInspector" :images="filteredImages" />
 </template>

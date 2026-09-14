@@ -49,11 +49,11 @@ jobs:
           VITE_APP_VERSION: ${{ github.ref_name }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: ComfyGUI ${{ github.ref_name }}
+          releaseName: Hoshi ${{ github.ref_name }}
           generateReleaseNotes: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           args: --bundles nsis --config src-tauri/tauri.release.conf.json
-          releaseAssetNamePattern: ComfyGUI_[version]_windows_x64[setup].[ext]
+          releaseAssetNamePattern: Hoshi_[version]_windows_x64[setup].[ext]
 
       - name: Upload portable ZIP
         shell: pwsh
@@ -61,8 +61,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $portableDir = 'src-tauri/target/release/portable'
-          $archive = "ComfyGUI_${{ steps.version.outputs.version }}_windows_x64_portable.zip"
+          $archive = "Hoshi_${{ steps.version.outputs.version }}_windows_x64_portable.zip"
           New-Item -ItemType Directory -Force $portableDir | Out-Null
-          Copy-Item 'src-tauri/target/release/comfy-gui.exe' "$portableDir/ComfyGUI.exe"
-          Compress-Archive -Path "$portableDir/ComfyGUI.exe" -DestinationPath $archive
+          Copy-Item 'src-tauri/target/release/Hoshi.exe' "$portableDir/Hoshi.exe"
+          Compress-Archive -Path "$portableDir/Hoshi.exe" -DestinationPath $archive
           gh release upload '${{ github.ref_name }}' $archive --clobber

@@ -9,9 +9,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
-// ---------------------------------------------------------------------------
 // Data types
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -30,9 +28,7 @@ pub struct LibraryItem {
     pub updated_at: u64,
 }
 
-// ---------------------------------------------------------------------------
 // Internal path helpers
-// ---------------------------------------------------------------------------
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -95,9 +91,7 @@ fn item_path(app_handle: &AppHandle, category: &str, id: &str) -> Result<PathBuf
     Ok(category_dir(app_handle, category)?.join(format!("{safe_id}.json")))
 }
 
-// ---------------------------------------------------------------------------
 // Tauri commands — CRUD
-// ---------------------------------------------------------------------------
 
 /// Items are small local JSON files, so the full `data` payload is returned;
 /// callers filter/preview client-side without a second round-trip per item.
@@ -122,7 +116,6 @@ pub fn library_list_items(
         }
     }
 
-    // Sort newest first
     clean_orphaned_thumbnails(&app_handle);
     entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     Ok(entries)
@@ -146,7 +139,6 @@ pub fn library_save_item(
 ) -> Result<LibraryItem, String> {
     let now = now_ms();
 
-    // Generate an ID if not provided or empty
     if item.id.is_empty() {
         item.id = generate_id(&item.name, &item.category);
         item.created_at = now;
@@ -258,9 +250,7 @@ pub fn clean_orphaned_thumbnails(app_handle: &AppHandle) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Tauri commands — Thumbnails
-// ---------------------------------------------------------------------------
 
 /// Copy an image file from any path on disk into the library thumbnails dir,
 /// converting it to JPEG. Returns the thumbnail_id (filename stem).
@@ -302,7 +292,7 @@ pub async fn library_save_thumbnail_from_url(
 ) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let client = reqwest::blocking::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ComfyGUI/1.0")
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Koharu/1.0")
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| e.to_string())?;
@@ -355,7 +345,6 @@ fn save_thumbnail_bytes(
     let thumb_dir = thumbnails_dir(app_handle)?;
     let dest = thumb_dir.join(format!("{thumb_id}.jpg"));
 
-    // Decode with image crate
     let img = ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|e| e.to_string())?
@@ -412,9 +401,7 @@ pub fn library_read_thumbnail(
     fs::read(&path).map_err(|e| format!("Thumbnail not found: {e}"))
 }
 
-// ---------------------------------------------------------------------------
 // Tauri commands — Folder access
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub fn library_open_folder(
@@ -432,13 +419,10 @@ pub fn library_open_folder(
     crate::show_in_folder(dir.to_string_lossy().to_string())
 }
 
-
-// ---------------------------------------------------------------------------
 // URI scheme handler (called from lib.rs)
-// ---------------------------------------------------------------------------
 
-/// Read a thumbnail by ID for the `comfygui-library` URI scheme.
-/// URI format: comfygui-library://thumb/<thumbnail_id>
+/// Read a thumbnail by ID for the `koharu-library` URI scheme.
+/// URI format: koharu-library://thumb/<thumbnail_id>
 pub fn handle_library_uri(
     app_handle: &AppHandle,
     path: &str,

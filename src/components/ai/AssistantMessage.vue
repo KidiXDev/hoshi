@@ -167,7 +167,6 @@ function renderMarkdown(content: string): string {
         >
           <!-- eslint-disable-next-line vue/no-v-html -->
           <div v-html="renderMarkdown(part.text)" />
-          <!-- Pulsating cursor during active text streaming on this part -->
           <span
             v-if="isPartActive(msg, pIdx)"
             class="bg-primary/80 ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-xs align-middle"
@@ -666,7 +665,6 @@ function renderMarkdown(content: string): string {
         </div>
       </div>
 
-      <!-- Initial Thinking / Waiting indicator if no parts have arrived yet -->
       <div
         v-if="
           aiStore.isGenerating &&

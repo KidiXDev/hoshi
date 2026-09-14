@@ -80,7 +80,6 @@ async function handleSendToFaceDetailer() {
   void router.push('/face-detailer');
 }
 
-// Track live incrementing timer during generation
 watch(
   () => [comfyStore.isGenerating, comfyStore.generationStartTime] as const,
   ([generating]) => {
@@ -137,9 +136,7 @@ async function copyImageToClipboard() {
     setTimeout(() => {
       copySuccess.value = false;
     }, 2000);
-  } catch {
-    // fallback
-  }
+  } catch {}
 }
 
 function downloadImage() {
@@ -153,7 +150,6 @@ function downloadImage() {
   a.remove();
 }
 
-// Resolution stats display
 const resolutionText = computed(() => {
   if (
     workflowStore.imageInput.mode !== 'text2img' &&
@@ -187,7 +183,6 @@ const cfgText = computed(() =>
     : workflowStore.sampler.cfg
 );
 
-// Formatted seed display
 const seedText = computed(() => {
   if (workflowStore.sampler.randomizeSeed) {
     return 'RANDOM';
@@ -195,7 +190,6 @@ const seedText = computed(() => {
   return String(workflowStore.sampler.seed);
 });
 
-// Formatted last duration display
 const durationText = computed(() => {
   if (comfyStore.isGenerating) {
     const seconds = (liveElapsedMs.value / 1000).toFixed(2);
@@ -364,7 +358,6 @@ const durationText = computed(() => {
         </ContextMenuContent>
       </ContextMenu>
 
-      <!-- Clean Pre-Generation Loader (When generating before first preview arrives) -->
       <div
         v-if="comfyStore.isGenerating && !comfyStore.currentPreviewUrl"
         class="bg-background/85 absolute inset-0 z-20 flex flex-col items-center justify-center gap-3.5 p-6 backdrop-blur-xs select-none"
@@ -417,7 +410,6 @@ const durationText = computed(() => {
         </div>
       </div>
 
-      <!-- Floating Live HUD Badge (When preview is actively streaming) -->
       <div
         v-if="comfyStore.isGenerating && comfyStore.currentPreviewUrl"
         class="border-border bg-card/90 text-foreground absolute top-3 left-3 z-30 flex items-center gap-2 rounded-full border px-3 py-1.5 shadow-lg backdrop-blur-md"

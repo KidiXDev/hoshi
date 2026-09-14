@@ -16,7 +16,8 @@ import {
   Settings,
   Terminal
 } from '@lucide/vue';
-import appLogoUrl from '@/assets/comfygui-logo.png';
+import appLogoUrl from '@/assets/app-logo.png';
+import { BRAND_NAME } from '@/lib/brand';
 import DownloadManagerPopover from '@/components/template/DownloadManagerPopover.vue';
 import {
   Tooltip,
@@ -173,11 +174,10 @@ function navigate(path: string) {
           </div>
         </TooltipTrigger>
         <TooltipContent side="right" :side-offset="10">
-          <p class="font-medium">ComfyUI Studio</p>
+          <p class="font-medium">{{ BRAND_NAME }}</p>
         </TooltipContent>
       </Tooltip>
 
-      <!-- Navigation Icons with Tooltips, grouped by Separators -->
       <nav class="flex w-full flex-col items-center gap-1.5 px-2">
         <template v-for="(group, gi) in navGroups" :key="gi">
           <Separator v-if="gi > 0" class="my-1 w-6" />

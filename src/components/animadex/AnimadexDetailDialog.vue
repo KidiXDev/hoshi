@@ -104,7 +104,6 @@ const allTags = computed<DisplayTag[]>(() => {
   const list: DisplayTag[] = [];
   const seen = new Set<string>();
 
-  // 1. Add trigger tag(s) first
   if (triggerPrompt.value) {
     const triggerParts = triggerPrompt.value
       .split(',')
@@ -120,7 +119,6 @@ const allTags = computed<DisplayTag[]>(() => {
     }
   }
 
-  // 2. Add character core tags
   if (character.value?.tags) {
     for (const tag of character.value.tags) {
       const trimmed = tag.trim();

@@ -33,7 +33,7 @@ fn cached_json(
 
 pub(crate) fn client() -> Result<Client, String> {
     Client::builder()
-        .user_agent("ComfyGUI/1.0")
+        .user_agent("Koharu/1.0")
         .connect_timeout(Duration::from_secs(20))
         .timeout(Duration::from_secs(60 * 60 * 6))
         .build()
@@ -59,7 +59,7 @@ fn resolve_download_url(
     for attempt in 0..2 {
         if attempt > 0 {
             url.query_pairs_mut().append_pair(
-                "comfygui_refresh",
+                "koharu_refresh",
                 &SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_default()
@@ -574,7 +574,7 @@ mod tests {
                 let response = if attempt % 2 == 0 {
                     assert!(request.contains("authorization: bearer test-key"));
                     if attempt == 2 {
-                        assert!(request.contains("comfygui_refresh="));
+                        assert!(request.contains("koharu_refresh="));
                     }
                     format!("HTTP/1.1 302 Found\r\nLocation: http://localhost:{port}/cdn\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                 } else {

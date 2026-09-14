@@ -43,7 +43,7 @@ fn style_native_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-const DATA_KEY: &[u8] = b"comfy-gui";
+const DATA_KEY: &[u8] = b"koharu";
 static APP_DATA_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn app_data_path(app_handle: &AppHandle, name: &str) -> Result<std::path::PathBuf, String> {
@@ -390,7 +390,7 @@ pub fn run() {
         .manage(gallery_files)
         .manage(model_index)
         .register_asynchronous_uri_scheme_protocol(
-            "comfygui-model",
+            "koharu-model",
             move |_context, request, responder| {
                 let mut parts = request.uri().path().trim_matches('/').split('/');
                 let thumbnail = parts.next() == Some("thumb");
@@ -413,7 +413,7 @@ pub fn run() {
             },
         )
         .register_asynchronous_uri_scheme_protocol(
-            "comfygui-image",
+            "koharu-image",
             move |_context, request, responder| {
                 let mut parts = request.uri().path().trim_matches('/').split('/');
                 let thumbnail = parts.next() == Some("thumb");
@@ -436,7 +436,7 @@ pub fn run() {
             },
         )
         .register_asynchronous_uri_scheme_protocol(
-            "comfygui-library",
+            "koharu-library",
             move |context, request, responder| {
                 let path = request.uri().path().to_string();
                 let app = context.app_handle().clone();
@@ -485,7 +485,7 @@ pub fn run() {
                 let path = request.uri().path().trim_matches('/').to_string();
                 std::thread::spawn(move || {
                     let client = match reqwest::blocking::Client::builder()
-                        .user_agent("ComfyGUI/1.0 (Danbooru Tag Wiki)")
+                        .user_agent("Koharu/1.0 (Danbooru Tag Wiki)")
                         .timeout(std::time::Duration::from_secs(15))
                         .build()
                     {

@@ -30,7 +30,6 @@ export function useImageBatch() {
   const selectedItemId = ref<string | null>(null);
   const isDragging = ref(false);
   const isDraggingQueue = ref(false);
-  // Auto-select active item when list changes
   watch(
     () => items.value.length,
     (newCount) => {

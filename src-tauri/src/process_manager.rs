@@ -7,8 +7,10 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 
-const BRIDGE_NODE_INIT: &str = include_str!("../../comfyui-comfygui-bridge/__init__.py");
-const BRIDGE_WORKSPACE_JS: &str = include_str!("../../comfyui-comfygui-bridge/web/workspace.js");
+const BRIDGE_NODE_INIT: &str = include_str!("../../comfyui-koharu-bridge/__init__.py");
+const BRIDGE_WORKSPACE_JS: &str = include_str!("../../comfyui-koharu-bridge/web/workspace.js");
+const BRIDGE_DIR_NAME: &str = "comfyui-koharu-bridge";
+const LEGACY_BRIDGE_DIR_NAME: &str = "comfyui-comfygui-bridge";
 
 #[derive(Clone, serde::Serialize)]
 pub struct LogPayload {
@@ -45,7 +47,8 @@ fn auto_inject_bridge_node(exec_work_dir: &Path, app_handle: &AppHandle) {
         }
     }
 
-    let target_bridge_dir = custom_nodes_dir.join("comfyui-comfygui-bridge");
+    let _ = fs::remove_dir_all(custom_nodes_dir.join(LEGACY_BRIDGE_DIR_NAME));
+    let target_bridge_dir = custom_nodes_dir.join(BRIDGE_DIR_NAME);
     if let Err(err) = fs::create_dir_all(&target_bridge_dir) {
         emit_sys_log(
             app_handle,
@@ -81,7 +84,7 @@ fn auto_inject_bridge_node(exec_work_dir: &Path, app_handle: &AppHandle) {
                 emit_sys_log(
                     app_handle,
                     format!(
-                        "Injected ComfyGUI Bridge custom node -> {}",
+                        "Injected Koharu Bridge custom node -> {}",
                         target_init_py.display()
                     ),
                 );
@@ -97,7 +100,7 @@ fn auto_inject_bridge_node(exec_work_dir: &Path, app_handle: &AppHandle) {
         emit_sys_log(
             app_handle,
             format!(
-                "ComfyGUI Bridge custom node verified -> {}",
+                "Koharu Bridge custom node verified -> {}",
                 target_bridge_dir.display()
             ),
         );
@@ -123,9 +126,7 @@ pub fn inject_bridge(working_dir: &str, app_handle: &AppHandle) -> Result<String
     };
 
     auto_inject_bridge_node(&exec_work_dir, app_handle);
-    let target_bridge_dir = exec_work_dir
-        .join("custom_nodes")
-        .join("comfyui-comfygui-bridge");
+    let target_bridge_dir = exec_work_dir.join("custom_nodes").join(BRIDGE_DIR_NAME);
     Ok(target_bridge_dir.to_string_lossy().to_string())
 }
 
@@ -169,12 +170,10 @@ fn resolve_python_executable(py_input: &str, comfy_dir: &Path) -> Result<PathBuf
 
     let p = PathBuf::from(py_trimmed);
 
-    // 1. Check if p itself is directly an existing file
     if p.is_file() {
         return Ok(p);
     }
 
-    // 2. Check if p is a directory containing python binaries
     if p.is_dir() {
         for sub in &[
             "python.exe",
@@ -190,7 +189,6 @@ fn resolve_python_executable(py_input: &str, comfy_dir: &Path) -> Result<PathBuf
         }
     }
 
-    // 3. If relative, try against comfy_dir and its parent directory
     if p.is_relative() {
         let mut bases = vec![comfy_dir.to_path_buf()];
         if let Some(parent) = comfy_dir.parent() {
@@ -219,7 +217,6 @@ fn resolve_python_executable(py_input: &str, comfy_dir: &Path) -> Result<PathBuf
         }
     }
 
-    // 4. If it's a bare binary name like "python" or "python3", let system PATH handle it
     if !py_trimmed.contains('/') && !py_trimmed.contains('\\') {
         return Ok(PathBuf::from(py_trimmed));
     }
@@ -380,7 +377,7 @@ fn spawn_stream_reader<R: std::io::Read + Send + 'static>(
         loop {
             buffer.clear();
             match buf_reader.read_until(b'\n', &mut buffer) {
-                Ok(0) => break, // EOF
+                Ok(0) => break,
                 Ok(_) => {
                     let text = String::from_utf8_lossy(&buffer);
                     let trimmed = text.trim_end_matches(&['\r', '\n'][..]).to_string();
@@ -451,7 +448,6 @@ impl ProcessManager {
             ));
         }
 
-        // Locate main.py and determine root execution working directory
         let (exec_work_dir, main_py_path) = if work_path.join("main.py").is_file() {
             // User selected directory directly containing main.py (e.g. ComfyUI)
             (work_path.clone(), work_path.join("main.py"))
@@ -468,10 +464,8 @@ impl ProcessManager {
 
         let resolved_python = resolve_python_executable(&python_path, &work_path)?;
 
-        // Auto-inject or sync ComfyGUI Bridge custom node into ComfyUI custom_nodes directory
         auto_inject_bridge_node(&exec_work_dir, &app_handle);
 
-        // Build command arguments: automatically invoke main.py with -s (if not already passed)
         let has_main_py = args.iter().any(|a| a.ends_with("main.py"));
         let mut final_args = Vec::new();
 

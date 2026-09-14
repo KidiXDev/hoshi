@@ -313,7 +313,6 @@ onUnmounted(() => {
     </template>
 
     <template #actions>
-      <!-- Host-specific actions (e.g. Model Manager's file actions) -->
       <slot name="header-actions" />
       <Tooltip>
         <TooltipTrigger as-child>
@@ -405,7 +404,6 @@ onUnmounted(() => {
           </template>
         </Carousel>
 
-        <!-- Top Stage Overlay Controls (Fullscreen Lightbox) -->
         <div
           v-if="currentImages.length > 0"
           class="absolute top-3 right-3 z-20 flex items-center gap-1.5 opacity-80 transition-opacity group-hover:opacity-100"
@@ -499,7 +497,6 @@ onUnmounted(() => {
         @apply="applyParametersToWorkflow"
         @copy="copyText"
       />
-      <!-- Model Description Section (Spacious, Unboxed / Not trapped in a card) -->
       <div class="border-border/60 flex flex-col gap-3.5 border-t pt-6">
         <h2 class="text-foreground text-xl font-bold tracking-tight">
           About this Model
@@ -560,7 +557,6 @@ onUnmounted(() => {
           </span>
         </div>
 
-        <!-- Model Tags (Placed at top!) -->
         <div
           v-if="model.tags?.length"
           class="flex flex-wrap items-center gap-1.5 pt-1"
@@ -714,7 +710,6 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Not downloading button (+ host actions when installed) -->
           <div v-if="!props.isDownloading" class="flex items-center gap-2">
             <Button
               class="h-10 min-w-0 flex-1 cursor-pointer text-xs font-semibold shadow-sm"
@@ -769,7 +764,6 @@ onUnmounted(() => {
             {{ props.errorMessage }}
           </p>
 
-          <!-- Show in folder button if downloaded (unless the host adds its own file actions) -->
           <Button
             v-if="
               props.downloadedRecord?.modelPath && !$slots['installed-actions']
@@ -857,7 +851,6 @@ onUnmounted(() => {
         </ScrollArea>
       </div>
 
-      <!-- Version Files Inspector (Multiple Files Support) -->
       <div
         v-if="currentVersion?.files?.length && currentVersion.files.length > 1"
         class="border-border/70 bg-card/70 flex flex-col gap-2.5 rounded-xl border p-4 shadow-xs"
@@ -909,11 +902,9 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Host-specific sections (e.g. local file info in the Model Manager) -->
       <slot name="sidebar-bottom" />
     </template>
 
-    <!-- Fullscreen Lightbox Modal for Hi-Res Media Preview & Zoom -->
     <ImageLightboxModal
       v-model:open="isLightboxOpen"
       :src="activeImage ? previewUrl(activeImage.url, 2048) : ''"

@@ -196,7 +196,7 @@ async function uploadSource(file?: File) {
     const uploaded = await ComfyApi.uploadImage(
       launcherStore.config.serverUrl,
       file,
-      `comfy-gui-${crypto.randomUUID()}${extension}`
+      `koharu-${crypto.randomUUID()}${extension}`
     );
     workflowStore.imageInput.imageName = uploaded.name;
     workflowStore.imageInput.maskName = '';
@@ -269,7 +269,7 @@ async function saveMask(blob: Blob) {
     const uploaded = await ComfyApi.uploadImage(
       launcherStore.config.serverUrl,
       blob,
-      `comfy-gui-mask-${crypto.randomUUID()}.png`
+      `koharu-mask-${crypto.randomUUID()}.png`
     );
     workflowStore.imageInput.maskName = uploaded.name;
     isMaskPainterOpen.value = false;

@@ -39,7 +39,6 @@ const { isPinned, togglePin } = useWikiPins();
 const groupQuery = ref('');
 const activeGroupKey = ref('');
 
-// Match context-aware icons for collection categories
 function getGroupIcon(title: string) {
   const lower = title.toLowerCase();
   if (lower.includes('body')) return User;
@@ -64,7 +63,6 @@ function getGroupIcon(title: string) {
   return Folder;
 }
 
-// Filter collections by user search query in left sidebar
 const filteredGroups = computed(() => {
   const q = groupQuery.value.trim().toLowerCase();
   if (!q) return props.groups;
@@ -78,7 +76,6 @@ const filteredGroups = computed(() => {
   });
 });
 
-// Group collections by category in the sidebar
 const groupedByCategory = computed(() => {
   const map = new Map<string, WikiGroup[]>();
   for (const group of filteredGroups.value) {
@@ -92,12 +89,10 @@ const groupedByCategory = computed(() => {
   }));
 });
 
-// Total count of all topics across all collections
 const totalTopicsAcrossAllGroups = computed(() =>
   props.groups.reduce((acc, g) => acc + g.links.length, 0)
 );
 
-// Determine active collection
 const activeGroup = computed(() => {
   if (filteredGroups.value.length === 0) return null;
   if (activeGroupKey.value) {
@@ -109,7 +104,6 @@ const activeGroup = computed(() => {
   return filteredGroups.value[0];
 });
 
-// Watch filtered groups and update active key if needed
 watch(
   filteredGroups,
   (groups) => {
@@ -131,7 +125,6 @@ function selectGroup(group: WikiGroup) {
   activeGroupKey.value = `${group.category}:${group.title}`;
 }
 
-// Group links into natural sections based on hierarchy
 const sections = computed<Section[]>(() => {
   if (!activeGroup.value) return [];
   const links = activeGroup.value.links;
@@ -171,7 +164,6 @@ const sections = computed<Section[]>(() => {
   return result;
 });
 
-// Topics across all collections matching the sidebar filter
 const searchResults = computed(() => {
   const q = groupQuery.value.trim().toLowerCase();
   if (!q) return [];
@@ -429,14 +421,12 @@ function handleCopyTag(tag: string, event?: Event) {
           </div>
         </div>
 
-        <!-- Default Organized Sections (Clean, Card-less Flow) -->
         <div v-else class="space-y-6">
           <div
             v-for="section in sections"
             :key="section.title"
             class="space-y-3"
           >
-            <!-- Section Header (Clean typography, no card box) -->
             <div
               class="border-border/40 flex items-center gap-2 border-b pb-1.5"
             >
@@ -450,7 +440,6 @@ function handleCopyTag(tag: string, event?: Event) {
               </span>
             </div>
 
-            <!-- Topic Chips (Clean, comfortable, scannable) -->
             <div class="flex flex-wrap gap-2">
               <div
                 v-for="link in section.links"

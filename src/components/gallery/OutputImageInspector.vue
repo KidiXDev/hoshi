@@ -269,9 +269,7 @@ async function copyWithFeedback(
     setTimeout(() => {
       copiedState.value = { ...copiedState.value, [type]: false };
     }, 2000);
-  } catch {
-    // clipboard failure fallback
-  }
+  } catch {}
 }
 function applyToWorkflowGenerator() {
   if (!metadata.value) return;
@@ -687,7 +685,6 @@ defineExpose({ open: openImage, openCompare });
           </div>
         </section>
 
-        <!-- Right Inspector Sidebar: Smooth Slide In / Slide Out Transition -->
         <Transition
           appear
           enter-active-class="transition-transform duration-300 ease-out"
@@ -702,7 +699,6 @@ defineExpose({ open: openImage, openCompare });
             class="border-border/80 bg-card/95 relative z-20 flex h-full w-105 max-w-[90vw] shrink-0 flex-col overflow-hidden border-l shadow-2xl backdrop-blur-xl"
             @click.stop
           >
-            <!-- Inspector Header (shrink-0) -->
             <div
               class="border-border/80 flex h-13 shrink-0 items-center justify-between border-b px-4"
             >
@@ -759,7 +755,6 @@ defineExpose({ open: openImage, openCompare });
               </div>
             </div>
 
-            <!-- Inspector Body (min-h-0 flex-1 with smooth scrolling) -->
             <ScrollArea class="min-h-0 flex-1 overflow-hidden">
               <div
                 v-if="metadataLoading"

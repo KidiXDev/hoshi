@@ -277,7 +277,6 @@ function handleDetailImageError() {
   const preview =
     detail.value?.previewUrl || detailActivePost.value?.previewUrl;
   const currentUrl = detailActiveImgUrl.value;
-  // If we haven't tried preview yet and preview URL is available & different
   if (
     !detailFallbackAttempted.value &&
     preview &&
@@ -401,15 +400,12 @@ defineExpose({ open: openDetail });
         <DialogCloseButton class="-my-1.5" />
       </DialogHeader>
 
-      <!-- Modal Body (2-Column Grid) -->
       <div
         class="grid min-h-0 flex-1 grid-cols-1 overflow-hidden md:grid-cols-2"
       >
-        <!-- Left: High-Res Image Viewport with Skeleton Preloader -->
         <div
           class="border-border/60 relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden border-r bg-black/60 p-4"
         >
-          <!-- Image Loading Skeleton (Shown while downloading full image) -->
           <div
             v-if="!detailImageLoaded && !detailImageError"
             class="bg-muted/10 absolute inset-0 flex flex-col items-center justify-center gap-3 p-6"
@@ -799,9 +795,6 @@ defineExpose({ open: openDetail });
     </DialogContent>
   </Dialog>
 
-  <!-- ---------------------------------------------------------------
-         Save Character to Library Modal
-    --------------------------------------------------------------- -->
   <Dialog
     :open="charModalOpen"
     @update:open="

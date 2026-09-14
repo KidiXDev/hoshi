@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::time::Duration;
 use tauri::AppHandle;
 
-const DANBOORU_WIKI_TTL_SECONDS: u64 = 7 * 24 * 3600; // 7 days
+const DANBOORU_WIKI_TTL_SECONDS: u64 = 7 * 24 * 3600;
 
 #[tauri::command]
 pub async fn danbooru_wiki_request(
@@ -13,7 +13,6 @@ pub async fn danbooru_wiki_request(
     post_ids: Option<Vec<u64>>,
     force_refresh: Option<bool>,
 ) -> Result<Value, String> {
-    // Construct unique cache key
     let cache_key = if let Some(ref t) = title {
         format!("wiki:{}", t.trim().to_lowercase())
     } else {
@@ -27,17 +26,15 @@ pub async fn danbooru_wiki_request(
 
     let bypass_cache = force_refresh.unwrap_or(false);
 
-    // 1. Check disk cache if not forcing refresh
     if !bypass_cache {
         if let Some(cached) = network_cache::read_cache(&app_handle, "danbooru_wiki", &cache_key) {
             return Ok(cached);
         }
     }
 
-    // 2. Fetch from network
     let fetched = tauri::async_runtime::spawn_blocking(move || {
         let client = Client::builder()
-            .user_agent("ComfyGUI/1.0 (Danbooru Tag Wiki)")
+            .user_agent("Koharu/1.0 (Danbooru Tag Wiki)")
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|error| error.to_string())?;
@@ -72,7 +69,6 @@ pub async fn danbooru_wiki_request(
     .await
     .map_err(|error| error.to_string())??;
 
-    // 3. Save to disk cache
     let _ = network_cache::write_cache(
         &app_handle,
         "danbooru_wiki",

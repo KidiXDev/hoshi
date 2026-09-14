@@ -77,9 +77,7 @@ export const useLauncherStore = defineStore('launcher', () => {
         }
         config.value = { ...DEFAULT_LAUNCHER_CONFIG, ...parsed };
       }
-    } catch {
-      // ignore JSON parse errors
-    }
+    } catch {}
   }
 
   async function saveConfig(newConfig?: Partial<LauncherConfig>) {

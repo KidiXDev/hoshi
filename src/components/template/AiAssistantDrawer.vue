@@ -319,7 +319,6 @@ function navigateToSettings() {
 
 <template>
   <div>
-    <!-- Backdrop Overlay (allows clicking to dismiss) -->
     <div
       v-if="aiStore.isDrawerOpen"
       class="absolute inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity duration-300"
@@ -349,7 +348,6 @@ function navigateToSettings() {
       <div
         class="border-border bg-card/60 flex flex-col border-b px-3.5 py-2.5 backdrop-blur-xs"
       >
-        <!-- Top row: App title, Session history button, New chat, Close -->
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-2">
             <img

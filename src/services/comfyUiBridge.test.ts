@@ -4,7 +4,7 @@ import { runInNewContext } from 'node:vm';
 
 // Exercise the shipped extension with only the ComfyUI/browser boundary stubbed.
 const source = readFileSync(
-  new URL('../../comfyui-comfygui-bridge/web/workspace.js', import.meta.url),
+  new URL('../../comfyui-koharu-bridge/web/workspace.js', import.meta.url),
   'utf8'
 ).replace(/^import .*from .*;\s*/u, '');
 const session = crypto.randomUUID();
@@ -23,7 +23,7 @@ runInNewContext(source, {
   URL,
   window: {
     parent,
-    location: { href: `http://127.0.0.1:8188/?comfyguiSession=${session}` },
+    location: { href: `http://127.0.0.1:8188/?koharuSession=${session}` },
     addEventListener(_type: string, listener: typeof handler) {
       handler = listener;
     }
@@ -48,7 +48,7 @@ const message = (data: Record<string, unknown> = {}, event = {}) =>
     source: parent,
     origin: 'http://localhost:1420',
     data: {
-      channel: 'comfygui-workspace',
+      channel: 'koharu-workspace',
       session,
       id: session,
       type: 'hello',
@@ -69,7 +69,7 @@ assert.equal(replies.at(-1)?.type, 'ready');
 const request = {
   type: 'import',
   id: crypto.randomUUID(),
-  filename: 'ComfyGUI-test.json',
+  filename: 'koharu-test.json',
   prompt: { node_a: { class_type: 'TestNode', inputs: { seed: 42 } } }
 };
 await message({ ...request, prompt: [] });

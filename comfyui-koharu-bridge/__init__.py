@@ -1,10 +1,3 @@
-"""
-ComfyGUI Bridge Custom Node for ComfyUI
-Provides high-performance REST API endpoints for the ComfyGUI desktop application.
-Exposes available checkpoints, unets, loras, vaes, clips, upscalers, samplers, and system stats.
-Includes fast WebP thumbnail caching and interoperability with yet_essential thumbnails.
-"""
-
 import asyncio
 import signal
 import sys
@@ -18,7 +11,7 @@ from aiohttp import web
 from server import PromptServer
 import folder_paths
 
-logger = logging.getLogger("ComfyGUI-Bridge")
+logger = logging.getLogger("Koharu-Bridge")
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
@@ -116,7 +109,6 @@ def find_model_preview(category: str, filename: str) -> str | None:
             dir_name = os.path.dirname(model_path)
             base_name = os.path.basename(base)
 
-            # Common preview extensions
             extensions = [
                 ".png",
                 ".jpg",
@@ -131,7 +123,6 @@ def find_model_preview(category: str, filename: str) -> str | None:
                 if os.path.exists(p) and os.path.isfile(p):
                     return p
 
-            # Check in .preview subfolder
             preview_dir = os.path.join(dir_name, ".preview")
             if os.path.exists(preview_dir):
                 for ext in extensions:
@@ -139,7 +130,6 @@ def find_model_preview(category: str, filename: str) -> str | None:
                     if os.path.exists(p) and os.path.isfile(p):
                         return p
 
-            # Check for any file in dir matching base_name.* with image ext
             try:
                 for item in os.listdir(dir_name):
                     if item.lower().startswith(base_name.lower()) and any(
@@ -169,21 +159,17 @@ def get_or_create_thumbnail(orig_path: str, size: int = 300) -> str:
         path_hash = hashlib.sha1(str(orig_p).encode("utf-8")).hexdigest()[:12]
         thumb_name = f"{orig_p.stem}_{path_hash}_{mtime_ns}_{size}.webp"
 
-        # 1. Reuse yet_essential cached thumbnail if present
         if YE_THUMB_DIR.exists():
             ye_thumb = YE_THUMB_DIR / thumb_name
             if ye_thumb.is_file():
                 return str(ye_thumb)
 
-        # 2. Check bridge thumbnail cache
         bridge_thumb = BRIDGE_THUMB_DIR / thumb_name
         if bridge_thumb.is_file():
             return str(bridge_thumb)
 
-        # 3. Generate optimized WebP thumbnail
         with Image.open(orig_p) as img:
             img = ImageOps.exif_transpose(img)
-            # Only resize if larger than target size
             if img.width > size or img.height > size:
                 img.thumbnail((size, size), Image.Resampling.LANCZOS)
 
@@ -200,14 +186,13 @@ def get_or_create_thumbnail(orig_path: str, size: int = 300) -> str:
         logger.warning(f"Failed to generate thumbnail for {orig_path}: {e}")
         return orig_path
 
-# Register HTTP API endpoints on ComfyUI's aiohttp server
 routes = PromptServer.instance.routes
 
-@routes.options("/comfygui/{tail:.*}")
+@routes.options("/koharu/{tail:.*}")
 async def options_handler(request):
     return web.Response(headers=CORS_HEADERS)
 
-@routes.get("/comfygui/model_preview")
+@routes.get("/koharu/model_preview")
 async def model_preview_handler(request):
     """
     Returns the thumbnail / preview image for a model.
@@ -227,7 +212,6 @@ async def model_preview_handler(request):
     if not preview_path or not os.path.exists(preview_path):
         return web.Response(status=404, text="Preview not found", headers=CORS_HEADERS)
 
-    # Determine resolution
     target_res = 300
     try:
         if res_param in ("0", "raw", "full", "none"):
@@ -256,15 +240,15 @@ async def model_preview_handler(request):
         )
     return web.Response(status=404, text="Preview not found", headers=CORS_HEADERS)
 
-@routes.get("/comfygui/health")
+@routes.get("/koharu/health")
 async def health_handler(request):
     return json_response({
         "status": "ok",
-        "bridge": "comfyui-comfygui-bridge",
+        "bridge": "comfyui-koharu-bridge",
         "version": "1.0.0"
     })
 
-@routes.get("/comfygui/models")
+@routes.get("/koharu/models")
 async def models_handler(request):
     """
     Returns all models organized by category.
@@ -292,7 +276,7 @@ async def models_handler(request):
         logger.error(f"Error fetching models: {e}")
         return json_response({"success": False, "error": str(e)}, status=500)
 
-@routes.post("/comfygui/refresh")
+@routes.post("/koharu/refresh")
 async def refresh_handler(request):
     """
     Refreshes model folders cache so newly added files show up immediately.
@@ -308,7 +292,7 @@ async def refresh_handler(request):
     except Exception as e:
         return json_response({"success": False, "error": str(e)}, status=500)
 
-@routes.post("/comfygui/shutdown")
+@routes.post("/koharu/shutdown")
 async def shutdown_handler(request):
     if request.remote not in (None, "127.0.0.1", "::1"):
         return json_response({"success": False, "error": "Local requests only"}, status=403)
@@ -316,7 +300,7 @@ async def shutdown_handler(request):
     asyncio.get_running_loop().call_later(0.25, signal.raise_signal, signal.SIGINT)
     return json_response({"success": True})
 
-@routes.get("/comfygui/system")
+@routes.get("/koharu/system")
 async def system_handler(request):
     """
     Returns hardware and PyTorch status.
@@ -337,4 +321,4 @@ NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 WEB_DIRECTORY = "./web"
 
-print("\033[32m[ComfyGUI Bridge]\033[0m Loaded successfully with thumbnail caching. API endpoints available at /comfygui/models, /comfygui/system")
+print("\033[32m[Koharu Bridge]\033[0m Loaded successfully with thumbnail caching. API endpoints available at /koharu/models, /koharu/system")

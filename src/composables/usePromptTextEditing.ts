@@ -328,7 +328,6 @@ export function usePromptTextEditing(
 
     input.setSelectionRange(match.start, match.end);
 
-    // Center match vertically
     const coords = getCaretCoordinates(input, match.start);
     const targetScrollTop =
       coords.top + input.scrollTop - input.clientHeight / 2;

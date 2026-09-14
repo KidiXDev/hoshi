@@ -6,9 +6,7 @@ import type {
   SaveLibraryItemPayload
 } from '../types/library';
 
-// ---------------------------------------------------------------------------
 // Internal raw shape returned by Rust (camelCase from serde rename_all)
-// ---------------------------------------------------------------------------
 
 interface RawItem<T = unknown> {
   id: string;
@@ -21,16 +19,14 @@ interface RawItem<T = unknown> {
   data: T;
 }
 
-// ---------------------------------------------------------------------------
 // Thumbnail URL builder
-// ---------------------------------------------------------------------------
 
 function thumbnailUrl(thumbnailId: string): string {
   const id = encodeURIComponent(thumbnailId);
   return typeof navigator !== 'undefined' &&
     navigator.userAgent.includes('Windows')
-    ? `http://comfygui-library.localhost/thumb/${id}`
-    : `comfygui-library://localhost/thumb/${id}`;
+    ? `http://koharu-library.localhost/thumb/${id}`
+    : `koharu-library://localhost/thumb/${id}`;
 }
 
 function hydrateThumbnail(entry: {
@@ -55,20 +51,14 @@ function isWebviewOnlyUrl(url: string): boolean {
   const parsedUrl = new URL(url);
   return (
     isBooruMediaUrl(url) ||
-    parsedUrl.hostname === 'comfygui-library.localhost' ||
-    parsedUrl.protocol === 'comfygui-library:'
+    parsedUrl.hostname === 'koharu-library.localhost' ||
+    parsedUrl.protocol === 'koharu-library:'
   );
 }
 
-// ---------------------------------------------------------------------------
 // LibraryService
-// ---------------------------------------------------------------------------
 
 export const LibraryService = {
-  /**
-   * List all items in a category, including their data payload.
-   * thumbnailUrl is resolved automatically.
-   */
   async listItems<T = unknown>(
     category: LibraryCategory
   ): Promise<LibraryListEntry<T>[]> {
@@ -87,9 +77,6 @@ export const LibraryService = {
     }
   },
 
-  /**
-   * Fetch a single item by id (includes full data payload).
-   */
   async getItem<T>(
     id: string,
     category: LibraryCategory
@@ -122,7 +109,6 @@ export const LibraryService = {
     return saved;
   },
 
-  /** Permanently delete a library item. */
   async deleteItem(id: string, category: LibraryCategory): Promise<void> {
     await invoke('library_delete_item', { id, category });
   },
@@ -183,7 +169,6 @@ export const LibraryService = {
     });
   },
 
-  /** Open the library folder (or a specific category sub-folder) in Explorer. */
   async openFolder(category?: LibraryCategory): Promise<void> {
     try {
       await invoke('library_open_folder', {
@@ -194,7 +179,6 @@ export const LibraryService = {
     }
   },
 
-  /** Build a comfygui-library:// thumbnail URL without fetching. */
   getThumbnailUrl(thumbnailId: string): string {
     return thumbnailUrl(thumbnailId);
   }

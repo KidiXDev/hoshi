@@ -117,17 +117,15 @@ async function retry() {
       </Button>
     </header>
 
-    <!-- Bridge update notice when connected but bridge check failed -->
     <p
       v-if="isOnline && loaded && !ready && !bridgeChecking"
       class="border-border text-muted-foreground border-b px-4 py-2 text-xs"
       role="status"
     >
-      Workflow import needs the latest ComfyGUI Bridge. Update the bridge and
+      Workflow import needs the latest Koharu Bridge. Update the bridge and
       restart ComfyUI, then reload. You can still use the editor below.
     </p>
 
-    <!-- API Offline State: Display Information, Never Attempt Auto-Connect While Down -->
     <div
       v-if="!isOnline"
       class="flex flex-1 flex-col items-center justify-center p-6 text-center"
@@ -274,7 +272,6 @@ async function retry() {
       </div>
     </div>
 
-    <!-- Error State (when API is online but iframe failed to load or handshake timed out) -->
     <div
       v-else-if="error"
       class="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-sm"

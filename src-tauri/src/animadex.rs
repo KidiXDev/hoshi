@@ -5,12 +5,12 @@ use std::time::Duration;
 use tauri::AppHandle;
 
 const BASE_URL: &str = "https://animadex.net";
-const ANIMADEX_FACET_TTL_SECONDS: u64 = 7 * 24 * 3600; // 7 days for static taxonomy
-const ANIMADEX_SEARCH_TTL_SECONDS: u64 = 2 * 24 * 3600; // 2 days for search & character lists
+const ANIMADEX_FACET_TTL_SECONDS: u64 = 7 * 24 * 3600;
+const ANIMADEX_SEARCH_TTL_SECONDS: u64 = 2 * 24 * 3600;
 
 fn client() -> Result<Client, String> {
     Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ComfyGUI/1.0")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Koharu/1.0")
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(30))
         .build()
@@ -25,14 +25,12 @@ pub async fn animadex_request(
 ) -> Result<Value, String> {
     let bypass_cache = force_refresh.unwrap_or(false);
 
-    // 1. Check disk cache
     if !bypass_cache {
         if let Some(cached) = network_cache::read_cache(&app_handle, "animadex", &url) {
             return Ok(cached);
         }
     }
 
-    // 2. Fetch from network
     let fetched_url = url.clone();
     let fetched = tauri::async_runtime::spawn_blocking(move || {
         let client = client()?;
@@ -60,7 +58,6 @@ pub async fn animadex_request(
     .await
     .map_err(|error| error.to_string())??;
 
-    // 3. Determine TTL & write to disk cache
     let ttl = if url.contains("/facets") || url.contains("/facet/") {
         ANIMADEX_FACET_TTL_SECONDS
     } else {

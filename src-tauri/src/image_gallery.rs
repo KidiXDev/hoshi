@@ -45,7 +45,7 @@ impl Default for GalleryFiles {
             index: Arc::default(),
             thumbnails_in_flight: Arc::new((Mutex::new(HashSet::new()), Condvar::new())),
             thumbnail_dir: Arc::new(RwLock::new(
-                std::env::temp_dir().join("comfy-gui-thumbnails"),
+                std::env::temp_dir().join("koharu-thumbnails"),
             )),
         }
     }

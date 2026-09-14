@@ -317,7 +317,6 @@ async function loadModels(append = false) {
   }
 }
 
-// Auto-fetch when user scrolls near the bottom (Infinite Scroll)
 function handleScroll(event: Event) {
   const target = event.target as HTMLElement;
   if (!target) return;
@@ -338,7 +337,6 @@ function handleScroll(event: Event) {
   }
 }
 
-// Watch virtual rows to trigger pre-fetch when approaching list end
 watch(virtualRows, (rows) => {
   if (
     !isViewActive.value ||
@@ -642,7 +640,6 @@ onUnmounted(() => {
         </Button>
       </div>
 
-      <!-- Skeleton Loading State (Responsive 6 Columns) -->
       <div
         v-if="loading"
         class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
@@ -709,7 +706,6 @@ onUnmounted(() => {
             class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:shadow-md"
             @click="openDetail(model)"
           >
-            <!-- Card Thumbnail Area (3:4 Portrait Ratio) -->
             <div
               class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
             >

@@ -1,3 +1,4 @@
+import { BRAND_NAME } from '@/lib/brand';
 import type {
   LoraItem,
   ModelSettings,
@@ -165,7 +166,7 @@ export function buildUltimateUpscalePrompt(
   });
   prompt['20'] = {
     inputs: {
-      filename_prefix: options.filenamePrefix || 'ComfyGUI_Upscale',
+      filename_prefix: options.filenamePrefix || `${BRAND_NAME}_Upscale`,
       images: result
     },
     class_type: 'SaveImage',

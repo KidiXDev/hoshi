@@ -85,7 +85,6 @@ pub fn list_preset_files(
         }
     }
 
-    // Sort newest modified first
     items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     Ok(items)
 }

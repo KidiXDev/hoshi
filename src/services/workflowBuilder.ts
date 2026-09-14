@@ -105,7 +105,6 @@ export function buildWorkflowPrompt(
   let lastModelNodeId = '29';
 
   activeLoras.forEach((lora, index) => {
-    // 101, 102, ...
     const loraNodeId = `10${index + 1}`;
     prompt[loraNodeId] = {
       inputs: {

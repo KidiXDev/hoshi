@@ -68,6 +68,7 @@ import { loadAppData, saveAppData } from '../services/appStorage';
 import { useComfyStore } from '../stores/comfyStore';
 import { useLauncherStore } from '../stores/launcherStore';
 import type { ComfyHistoryEntry } from '../types/comfy';
+import { BRAND_NAME } from '@/lib/brand';
 
 const { copySuccess, copyImageToClipboard } = useImageClipboard();
 
@@ -109,7 +110,8 @@ const maxScale = computed(() =>
 );
 const upscaleModel = ref('');
 const upscaleBy = ref(2);
-const filenamePrefix = ref('ComfyGUI_Upscale');
+const DEFAULT_FILENAME_PREFIX = `${BRAND_NAME}_Upscale`;
+const filenamePrefix = ref(DEFAULT_FILENAME_PREFIX);
 const isSubmitting = ref(false);
 
 // Viewport and Inspector controls
@@ -153,7 +155,6 @@ function schedulePreferencesSave() {
   savePreferencesTimer = setTimeout(persistPreferences, 300);
 }
 
-// Auto-select first available upscale model
 watch(
   () => comfyStore.availableUpscaleModels,
   (models) => {
@@ -200,7 +201,6 @@ const upscaleByModel = computed({
   }
 });
 
-// Projected resolution for the selected image
 const targetDimensions = computed(() => {
   const item = activeItem.value;
   if (!item?.width || !item?.height) return null;
@@ -260,7 +260,6 @@ async function monitorResult(
       item.status = 'done';
       item.durationMs = Date.now() - startTime;
 
-      // Extract result dimensions
       void extractDimensions(item.resultUrl).then(({ width, height }) => {
         if (width > 0 && height > 0) {
           item.resultWidth = width;
@@ -282,7 +281,7 @@ async function monitorResult(
 }
 
 function buildPrompt(imageName: string, seed: number) {
-  const prefix = filenamePrefix.value.trim() || 'ComfyGUI_Upscale';
+  const prefix = filenamePrefix.value.trim() || DEFAULT_FILENAME_PREFIX;
   if (isUltimate.value) {
     const state = structuredClone(ultimateStore.state);
     return buildUltimateUpscalePrompt({
@@ -340,12 +339,12 @@ async function queueSingleItem(item: ImageBatchItem) {
     const uploaded = await ComfyApi.uploadImage(
       launcherStore.config.serverUrl,
       item.file,
-      `comfy-gui-upscale-${item.id}${extension}`
+      `koharu-upscale-${item.id}${extension}`
     );
     const queued = await ComfyApi.queuePrompt(
       launcherStore.config.serverUrl,
       buildPrompt(uploaded.name, seed),
-      `comfy-gui-upscale-${crypto.randomUUID()}`
+      `koharu-upscale-${crypto.randomUUID()}`
     );
     item.status = 'queued';
     void monitorResult(item, queued.prompt_id, startTime);
@@ -369,8 +368,6 @@ async function queueBatch() {
   isSubmitting.value = false;
 }
 
-// Clipboard Copy
-// Output Folder Open
 async function openOutputFolder() {
   const workingDir = launcherStore.config.workingDir.replace(/[\\/]+$/u, '');
   if (!workingDir) return;
@@ -661,7 +658,7 @@ onUnmounted(() => {
               >
               <Input
                 v-model="filenamePrefix"
-                placeholder="ComfyGUI_Upscale"
+                :placeholder="DEFAULT_FILENAME_PREFIX"
                 class="h-8 font-mono text-xs"
                 :disabled="isSubmitting"
               />
@@ -732,7 +729,6 @@ onUnmounted(() => {
         <div
           class="border-border bg-card/90 flex h-10 shrink-0 items-center justify-between border-b px-3 backdrop-blur-xs"
         >
-          <!-- Left: Active Item Details & Comparison Mode Toggles -->
           <div class="flex items-center gap-2">
             <div v-if="activeItem" class="flex items-center gap-2">
               <span class="max-w-44 truncate text-xs font-semibold">
@@ -749,14 +745,12 @@ onUnmounted(() => {
 
             <div v-if="activeItem?.resultUrl" class="bg-border h-3.5 w-px" />
 
-            <!-- View Mode Buttons (Only active when result is available) -->
             <ImageComparisonModes
               v-if="activeItem?.resultUrl"
               v-model="viewMode"
             />
           </div>
 
-          <!-- Right: Viewport Action Buttons (Zoom, Copy, Download, Lightbox) -->
           <div class="flex items-center gap-1">
             <template v-if="activeItem">
               <Tooltip v-if="activeItem.resultUrl">

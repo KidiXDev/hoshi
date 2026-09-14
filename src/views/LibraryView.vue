@@ -57,9 +57,7 @@ const workflowStore = useWorkflowStore();
 const aiStore = useAiStore();
 const { confirm } = useConfirmDialog();
 
-// ---------------------------------------------------------------------------
 // Category tab state
-// ---------------------------------------------------------------------------
 
 type CategoryTab = 'prompts' | 'loras' | 'characters';
 
@@ -74,7 +72,6 @@ const activeTabMeta = computed(
   () => categoryTabs.find((t) => t.id === activeTab.value) ?? categoryTabs[0]
 );
 
-// Sync tab from URL query
 onMounted(() => {
   const tabParam = route.query.tab as string;
   if (tabParam && categoryTabs.some((t) => t.id === tabParam)) {
@@ -88,9 +85,7 @@ watch(activeTab, (tab) => {
   void router.replace({ query: { ...route.query, tab } });
 });
 
-// ---------------------------------------------------------------------------
 // Data loading
-// ---------------------------------------------------------------------------
 
 async function loadAll() {
   await Promise.all([
@@ -107,9 +102,7 @@ async function refreshCurrentTab() {
 
 const failedThumbnails = ref<Set<string>>(new Set());
 
-// ---------------------------------------------------------------------------
 // Search / filter / sort
-// ---------------------------------------------------------------------------
 
 type SortMode = 'updated' | 'created' | 'name';
 const sortOptions: Array<{ value: SortMode; label: string }> = [
@@ -176,9 +169,7 @@ function clearFilters() {
   seriesFilter.value = 'all';
 }
 
-// ---------------------------------------------------------------------------
 // Card helpers
-// ---------------------------------------------------------------------------
 
 const MAX_TAG_CHIPS = 6;
 
@@ -196,9 +187,7 @@ function promptScopeLabel(entry: LibraryListEntry): string {
   return type === 'positive' ? '+ Pos' : type === 'negative' ? '− Neg' : 'Both';
 }
 
-// ---------------------------------------------------------------------------
 // Apply actions
-// ---------------------------------------------------------------------------
 
 function applyPrompt(
   entry: LibraryListEntry,
@@ -275,9 +264,7 @@ async function duplicateEntry(entry: LibraryListEntry) {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Delete Confirmation
-// ---------------------------------------------------------------------------
 
 async function requestDelete(entry: LibraryListEntry) {
   const confirmed = await confirm({
@@ -294,9 +281,7 @@ async function requestDelete(entry: LibraryListEntry) {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Copy feedback
-// ---------------------------------------------------------------------------
 const copiedEntryId = ref<string | null>(null);
 </script>
 
@@ -886,9 +871,6 @@ const copiedEntryId = ref<string | null>(null);
     </ScrollArea>
   </PageLayout>
 
-  <!-- ---------------------------------------------------------------
-       Item Editor Dialog
-  --------------------------------------------------------------- -->
   <LibraryEntryEditor
     ref="entryEditor"
     :category="activeTab"

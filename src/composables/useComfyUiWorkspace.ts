@@ -24,7 +24,7 @@ export function createWorkflowSnapshot(
   return {
     id,
     serverUrl: serverUrl.trim().replace(/\/+$/u, ''),
-    filename: `ComfyGUI-${new Date().toISOString().replaceAll(/[:.]/gu, '-')}-${id}.json`,
+    filename: `koharu-${new Date().toISOString().replaceAll(/[:.]/gu, '-')}-${id}.json`,
     prompt: buildWorkflowPrompt(state)
   };
 }
@@ -97,7 +97,7 @@ export function useComfyUiFrame(
     internalState.sentId = request.id;
     frame.value?.contentWindow?.postMessage(
       {
-        channel: 'comfygui-workspace',
+        channel: 'koharu-workspace',
         session: session.value,
         type: 'import',
         id: request.id,
@@ -120,7 +120,7 @@ export function useComfyUiFrame(
       event.origin !== origin.value ||
       !data ||
       typeof data !== 'object' ||
-      data.channel !== 'comfygui-workspace' ||
+      data.channel !== 'koharu-workspace' ||
       data.session !== session.value
     )
       return;
@@ -146,7 +146,7 @@ export function useComfyUiFrame(
   function hello() {
     frame.value?.contentWindow?.postMessage(
       {
-        channel: 'comfygui-workspace',
+        channel: 'koharu-workspace',
         session: session.value,
         type: 'hello',
         id: session.value
@@ -198,7 +198,7 @@ export function useComfyUiFrame(
           'Cannot connect to ComfyUI. Start the server, then retry.'
         );
       if (current !== internalState.generation) return;
-      url.searchParams.set('comfyguiSession', session.value);
+      url.searchParams.set('koharuSession', session.value);
       src.value = url.href;
       internalState.handshakeTimer = setInterval(hello, 500);
       internalState.timeout = setTimeout(() => {
@@ -209,7 +209,7 @@ export function useComfyUiFrame(
           error.value =
             'The ComfyUI page did not load. Check the server and retry.';
         finishImport(
-          'Workflow import is unavailable. Update the ComfyGUI Bridge and restart ComfyUI, then retry.'
+          'Workflow import is unavailable. Update the Koharu Bridge and restart ComfyUI, then retry.'
         );
       }, 30000);
     } catch (cause) {
@@ -240,7 +240,7 @@ export function useComfyUiFrame(
     else if (!loading.value && !bridgeChecking.value)
       finishImport(
         error.value ||
-          'Update the ComfyGUI Bridge and restart ComfyUI, then reload this editor to import workflows.'
+          'Update the Koharu Bridge and restart ComfyUI, then reload this editor to import workflows.'
       );
   });
   onBeforeUnmount(() => {

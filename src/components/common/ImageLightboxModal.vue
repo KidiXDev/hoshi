@@ -47,9 +47,7 @@ async function copyText(key: string, text?: string) {
     await navigator.clipboard.writeText(text);
     copied.value = key;
     setTimeout(() => (copied.value = null), 2000);
-  } catch {
-    // clipboard failure fallback
-  }
+  } catch {}
 }
 const promptTags = computed(() =>
   (props.workflowState?.positivePrompt ?? '')
@@ -213,7 +211,6 @@ onUnmounted(() => {
 
             <!-- Right Action Controls -->
             <div class="flex items-center gap-2">
-              <!-- Custom Slot Actions (Reuse Settings, Copy, Download, etc.) -->
               <slot name="actions" />
 
               <Button
@@ -302,7 +299,6 @@ onUnmounted(() => {
             @dblclick.stop="zoom === 1 ? (zoom = 2) : resetPanAndZoom()"
           />
 
-          <!-- Optional Footer Slot (e.g. metadata overlay) -->
           <div
             v-if="$slots.footer"
             class="absolute right-4 bottom-4 left-4 z-20 flex justify-center"
@@ -312,7 +308,6 @@ onUnmounted(() => {
           </div>
         </section>
 
-        <!-- Generation Data Inspector (hidden by default) -->
         <Transition
           enter-active-class="transition-transform duration-300 ease-out"
           enter-from-class="translate-x-full"

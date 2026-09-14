@@ -183,9 +183,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
       if (saved && Array.isArray(saved)) {
         customPresets.value = saved;
       }
-    } catch {
-      // ignore parse errors
-    }
+    } catch {}
   }
 
   async function savePresets() {
@@ -287,7 +285,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
     void saveSession();
   }, 400);
 
-  // Auto-save whenever generator parameters are adjusted by the user
   watch(
     [
       positivePrompt,

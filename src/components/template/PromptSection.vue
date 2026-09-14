@@ -290,7 +290,6 @@ const selectedQuickGroup = ref(0);
 
 function applyNegativePreset(presetPrompt: string) {
   if (workflowStore.negativePrompt.trim()) {
-    // Append and format
     workflowStore.negativePrompt = formatAndCleanPrompt(
       `${workflowStore.negativePrompt}, ${presetPrompt}`
     );
@@ -451,7 +450,6 @@ function previewDynamicRoll(field: PromptField) {
         </div>
       </div>
 
-      <!-- Right: Match status + Prev/Next navigators + Case Sensitive + Close -->
       <div class="flex shrink-0 items-center gap-1">
         <span
           class="text-muted-foreground min-w-14 px-1 text-center font-mono text-xs"
@@ -701,7 +699,6 @@ function previewDynamicRoll(field: PromptField) {
         </div>
       </template>
 
-      <!-- Positive Content: Either Textarea or Interactive Chips -->
       <div v-if="!isPositiveChipsMode" class="relative">
         <ContextMenu>
           <ContextMenuTrigger as-child>

@@ -179,7 +179,7 @@ export function showModelInFolder(path: string) {
 }
 
 /**
- * URL served by the `comfygui-model` scheme (thumbnail or full preview). The
+ * URL served by the `koharu-model` scheme (thumbnail or full preview). The
  * preview's mtime is appended so a replaced preview is not served from the
  * browser cache under the same URL.
  */
@@ -189,8 +189,8 @@ export function modelPreviewUrl(
 ): string {
   const kind = thumbnail ? 'thumb' : 'full';
   const base = navigator.userAgent.includes('Windows')
-    ? `http://comfygui-model.localhost/${kind}/${model.id}`
-    : `comfygui-model://localhost/${kind}/${model.id}`;
+    ? `http://koharu-model.localhost/${kind}/${model.id}`
+    : `koharu-model://localhost/${kind}/${model.id}`;
   return model.previewModifiedMs
     ? `${base}?v=${model.previewModifiedMs}`
     : base;
@@ -220,7 +220,6 @@ export function onModelSyncProgress(
   );
 }
 
-/** Human-readable label for a ComfyUI model category. */
 export const MODEL_CATEGORY_LABELS: Record<string, string> = {
   checkpoints: 'Checkpoints',
   diffusion_models: 'Diffusion Models',

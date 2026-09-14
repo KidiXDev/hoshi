@@ -2,7 +2,7 @@
 //! assistant: scans ComfyUI model folders (including `extra_model_paths.yaml`),
 //! reads `.civitai.info` sidecars and safetensors headers, hashes files on
 //! demand, syncs metadata/previews from Civitai and serves previews through the
-//! `comfygui-model://` URI scheme.
+//! `koharu-model://` URI scheme.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1821,7 +1821,7 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("comfygui-mm-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("koharu-mm-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -2166,10 +2166,10 @@ mod tests {
         .collect();
         let values = multi_value_argument(&args, "--extra-model-paths-config", &work);
         assert_eq!(values.len(), 3);
-        std::env::set_var("COMFYGUI_TEST_VAR", "expanded");
-        assert_eq!(expand_path("$COMFYGUI_TEST_VAR/x"), "expanded/x");
-        assert_eq!(expand_path("${COMFYGUI_TEST_VAR}/x"), "expanded/x");
-        assert_eq!(expand_path("%COMFYGUI_TEST_VAR%/x"), "expanded/x");
+        std::env::set_var("KOHARU_TEST_VAR", "expanded");
+        assert_eq!(expand_path("$KOHARU_TEST_VAR/x"), "expanded/x");
+        assert_eq!(expand_path("${KOHARU_TEST_VAR}/x"), "expanded/x");
+        assert_eq!(expand_path("%KOHARU_TEST_VAR%/x"), "expanded/x");
         assert_eq!(expand_path("$MISSING_VAR_XYZ/x"), "$MISSING_VAR_XYZ/x");
         assert_eq!(
             normalize_path(Path::new("a/b/../c/./d")),

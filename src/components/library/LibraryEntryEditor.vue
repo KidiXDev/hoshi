@@ -328,7 +328,6 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
         </div>
 
         <div class="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
-          <!-- Left (2 cols): Core form fields & category-specific inputs -->
           <div class="flex flex-col gap-4 md:col-span-2">
             <!-- Common: Name -->
             <div class="flex flex-col gap-1.5">

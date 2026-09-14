@@ -398,7 +398,7 @@ fn providers() -> [&'static dyn Provider; 7] {
 
 pub(crate) fn client(timeout: u64) -> Result<Client, String> {
     Client::builder()
-        .user_agent("ComfyGUI/1.0 (Native Booru Gallery)")
+        .user_agent("Koharu/1.0 (Native Booru Gallery)")
         .connect_timeout(Duration::from_secs(timeout.min(30)))
         .timeout(Duration::from_secs(timeout))
         .build()
@@ -1157,8 +1157,10 @@ pub async fn booru_solve_cloudflare(
         }
     });
 
-    let banner_script = r#"
-        window.addEventListener('DOMContentLoaded', () => {
+    let app_name = app_handle.package_info().name.clone();
+    let banner_script = format!(
+        r#"
+        window.addEventListener('DOMContentLoaded', () => {{
             const banner = document.createElement('div');
             banner.style.position = 'fixed';
             banner.style.top = '0';
@@ -1174,21 +1176,22 @@ pub async fn booru_solve_cloudflare(
             banner.style.textAlign = 'center';
             banner.style.borderBottom = '1px solid #1e293b';
             banner.style.boxShadow = '0 2px 10px rgba(0,0,0,0.5)';
-            banner.innerText = '🛡️ ComfyGUI: Please complete Cloudflare verification. This window will close automatically once verified.';
+            banner.innerText = '🛡️ {app_name}: Please complete Cloudflare verification. This window will close automatically once verified.';
             document.body.prepend(banner);
-        });
-    "#;
+        }});
+    "#
+    );
 
     let solver_window = tauri::WebviewWindowBuilder::new(
         &app_handle,
         "booru-cf-solver",
         tauri::WebviewUrl::External(parsed_url),
     )
-    .title("Konachan Cloudflare Verification - ComfyGUI")
+    .title(format!("Konachan Cloudflare Verification - {app_name}"))
     .inner_size(620.0, 720.0)
     .incognito(true)
     .user_agent(CLOUDFLARE_SOLVER_UA)
-    .initialization_script(banner_script)
+    .initialization_script(&banner_script)
     .build()
     .map_err(|e| format!("Failed to create verification window: {e}"))?;
 
@@ -1506,7 +1509,7 @@ pub fn handle_media_uri(app: &AppHandle, uri: &str) -> Result<(Vec<u8>, String),
 fn download_media(app: &AppHandle, source: &str, url: &str) -> Result<(Vec<u8>, String), String> {
     let settings = settings(app)?;
     let client = Client::builder()
-        .user_agent("ComfyGUI/1.0 (Native Booru Gallery)")
+        .user_agent("Koharu/1.0 (Native Booru Gallery)")
         .connect_timeout(Duration::from_secs(settings.timeout.min(30)))
         .timeout(Duration::from_secs(settings.timeout))
         .redirect(reqwest::redirect::Policy::none())

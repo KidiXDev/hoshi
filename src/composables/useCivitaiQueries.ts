@@ -61,7 +61,6 @@ export function useCivitaiModelDetailQuery(
         : true;
       return Boolean(currentId) && isCustomEnabled;
     }),
-    // 15 minutes
     staleTime: 1000 * 60 * 15
   });
 }
@@ -70,7 +69,6 @@ export function useCivitaiBaseModelsQuery() {
   return useQuery({
     queryKey: queryKeys.civitai.baseModels(),
     queryFn: () => fetchCivitaiBaseModels(),
-    // 1 hour
     staleTime: 1000 * 60 * 60
   });
 }

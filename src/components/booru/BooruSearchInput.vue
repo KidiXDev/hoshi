@@ -170,7 +170,6 @@ async function searchAutocompleteSuggestions(
   const results: BooruSuggestionItem[] = [];
   const seenLabels = new Set<string>();
 
-  // 1. Try remote ComfyUI yet_essential tag autocomplete endpoint if connected
   if (comfyStore.isConnected) {
     try {
       const remoteItems = await ComfyApi.searchTags(
@@ -181,7 +180,6 @@ async function searchAutocompleteSuggestions(
         signal
       );
       for (const item of remoteItems) {
-        // Enforce underscores for booru search tags regardless of settings
         const formattedTag = (item.insert_text || item.label)
           .trim()
           .replaceAll(' ', '_');
@@ -203,16 +201,12 @@ async function searchAutocompleteSuggestions(
           });
         }
       }
-    } catch {
-      // ignore aborts
-    }
+    } catch {}
   }
 
-  // 2. Supplement from local Prompt Suggestion Store
   const localCats = promptSuggestionStore.categories;
   for (const cat of localCats) {
     for (const tag of cat.tags || []) {
-      // Enforce underscores for booru search tags regardless of settings
       const tagWithUnderscores = tag.trim().replaceAll(' ', '_');
       const tagNormalized = tagWithUnderscores.toLowerCase();
       if (seenLabels.has(tagNormalized)) continue;
@@ -234,7 +228,6 @@ async function searchAutocompleteSuggestions(
     }
   }
 
-  // Ranking: exact prefix match first, then by post count
   results.sort((a, b) => {
     const aKey = a.insertText.toLowerCase();
     const bKey = b.insertText.toLowerCase();
@@ -422,7 +415,6 @@ onUnmounted(closeAutocomplete);
       role="listbox"
       class="border-border/80 bg-popover/95 absolute top-full left-0 z-50 mt-1.5 max-h-64 w-full overflow-hidden rounded-xl border shadow-xl backdrop-blur-md"
     >
-      <!-- Header bar with search hint and suggestion count -->
       <div
         class="border-border/60 bg-muted/40 flex items-center justify-between border-b px-3 py-1.5 text-xs select-none"
       >

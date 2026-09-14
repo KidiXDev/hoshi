@@ -120,7 +120,6 @@ const activeSource = computed(() =>
 );
 const visibleWarnings = computed(() => formatBooruWarnings(warnings.value));
 
-// Dynamic responsive columns based on viewport container width
 const columns = computed(() => {
   if (gridWidth.value < 540) return 2;
   if (gridWidth.value < 840) return 3;
@@ -138,7 +137,6 @@ const cardImageHeight = computed(() => cardWidth.value * CARD_ASPECT_RATIO);
 const rowHeight = computed(() => cardImageHeight.value + GRID_GAP);
 const totalRows = computed(() => Math.ceil(posts.value.length / columns.value));
 
-// TanStack Virtualizer for hardware-accelerated smooth scrolling
 const rowVirtualizer = useVirtualizer(
   computed(() => ({
     count: totalRows.value,
@@ -334,7 +332,6 @@ async function runSearch(reset = false) {
   }
 }
 
-// Auto-fetch when user scrolls near the bottom (Infinite Scroll)
 function handleScroll(e: Event) {
   const target = e.target as HTMLElement;
   if (!target) return;
@@ -355,7 +352,6 @@ function handleScroll(e: Event) {
   }
 }
 
-// Watch virtual rows to trigger pre-fetch when approaching list end
 watch(virtualRows, (rows) => {
   if (
     !isViewActive.value ||
@@ -459,7 +455,6 @@ onUnmounted(deactivateView);
             </SelectContent>
           </Select>
 
-          <!-- Search Input with Enhanced Autocomplete Dropdown -->
           <BooruSearchInput v-model="query" :disabled="!sources.length" />
           <!-- Sort Selector -->
           <Select v-model="selectedSort" :disabled="!activeSource || isLoading">
@@ -532,7 +527,6 @@ onUnmounted(deactivateView);
       </div>
     </template>
 
-    <!-- Main Content Area (Virtualized Scroll Container) -->
     <main
       ref="scrollViewport"
       class="flex-1 overflow-y-auto p-5"
@@ -678,7 +672,6 @@ onUnmounted(deactivateView);
                   @keydown.enter="openDetail(post)"
                   @keydown.space.prevent="openDetail(post)"
                 >
-                  <!-- Skeleton placeholder displayed until image is fully loaded -->
                   <div
                     v-if="!isImageLoaded(`${post.source}:${post.postId}`)"
                     class="bg-muted/50 absolute inset-0 flex animate-pulse items-center justify-center"
@@ -769,7 +762,6 @@ onUnmounted(deactivateView);
           </p>
         </div>
 
-        <!-- Bottom Infinite Scroll Loading Indicator & End Notice -->
         <div class="flex flex-col items-center justify-center gap-3 py-6">
           <!-- Cloudflare Challenge Banner during pagination -->
           <div

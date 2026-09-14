@@ -16,7 +16,7 @@ mock.module('../src/services/appStorage', () => ({
       filename: 'face.png',
       subfolder: '',
       type: 'output',
-      imageUrl: 'http://comfygui-image.localhost/full/history-old'
+      imageUrl: 'http://koharu-image.localhost/full/history-old'
     }
   ],
   saveAppData: async (_, items) => {

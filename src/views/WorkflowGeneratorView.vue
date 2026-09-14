@@ -143,7 +143,6 @@ async function openOutputFolder() {
       </div>
     </header>
 
-    <!-- Main Studio Workspace with Resizable Splitter Panels -->
     <ResizablePanelGroup
       id="workflow-generator-group"
       :key="historyStore.isPanelOpen ? 'with-history' : 'without-history'"
@@ -151,7 +150,6 @@ async function openOutputFolder() {
       direction="horizontal"
       class="min-h-0 w-full flex-1 gap-2 overflow-hidden p-3"
     >
-      <!-- Left Column: Generation Parameters Panel (scrollable) -->
       <ResizablePanel
         id="workflow-params-panel"
         :order="1"
@@ -261,7 +259,6 @@ async function openOutputFolder() {
         class="hover:bg-primary/50 transition-colors"
       />
 
-      <!-- Right Column: Generation History Panel (Images Only) -->
       <ResizablePanel
         v-if="historyStore.isPanelOpen"
         id="workflow-history-panel"

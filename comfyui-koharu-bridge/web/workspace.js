@@ -1,9 +1,7 @@
 import { app } from '../../scripts/app.js';
 
-const channel = 'comfygui-workspace';
-const session = new URL(window.location.href).searchParams.get(
-  'comfyguiSession'
-);
+const channel = 'koharu-workspace';
+const session = new URL(window.location.href).searchParams.get('koharuSession');
 const parentOrigins = new Set([
   'http://localhost:1420',
   'http://127.0.0.1:1420',
@@ -17,7 +15,7 @@ const isRecord = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
 app.registerExtension({
-  name: 'ComfyGUI.Workspace',
+  name: 'Koharu.Workspace',
   setup() {
     if (window.parent === window || !isId(session)) return;
     const requests = new Map();
@@ -66,7 +64,7 @@ app.registerExtension({
       }
       if (
         typeof data.filename !== 'string' ||
-        !/^ComfyGUI-[\w.-]+\.json$/u.test(data.filename) ||
+        !/^koharu-[\w.-]+\.json$/u.test(data.filename) ||
         !isRecord(data.prompt) ||
         Object.keys(data.prompt).length === 0 ||
         !Object.values(data.prompt).every(

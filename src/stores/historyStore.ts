@@ -18,9 +18,7 @@ function getInitialPanelOpen(): boolean {
     if (saved !== null) {
       return saved === 'true';
     }
-  } catch {
-    // fallback to default
-  }
+  } catch {}
   return true;
 }
 
@@ -64,9 +62,7 @@ export const useHistoryStore = defineStore('history', () => {
   watch(isPanelOpen, (val) => {
     try {
       localStorage.setItem(PANEL_OPEN_STORAGE_KEY, String(val));
-    } catch {
-      // ignore storage error
-    }
+    } catch {}
   });
 
   async function loadHistory() {
@@ -75,14 +71,12 @@ export const useHistoryStore = defineStore('history', () => {
       if (saved) {
         // Local URLs must be registered again before this process can serve them.
         for (const item of saved) {
-          if (item.imageUrl.includes('comfygui-image')) item.imageUrl = '';
+          if (item.imageUrl.includes('koharu-image')) item.imageUrl = '';
         }
         items.value = saved;
         await resolveLocalImages();
       }
-    } catch {
-      // ignore parse error
-    }
+    } catch {}
   }
 
   async function saveHistory() {

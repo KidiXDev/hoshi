@@ -303,7 +303,6 @@ function formatModelName(name?: string): string {
           </Button>
         </div>
 
-        <!-- SINGLE COLUMN LIST WITH PROMINENT PORTRAIT HIGHLIGHT IMAGES -->
         <div v-else class="flex flex-col gap-3.5">
           <div
             v-for="item in filteredItems"
@@ -397,7 +396,6 @@ function formatModelName(name?: string): string {
               </ContextMenuContent>
             </ContextMenu>
 
-            <!-- Content Area (Prompt + Meta + Parameter Matrix + Action Bar) -->
             <div class="flex min-w-0 flex-1 flex-col justify-between gap-2.5">
               <!-- Top Row: Timestamp, Model Name -->
               <div class="flex items-center justify-between gap-2">

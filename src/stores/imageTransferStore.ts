@@ -8,9 +8,6 @@ export interface PendingTransferImage {
   file?: File;
 }
 
-/**
- * Helper to convert any image URL (local file URL, blob URL, or asset URL) into a File object.
- */
 async function urlToFile(url: string, filename: string): Promise<File> {
   try {
     const res = await fetch(url);

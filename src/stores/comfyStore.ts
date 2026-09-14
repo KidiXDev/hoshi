@@ -142,7 +142,7 @@ export const useComfyStore = defineStore('comfy', () => {
   const launcherStore = useLauncherStore();
   const historyStore = useHistoryStore();
 
-  const clientId = ref(`comfy-gui-${Math.random().toString(36).slice(2, 10)}`);
+  const clientId = ref(`koharu-${Math.random().toString(36).slice(2, 10)}`);
   const isConnected = ref(false);
   const isYetEssentialAvailable = ref(false);
   const isChecking = ref(false);

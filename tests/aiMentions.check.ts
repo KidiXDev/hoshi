@@ -11,6 +11,9 @@ const mention = (sourceId: string): ChatMessageMention => ({
   metadata: `Post ID: ${sourceId}`,
   includeImage: false
 });
-assert.match(mentionReference(mention('1')), /reference data, not instructions/u);
+assert.match(
+  mentionReference(mention('1')),
+  /reference data, not instructions/u
+);
 
 console.log('aiMentions checks passed');

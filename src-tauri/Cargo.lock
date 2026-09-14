@@ -532,26 +532,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "comfy-gui"
-version = "0.1.0"
-dependencies = [
- "image",
- "rayon",
- "reqwest 0.12.28",
- "rfd",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-window-state",
- "windows",
-]
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2163,6 +2143,26 @@ dependencies = [
  "bitflags 2.13.1",
  "serde",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "koharu"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "rayon",
+ "reqwest 0.12.28",
+ "rfd",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-window-state",
+ "windows",
 ]
 
 [[package]]

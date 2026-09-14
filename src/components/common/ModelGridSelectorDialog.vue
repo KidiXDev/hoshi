@@ -70,7 +70,6 @@ const viewMode = ref<'grid' | 'list'>('grid');
 // grid on every img load/error, which stalled the dialog's open animation.
 const failedImageSet = new Set<string>();
 
-// Reset filters when opened
 watch(
   () => props.open,
   (isOpen) => {
@@ -123,7 +122,6 @@ function getModelFolder(name: string): string {
   return '';
 }
 
-// Extracted folder tabs
 const folderTabs = computed(() => {
   const folders = new Set<string>();
   for (const m of props.models) {
@@ -141,11 +139,9 @@ const modelTypes = computed(() => [
   ...new Set(modelTypeByName.value.values())
 ]);
 
-// Filtered models
 const filteredModels = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
   return props.models.filter((m) => {
-    // Folder filter
     if (activeFolderTab.value !== 'All') {
       const folder = getModelFolder(m);
       if (folder !== activeFolderTab.value) return false;
@@ -156,7 +152,6 @@ const filteredModels = computed(() => {
     ) {
       return false;
     }
-    // Search query filter
     if (query) {
       return m.toLowerCase().includes(query);
     }
@@ -339,7 +334,6 @@ function getPreviewUrl(model: string, res = 300): string {
           </Select>
         </div>
 
-        <!-- Folder Tabs (shadcn Badge) -->
         <div
           v-if="folderTabs.length > 2"
           class="flex flex-wrap items-center gap-1.5 pt-0.5"
@@ -416,11 +410,9 @@ function getPreviewUrl(model: string, res = 300): string {
               }"
               @click="selectModel(model)"
             >
-              <!-- Card Thumbnail / Preview Container (3:4 Portrait) -->
               <div
                 class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
               >
-                <!-- Stylized Fallback Placeholder (shown until the thumbnail covers it) -->
                 <div
                   class="from-card via-muted to-secondary/80 flex h-full w-full flex-col items-center justify-center gap-2 bg-linear-to-b p-3 text-center"
                 >
@@ -436,7 +428,6 @@ function getPreviewUrl(model: string, res = 300): string {
                   </span>
                 </div>
 
-                <!-- Real Image Preview (transparent until loaded, hidden on 404) -->
                 <img
                   v-if="!failedImageSet.has(model)"
                   :src="getPreviewUrl(model, 300)"
@@ -447,7 +438,6 @@ function getPreviewUrl(model: string, res = 300): string {
                   @error="handleImageError(model, $event)"
                 />
 
-                <!-- Top Floating Badges: Folder & Selected Checkmark (shadcn Badge) -->
                 <div
                   class="absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-1"
                 >

@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "comfy-gui",
+      "name": "koharu",
       "dependencies": {
         "@ai-sdk/vue": "^4.0.84",
         "@lucide/vue": "^1.38.0",

@@ -1,3 +1,4 @@
+import { BRAND_NAME } from '@/lib/brand';
 import type {
   FaceDetailerSettings,
   LoraItem,
@@ -180,7 +181,7 @@ export function buildFaceDetailerPrompt(
     seed
   });
   prompt['20'] = {
-    inputs: { filename_prefix: 'ComfyGUI_FaceDetailer', images: result },
+    inputs: { filename_prefix: `${BRAND_NAME}_FaceDetailer`, images: result },
     class_type: 'SaveImage',
     _meta: { title: 'Save Detailed Image' }
   };

@@ -168,7 +168,7 @@ async function queueItem(
     const uploaded = await ComfyApi.uploadImage(
       launcherStore.config.serverUrl,
       item.file,
-      `comfy-gui-face-detailer-${item.id}${extension}`
+      `koharu-face-detailer-${item.id}${extension}`
     );
     const resolvedSettings: FaceDetailerSettings = {
       ...settings,
@@ -192,7 +192,7 @@ async function queueItem(
         loras,
         seed
       ),
-      `comfy-gui-face-detailer-${crypto.randomUUID()}`
+      `koharu-face-detailer-${crypto.randomUUID()}`
     );
     item.status = 'queued';
     void monitorResult(item, queued.prompt_id, startTime);
@@ -219,8 +219,6 @@ async function queueBatch() {
   isSubmitting.value = false;
 }
 
-// Clipboard Copy
-// Output Folder Open
 async function openOutputFolder() {
   const workingDir = launcherStore.config.workingDir.replace(/[\\/]+$/u, '');
   if (!workingDir) return;
@@ -383,7 +381,6 @@ onUnmounted(() => {
         <div
           class="border-border bg-card/90 flex h-10 shrink-0 items-center justify-between border-b px-3 backdrop-blur-xs"
         >
-          <!-- Left: Active Item Details & Comparison Mode Toggles -->
           <div class="flex items-center gap-2">
             <div v-if="activeItem" class="flex items-center gap-2">
               <span class="max-w-44 truncate text-xs font-semibold">

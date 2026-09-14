@@ -200,7 +200,6 @@ const highlightedHtml = computed(() => {
   return result;
 });
 
-// Re-sync styles + scroll after highlight HTML updates
 watch(highlightedHtml, () => {
   void nextTick(() => {
     syncStyles();

@@ -167,7 +167,6 @@ watch(
       </div>
     </div>
 
-    <!-- Main Config Body (shown when enabled or showEnabled=false) -->
     <div
       v-if="!showEnabled || settings.enabled"
       class="flex flex-col gap-3.5 pt-1"

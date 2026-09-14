@@ -137,7 +137,7 @@ async function uploadImage(file?: File) {
     const uploaded = await ComfyApi.uploadImage(
       launcherStore.config.serverUrl,
       file,
-      `comfy-gui-tagger-${crypto.randomUUID()}${extension}`
+      `koharu-tagger-${crypto.randomUUID()}${extension}`
     );
     imageName.value = uploaded.name;
   } catch (error) {

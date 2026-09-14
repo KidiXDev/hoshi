@@ -208,7 +208,6 @@ async function loadModelData() {
     }
   }
 
-  // Read API key
   try {
     const settings = await loadAppData<{ apiKey?: string; nsfw?: boolean }>(
       'civitai_settings'
@@ -218,7 +217,6 @@ async function loadModelData() {
     apiKey.value = '';
   }
 
-  // If not cached, fetch from backend
   if (!model.value) {
     loading.value = true;
     errorMessage.value = '';

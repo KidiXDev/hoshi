@@ -51,16 +51,12 @@ export const ComfyApi = {
     try {
       await http.get(`${base}/system_stats`, { timeout: 2500 });
       return true;
-    } catch {
-      // fallback
-    }
+    } catch {}
 
     try {
       await http.get(`${base}/prompt`, { timeout: 2500 });
       return true;
-    } catch {
-      // offline
-    }
+    } catch {}
 
     return false;
   },
@@ -98,7 +94,7 @@ export const ComfyApi = {
   async shutdown(serverUrl: string): Promise<boolean> {
     try {
       await http.post(
-        `${this.cleanUrl(serverUrl)}/comfygui/shutdown`,
+        `${this.cleanUrl(serverUrl)}/koharu/shutdown`,
         undefined,
         {
           timeout: 3000
@@ -166,7 +162,7 @@ export const ComfyApi = {
         class_type: 'PreviewAny'
       }
     };
-    const clientId = `comfy-gui-tagger-${crypto.randomUUID()}`;
+    const clientId = `koharu-tagger-${crypto.randomUUID()}`;
     const queued = await this.queuePrompt(serverUrl, prompt, clientId);
     for (let attempt = 0; attempt < 240; attempt++) {
       await new Promise<void>((resolve) => {
@@ -199,7 +195,7 @@ export const ComfyApi = {
   async fetchBridgeModels(
     serverUrl: string
   ): Promise<BridgeModelsResponse | null> {
-    const url = `${this.cleanUrl(serverUrl)}/comfygui/models`;
+    const url = `${this.cleanUrl(serverUrl)}/koharu/models`;
     try {
       return await http.get<BridgeModelsResponse>(url, { timeout: 3000 });
     } catch {
@@ -211,7 +207,7 @@ export const ComfyApi = {
   async fetchBridgeSystem(
     serverUrl: string
   ): Promise<BridgeSystemResponse | null> {
-    const url = `${this.cleanUrl(serverUrl)}/comfygui/system`;
+    const url = `${this.cleanUrl(serverUrl)}/koharu/system`;
     try {
       return await http.get<BridgeSystemResponse>(url, { timeout: 3000 });
     } catch {
@@ -221,7 +217,7 @@ export const ComfyApi = {
   },
 
   async refreshBridgeModels(serverUrl: string): Promise<boolean> {
-    const url = `${this.cleanUrl(serverUrl)}/comfygui/refresh`;
+    const url = `${this.cleanUrl(serverUrl)}/koharu/refresh`;
     try {
       await http.post(url, undefined, { timeout: 3000 });
       return true;
@@ -339,6 +335,6 @@ export const ComfyApi = {
       name,
       res: String(res)
     });
-    return `${base}/comfygui/model_preview?${params.toString()}`;
+    return `${base}/koharu/model_preview?${params.toString()}`;
   }
 };

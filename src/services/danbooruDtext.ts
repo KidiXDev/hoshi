@@ -157,7 +157,6 @@ export function renderWikiDtext(body: string, posts: WikiPost[] = []) {
     .replaceAll(/\[spoilers?\]/giu, '<details><summary>Spoiler</summary>\n\n')
     .replaceAll(/\[\/spoilers?\]/giu, '\n\n</details>');
 
-  // Parse markdown
   let parsed = marked.parse(text, { async: false, breaks: true }) as string;
 
   // Restore protected literal tokens recursively (in case literals were nested inside literals)

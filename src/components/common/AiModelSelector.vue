@@ -222,7 +222,6 @@ watch(isOpen, (open) => {
 
       <!-- Models List -->
       <div class="max-h-64 overflow-y-auto p-1 text-xs">
-        <!-- Option: Custom Model Prompt (if typed query not in list) -->
         <button
           v-if="canUseCustomModel"
           type="button"

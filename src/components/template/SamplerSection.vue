@@ -66,7 +66,6 @@ const resolutionPresets = [
   'Custom'
 ];
 
-// Synchronize width and height when a standard preset is selected
 watch(
   () => workflowStore.resolution.preset,
   (preset) => {
@@ -326,7 +325,6 @@ function setSeedValue(value: string | number) {
       </WorkflowField>
     </div>
 
-    <!-- Custom Resolution Dimension Controls (Shown when Custom is selected) -->
     <div
       v-if="workflowStore.resolution.preset === 'Custom'"
       class="border-border bg-card/60 flex flex-col gap-2 rounded-lg border p-2.5"

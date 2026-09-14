@@ -42,6 +42,7 @@ import StatusDot from '@/components/layout/StatusDot.vue';
 import { useImageTransferStore } from '@/stores/imageTransferStore';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Progress } from '@/components/ui/progress';
+import { BRAND_NAME } from '@/lib/brand';
 import {
   Select,
   SelectContent,
@@ -285,7 +286,7 @@ function buildWorkflow(uploadedName: string): Record<string, unknown> {
     '3': {
       inputs: {
         images: ['2', 0],
-        filename_prefix: `ComfyGUI_${mode.value}`
+        filename_prefix: `${BRAND_NAME}_${mode.value}`
       },
       class_type: 'SaveImage'
     }
@@ -347,12 +348,12 @@ async function queueSingleItem(item: ImageBatchItem) {
     const uploaded = await ComfyApi.uploadImage(
       launcherStore.config.serverUrl,
       item.file,
-      `comfy-gui-rmbg-${item.id}${extension}`
+      `koharu-rmbg-${item.id}${extension}`
     );
     const queued = await ComfyApi.queuePrompt(
       launcherStore.config.serverUrl,
       buildWorkflow(uploaded.name),
-      `comfy-gui-rmbg-${crypto.randomUUID()}`
+      `koharu-rmbg-${crypto.randomUUID()}`
     );
     item.status = 'queued';
     void monitorResult(item, queued.prompt_id, startTime);
@@ -371,8 +372,6 @@ async function queueBatch() {
   isSubmitting.value = false;
 }
 
-// Clipboard Copy
-// Output Folder Open
 async function openOutputFolder() {
   const workingDir = launcherStore.config.workingDir.replace(/[\\/]+$/u, '');
   if (!workingDir) return;
@@ -708,7 +707,6 @@ onUnmounted(() => {
         <div
           class="border-border bg-card/90 flex h-10 shrink-0 items-center justify-between border-b px-3 backdrop-blur-xs"
         >
-          <!-- Left: Active Item Details & Comparison Mode Toggles -->
           <div class="flex items-center gap-2">
             <div v-if="activeItem" class="flex items-center gap-2">
               <span class="max-w-44 truncate text-xs font-semibold">
@@ -725,14 +723,12 @@ onUnmounted(() => {
 
             <div v-if="activeItem?.resultUrl" class="bg-border h-3.5 w-px" />
 
-            <!-- View Mode Buttons (Active when result is available) -->
             <ImageComparisonModes
               v-if="activeItem?.resultUrl"
               v-model="viewMode"
             />
           </div>
 
-          <!-- Right: Viewport Action Buttons (Zoom, Copy, Download, Lightbox) -->
           <div class="flex items-center gap-1">
             <template v-if="activeItem">
               <Tooltip v-if="activeItem.resultUrl">
@@ -787,7 +783,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Viewport Stage Area with Checkered Background (only when activeItem is loaded) -->
         <div
           class="relative flex h-full min-h-0 w-full flex-1 items-center justify-center overflow-hidden p-3"
           :class="!activeItem ? 'bg-card/20' : ''"

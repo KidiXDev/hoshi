@@ -460,7 +460,6 @@ export const useAiStore = defineStore('ai', () => {
     session.messages.push(userMsg);
     session.updatedAt = Date.now();
 
-    // Auto-generate title if this is the first message and title is default
     if (
       session.messages.filter((m) => m.role === 'user').length === 1 &&
       session.title === 'New Chat'
@@ -676,7 +675,6 @@ export const useAiStore = defineStore('ai', () => {
         }
       };
 
-      // Define Focused Agentic Tools
       const tools = {
         inspect_current_prompt: tool({
           description:

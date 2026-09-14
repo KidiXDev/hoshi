@@ -9,7 +9,7 @@ export function dragHistoryImage(event: DragEvent, item: HistoryItem) {
 }
 
 /** Custom MIME type carrying a gallery image's `localId` during HTML5 drag. */
-export const GALLERY_IMAGE_MIME = 'application/x-comfygui-gallery-image';
+export const GALLERY_IMAGE_MIME = 'application/x-koharu-gallery-image';
 
 /**
  * Starts dragging a gallery card. Sets `text/uri-list` (so Upscaler/RMBG/Face
@@ -27,8 +27,8 @@ export function dragOutputImage(event: DragEvent, image: OutputImage) {
 export function localImageUrl(localId: string, thumbnail = false): string {
   const kind = thumbnail ? 'thumb' : 'full';
   return navigator.userAgent.includes('Windows')
-    ? `http://comfygui-image.localhost/${kind}/${localId}`
-    : `comfygui-image://localhost/${kind}/${localId}`;
+    ? `http://koharu-image.localhost/${kind}/${localId}`
+    : `koharu-image://localhost/${kind}/${localId}`;
 }
 
 export function resolveHistoryImages(

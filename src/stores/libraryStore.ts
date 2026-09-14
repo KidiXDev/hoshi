@@ -12,17 +12,13 @@ import type {
 } from '../types/library';
 
 export const useLibraryStore = defineStore('library', () => {
-  // ---------------------------------------------------------------------------
   // State
-  // ---------------------------------------------------------------------------
 
   /** Map from category key → list entries (no data payload) */
   const itemsByCategory = ref<Record<string, LibraryListEntry[]>>({});
   const loadingCategory = ref<Record<string, boolean>>({});
 
-  // ---------------------------------------------------------------------------
   // Fetchers
-  // ---------------------------------------------------------------------------
 
   async function fetchCategory(category: LibraryCategory): Promise<void> {
     loadingCategory.value[category] = true;
@@ -42,15 +38,12 @@ export const useLibraryStore = defineStore('library', () => {
     return itemsByCategory.value[category] ?? [];
   }
 
-  // ---------------------------------------------------------------------------
   // CRUD
-  // ---------------------------------------------------------------------------
 
   async function saveItem<T>(
     item: SaveLibraryItemPayload<T>
   ): Promise<LibraryItem<T>> {
     const saved = await LibraryService.saveItem<T>(item);
-    // Refresh the category list
     await fetchCategory(item.category);
     return saved;
   }
@@ -91,18 +84,14 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
-  // ---------------------------------------------------------------------------
   // Thumbnail helpers (delegated directly to LibraryService)
-  // ---------------------------------------------------------------------------
 
   const saveThumbnailFromPath =
     LibraryService.saveThumbnailFromPath.bind(LibraryService);
   const saveThumbnailFromDataUrl =
     LibraryService.saveThumbnailFromDataUrl.bind(LibraryService);
 
-  // ---------------------------------------------------------------------------
   // Typed convenience getters
-  // ---------------------------------------------------------------------------
 
   function getPromptEntries(): LibraryListEntry[] {
     return getEntries('prompts');
@@ -133,7 +122,6 @@ export const useLibraryStore = defineStore('library', () => {
   };
 });
 
-// Re-export types for convenience
 export type {
   CharacterData,
   LibraryCategory,

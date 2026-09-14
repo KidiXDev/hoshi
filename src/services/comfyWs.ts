@@ -44,9 +44,7 @@ export class ComfyWsClient {
       this.ws.onmessage = null;
       try {
         this.ws.close();
-      } catch {
-        // ignore close error
-      }
+      } catch {}
       this.ws = null;
     }
 
@@ -77,7 +75,6 @@ export class ComfyWsClient {
           if (buffer.byteLength < 8) return;
 
           const view = new DataView(buffer);
-          // big-endian
           const eventType = view.getUint32(0, false);
 
           if (eventType === 1) {
@@ -100,9 +97,7 @@ export class ComfyWsClient {
               const metaStr = new TextDecoder().decode(metaBytes);
               const meta = JSON.parse(metaStr);
               if (meta.image_type) mime = meta.image_type;
-            } catch {
-              // fallback
-            }
+            } catch {}
 
             const imageBytes = buffer.slice(8 + metaLength);
             const blob = new Blob([imageBytes], { type: mime });
@@ -116,9 +111,7 @@ export class ComfyWsClient {
         try {
           const msg = JSON.parse(event.data) as ComfyWsMessage;
           if (this.onMessage) this.onMessage(msg);
-        } catch {
-          // ignore non-json messages
-        }
+        } catch {}
       };
     } catch {
       this.scheduleReconnect();
@@ -138,9 +131,7 @@ export class ComfyWsClient {
       this.ws.onmessage = null;
       try {
         this.ws.close();
-      } catch {
-        // ignore close error
-      }
+      } catch {}
       this.ws = null;
     }
   }

@@ -31,7 +31,6 @@ const showRawMeta = ref(false);
         <span>Sample Generation Parameters</span>
       </div>
 
-      <!-- Action: Apply parameters directly to workflow store -->
       <Button
         variant="outline"
         size="sm"

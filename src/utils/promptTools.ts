@@ -42,7 +42,6 @@ export function parseTagWeight(tagStr: string): {
   const trimmed = tagStr.trim();
   if (!trimmed) return { text: '', weight: 1.0 };
 
-  // Check for (text:weight) format
   const colonMatch = /^\((.+):([0-9.]+)\)$/u.exec(trimmed);
   if (colonMatch && colonMatch[1] && colonMatch[2]) {
     const w = Number(colonMatch[2]);
@@ -51,7 +50,6 @@ export function parseTagWeight(tagStr: string): {
     }
   }
 
-  // Check for simple (text) format
   const parenMatch = /^\((.+)\)$/u.exec(trimmed);
   if (parenMatch && parenMatch[1]) {
     return { text: parenMatch[1].trim(), weight: 1.1 };
@@ -60,9 +58,6 @@ export function parseTagWeight(tagStr: string): {
   return { text: trimmed, weight: 1.0 };
 }
 
-/**
- * Formats a tag and weight into standard ComfyUI / SD syntax.
- */
 export function formatTagWeight(text: string, weight: number): string {
   const cleanText = text.trim();
   if (!cleanText) return '';
@@ -73,13 +68,6 @@ export function formatTagWeight(text: string, weight: number): string {
   return `(${cleanText}:${rounded.toFixed(rounded % 1 === 0 ? 1 : 2).replace(/\.?0+$/u, (m) => (m.includes('.') ? (m === '.0' ? '.0' : '') : ''))})`;
 }
 
-/**
- * Adjusts the weight of the currently selected text or the tag at the cursor.
- * @param text The full prompt string
- * @param selStart Cursor/selection start index
- * @param selEnd Cursor/selection end index
- * @param delta Weight step (e.g. +0.05 or -0.05)
- */
 export function adjustPromptWeight(
   text: string,
   selStart: number,
@@ -95,7 +83,6 @@ export function adjustPromptWeight(
 
   // If no range is selected, expand to surrounding tag bounds
   if (start === end) {
-    // Look backward for start of tag (comma, newline, or string start)
     // Also respect outer parentheses if cursor is inside (tag:1.2)
     let left = start;
     let openParenDepth = 0;
@@ -105,7 +92,6 @@ export function adjustPromptWeight(
       else if (char === '(') {
         if (openParenDepth > 0) openParenDepth--;
         else {
-          // Inside a paren group
           left--;
           break;
         }
@@ -115,7 +101,6 @@ export function adjustPromptWeight(
       left--;
     }
 
-    // Look forward for end of tag
     let right = end;
     let closeParenDepth = 0;
     while (right < text.length) {
@@ -137,7 +122,6 @@ export function adjustPromptWeight(
     end = right;
   }
 
-  // Extract selected fragment
   const selected = text.slice(start, end);
   const leadingSpaces = selected.match(/^\s*/u)?.[0] || '';
   const trailingSpaces = selected.match(/\s*$/u)?.[0] || '';
@@ -147,12 +131,10 @@ export function adjustPromptWeight(
     return { text, selectionStart: selStart, selectionEnd: selEnd };
   }
 
-  // Parse existing weight
   const parsed = parseTagWeight(core);
   let newWeight = Math.round((parsed.weight + delta) * 100) / 100;
   newWeight = Math.max(0.1, Math.min(3.0, newWeight));
 
-  // Format new core
   let newCore: string;
   if (newWeight === 1.0) {
     newCore = parsed.text;
@@ -246,7 +228,6 @@ export function formatAndCleanPrompt(
     trimmed = trimmed.trim();
     if (!trimmed) continue;
 
-    // Normalizing for duplicate detection (case-insensitive on base text)
     const normalizedKey = trimmed.toLowerCase();
     if (settings.deduplicate && !/^(BREAK|AND)$/u.test(trimmed)) {
       if (seen.has(normalizedKey)) continue;
@@ -285,7 +266,6 @@ export function estimateClipTokens(prompt: string): {
   const words = trimmed.split(/[\s,，|\n]+/u).filter(Boolean);
   let count = 0;
   for (const word of words) {
-    // Add extra tokens for subwords or special punctuation/weights
     if (word.length > 8) {
       count += Math.ceil(word.length / 4);
     } else {
@@ -305,9 +285,6 @@ export function estimateClipTokens(prompt: string): {
   };
 }
 
-/**
- * Parses comma-separated prompt into individual tag chips for interactive mode.
- */
 export function parsePromptToChips(prompt: string): PromptTag[] {
   if (!prompt.trim()) return [];
 
@@ -331,9 +308,6 @@ export function parsePromptToChips(prompt: string): PromptTag[] {
   return result;
 }
 
-/**
- * Reconstructs prompt string from active (non-disabled) tag chips.
- */
 export function reconstructPromptFromChips(chips: PromptTag[]): string {
   return chips
     .filter((c) => !c.disabled)

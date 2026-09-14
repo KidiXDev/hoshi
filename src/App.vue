@@ -114,10 +114,8 @@ onUnmounted(() => {
       <div
         class="bg-background text-foreground flex h-screen w-screen flex-col overflow-clip antialiased select-none"
       >
-        <!-- Custom Frameless Window Titlebar with Drag Region -->
         <AppTitlebar />
 
-        <!-- Main Application Body: Sidebar + Active Router View. -->
         <div
           id="app-content"
           class="relative flex min-h-0 w-full flex-1 overflow-clip"

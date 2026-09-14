@@ -1,3 +1,4 @@
+import { BRAND_NAME, REPO_URL } from '@/lib/brand';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText } from 'ai';
 import type { AiConfig, OpenRouterModel } from '../types/ai';
@@ -121,7 +122,6 @@ function stripAuthorPrefix(model: OpenRouterModel): OpenRouterModel {
 
 let cachedModels: OpenRouterModel[] | null = null;
 let lastFetchTime = 0;
-// 30 minutes cache TTL
 const CACHE_TTL_MS = 1000 * 60 * 30;
 
 export async function fetchAvailableModels(
@@ -166,8 +166,8 @@ export function getOpenRouterProvider(apiKey: string) {
   return createOpenRouter({
     apiKey: apiKey.trim(),
     headers: {
-      'HTTP-Referer': 'https://github.com/KidiXDev/comfy-gui',
-      'X-Title': 'ComfyUI Studio'
+      'HTTP-Referer': REPO_URL,
+      'X-Title': BRAND_NAME
     }
   });
 }

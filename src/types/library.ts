@@ -1,12 +1,8 @@
-// ---------------------------------------------------------------------------
 // Library system — shared TypeScript types
-// ---------------------------------------------------------------------------
 
 export type LibraryCategory = 'prompts' | 'loras' | 'characters' | string;
 
-// ---------------------------------------------------------------------------
 // Data payloads per category
-// ---------------------------------------------------------------------------
 
 export interface PromptData {
   /** Which prompt fields this preset covers. */
@@ -41,9 +37,7 @@ export interface CharacterData {
   notes?: string;
 }
 
-// ---------------------------------------------------------------------------
 // Core item shape (full, with data payload)
-// ---------------------------------------------------------------------------
 
 export interface LibraryItem<T = unknown> {
   id: string;
@@ -52,7 +46,7 @@ export interface LibraryItem<T = unknown> {
   description?: string;
   /** Stem of the JPEG file in the thumbnails folder. */
   thumbnailId?: string;
-  /** Resolved comfygui-library:// URL, populated client-side after fetch. */
+  /** Resolved koharu-library:// URL, populated client-side after fetch. */
   thumbnailUrl?: string;
   data: T;
   createdAt: number;
@@ -68,16 +62,12 @@ export type SaveLibraryItemPayload<T = unknown> = Omit<
   updatedAt?: number;
 };
 
-// ---------------------------------------------------------------------------
 // List entry — library_list_items returns full items (payloads are small),
 // so this is just the untyped-data alias kept for existing call sites.
-// ---------------------------------------------------------------------------
 
 export type LibraryListEntry<T = unknown> = LibraryItem<T>;
 
-// ---------------------------------------------------------------------------
 // Convenience aliases that keep backward-compatibility with old preset types
-// ---------------------------------------------------------------------------
 
 export type PromptLibraryItem = LibraryItem<PromptData>;
 export type LoraLibraryItem = LibraryItem<LoraData>;

@@ -39,6 +39,7 @@ import {
   type BooruSettingsUpdate,
   type BooruSource
 } from '@/services/booruGallery';
+import { BRAND_NAME } from '@/lib/brand';
 import { loadAppData, saveAppData } from '@/services/appStorage';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import SettingsSection from '@/components/layout/SettingsSection.vue';
@@ -533,7 +534,7 @@ onMounted(() => {
         Provider API Credentials
       </span>
       <span class="text-muted-foreground text-xs">
-        Credentials are stored locally in ComfyGUI settings
+        Credentials are stored locally in {{ BRAND_NAME }} settings
       </span>
     </div>
 

@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ComfyGUI",
+  "productName": "Hoshi",
+  "mainBinaryName": "Hoshi",
   "version": "1.0.0",
-  "identifier": "io.github.kidixdev.comfygui",
+  "identifier": "io.github.kidixdev.koharu",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "ComfyGUI",
+        "title": "Hoshi",
         "width": 1360,
         "height": 900,
         "minWidth": 1280,

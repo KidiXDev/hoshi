@@ -10,7 +10,6 @@ export function getLogLevel(stream: string, message: string): LogLevel {
 
   const lower = message.toLowerCase();
 
-  // Detect explicit errors
   if (
     lower.includes('[error]') ||
     lower.includes('error:') ||
@@ -25,7 +24,6 @@ export function getLogLevel(stream: string, message: string): LogLevel {
     return 'error';
   }
 
-  // Detect warnings
   if (
     lower.includes('[warning]') ||
     lower.includes('warning:') ||

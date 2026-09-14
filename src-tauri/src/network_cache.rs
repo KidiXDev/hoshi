@@ -122,12 +122,10 @@ fn prune_expired_at(root: &Path) -> usize {
     removed
 }
 
-/// Reads cached JSON from disk if file exists and has not expired.
 pub fn read_cache(app_handle: &AppHandle, namespace: &str, key: &str) -> Option<Value> {
     read_at(&cache_root(app_handle).ok()?, namespace, key)
 }
 
-/// Writes JSON data to disk cache wrapped with expiration metadata.
 pub fn write_cache(
     app_handle: &AppHandle,
     namespace: &str,
@@ -172,7 +170,6 @@ pub(crate) fn clear_network_cache_sync(
     Ok(())
 }
 
-/// Computes file count and total size in bytes for the network cache.
 #[tauri::command]
 pub async fn get_network_cache_stats(app_handle: AppHandle) -> Result<NetworkCacheStats, String> {
     let root = cache_root(&app_handle)?;
@@ -202,7 +199,7 @@ mod tests {
 
     #[test]
     fn round_trips_expires_and_prunes() {
-        let root = std::env::temp_dir().join(format!("comfygui-nc-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("koharu-nc-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
 
         write_at(&root, "ns", "live", &json!({"a": 1}), 60).unwrap();

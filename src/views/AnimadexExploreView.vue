@@ -190,7 +190,6 @@ const rowVirtualizer = useVirtualizer(
 const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems());
 const totalVirtualHeight = computed(() => rowVirtualizer.value.getTotalSize());
 
-// Active filter count computation
 const activeFilterCount = computed(() => {
   let count = 0;
   if (searchQuery.value.trim()) count++;
@@ -347,7 +346,6 @@ function handleScroll(e: Event) {
   }
 }
 
-// Watch virtual rows to trigger pre-fetch when approaching list end
 watch(virtualRows, (rows) => {
   if (
     !isViewActive.value ||
@@ -757,7 +755,6 @@ watch(
       </div>
     </template>
 
-    <!-- Main Content Viewport with Infinite Scroll & TanStack Virtualizer -->
     <main
       ref="scrollViewport"
       class="min-h-0 flex-1 overflow-y-auto p-5"

@@ -209,7 +209,7 @@ impl DownloadManager {
             .map(|meta| meta.len())
             .unwrap_or(0);
         let client = Client::builder()
-            .user_agent("ComfyGUI/1.0")
+            .user_agent("Koharu/1.0")
             .connect_timeout(Duration::from_secs(20))
             .timeout(Duration::from_secs(60 * 60 * 6))
             .build()
@@ -547,7 +547,7 @@ mod tests {
     #[test]
     fn cleanup_removes_partial_download_and_sidecars() {
         let directory =
-            std::env::temp_dir().join(format!("comfygui-download-cleanup-{}", std::process::id()));
+            std::env::temp_dir().join(format!("koharu-download-cleanup-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         let model = directory.join("model.safetensors");
         for path in [

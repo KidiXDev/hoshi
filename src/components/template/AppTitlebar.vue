@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import mayaMascot from '@/assets/maya-mascot.png';
+import { BRAND_NAME } from '@/lib/brand';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
@@ -61,9 +62,7 @@ async function handleMinimize() {
   try {
     const appWindow = getCurrentWindow();
     await appWindow.minimize();
-  } catch {
-    // fallback
-  }
+  } catch {}
 }
 
 async function handleToggleMaximize(event?: MouseEvent) {
@@ -76,18 +75,14 @@ async function handleToggleMaximize(event?: MouseEvent) {
     const appWindow = getCurrentWindow();
     await appWindow.toggleMaximize();
     isMaximized.value = await appWindow.isMaximized();
-  } catch {
-    // fallback
-  }
+  } catch {}
 }
 
 async function handleClose() {
   try {
     const appWindow = getCurrentWindow();
     await appWindow.close();
-  } catch {
-    // fallback
-  }
+  } catch {}
 }
 
 onMounted(async () => {
@@ -121,7 +116,7 @@ onUnmounted(() => {
         <span
           class="text-foreground font-mono text-xs font-bold tracking-tight uppercase"
         >
-          ComfyUI
+          {{ BRAND_NAME }}
         </span>
         <span class="text-muted-foreground/60 text-xs">/</span>
         <span class="text-muted-foreground text-xs font-medium">
@@ -222,7 +217,6 @@ onUnmounted(() => {
         <span class="hidden sm:inline">Logs</span>
       </button>
 
-      <!-- AI Assistant Drawer Toggle Button (Icon only) -->
       <button
         type="button"
         title="Toggle Maya AI Assistant"
@@ -239,7 +233,6 @@ onUnmounted(() => {
 
       <div class="bg-border mx-1 h-3.5 w-px" />
 
-      <!-- Window Control Buttons (Native Look & Feel) -->
       <div class="flex h-full items-center">
         <!-- Minimize -->
         <button
