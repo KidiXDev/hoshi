@@ -31,7 +31,7 @@ export const buildSystemPrompt = buildAssistantSystemPrompt;
 export const POPULAR_MODELS: OpenRouterModel[] = [
   {
     id: 'deepseek/deepseek-v4-flash-vision-exp',
-    name: 'DeepSeek: DeepSeek V4 Flash Vision (Exp)',
+    name: 'DeepSeek V4 Flash Vision (Exp)',
     description:
       'High performance multimodal model with vision and prompt engineering capabilities.',
     context_length: 131072,
@@ -43,7 +43,7 @@ export const POPULAR_MODELS: OpenRouterModel[] = [
   },
   {
     id: 'google/gemini-2.5-flash',
-    name: 'Google: Gemini 2.5 Flash',
+    name: 'Gemini 2.5 Flash',
     description: 'Ultra-fast multimodal model with strong reasoning & vision.',
     context_length: 1048576,
     pricing: { prompt: '0.00000015', completion: '0.0000006' },
@@ -55,7 +55,7 @@ export const POPULAR_MODELS: OpenRouterModel[] = [
   },
   {
     id: 'anthropic/claude-3.5-sonnet',
-    name: 'Anthropic: Claude 3.5 Sonnet',
+    name: 'Claude 3.5 Sonnet',
     description: 'Industry-leading prompt intelligence, nuance, and vision.',
     context_length: 200000,
     pricing: { prompt: '0.000003', completion: '0.000015' },
@@ -67,7 +67,7 @@ export const POPULAR_MODELS: OpenRouterModel[] = [
   },
   {
     id: 'openai/gpt-4o',
-    name: 'OpenAI: GPT-4o',
+    name: 'GPT-4o',
     description: 'High-capability flagship model with vision and tool use.',
     context_length: 128000,
     pricing: { prompt: '0.0000025', completion: '0.00001' },
@@ -79,7 +79,7 @@ export const POPULAR_MODELS: OpenRouterModel[] = [
   },
   {
     id: 'openai/gpt-4o-mini',
-    name: 'OpenAI: GPT-4o Mini',
+    name: 'GPT-4o Mini',
     description: 'Affordable, fast multimodal model for everyday assistance.',
     context_length: 128000,
     pricing: { prompt: '0.00000015', completion: '0.0000006' },
@@ -91,7 +91,7 @@ export const POPULAR_MODELS: OpenRouterModel[] = [
   },
   {
     id: 'deepseek/deepseek-chat',
-    name: 'DeepSeek: DeepSeek V3',
+    name: 'DeepSeek V3',
     description: 'Strong open-weights model with excellent prompt generation.',
     context_length: 64000,
     pricing: { prompt: '0.00000014', completion: '0.00000028' },
@@ -103,7 +103,7 @@ export const POPULAR_MODELS: OpenRouterModel[] = [
   },
   {
     id: 'meta-llama/llama-3.3-70b-instruct',
-    name: 'Meta: Llama 3.3 70B Instruct',
+    name: 'Llama 3.3 70B Instruct',
     description: 'High performance open instruct model.',
     context_length: 131072,
     pricing: { prompt: '0.00000012', completion: '0.0000003' },
@@ -114,6 +114,10 @@ export const POPULAR_MODELS: OpenRouterModel[] = [
     }
   }
 ];
+
+function stripAuthorPrefix(model: OpenRouterModel): OpenRouterModel {
+  return { ...model, name: model.name.replace(/^[^:]+:\s*/u, '') };
+}
 
 let cachedModels: OpenRouterModel[] | null = null;
 let lastFetchTime = 0;
@@ -147,7 +151,7 @@ export async function fetchAvailableModels(
       { headers }
     );
     if (Array.isArray(json.data) && json.data.length > 0) {
-      cachedModels = json.data;
+      cachedModels = json.data.map(stripAuthorPrefix);
       lastFetchTime = now;
       return cachedModels;
     }
@@ -223,7 +227,7 @@ export async function generateChatTitle(
     maxOutputTokens: 256,
     temperature: 0.3,
     providerOptions: {
-      openrouter: { reasoning: { enabled: false, effort: 'none' } }
+      openrouter: { reasoning: { enabled: false } }
     }
   });
   return (

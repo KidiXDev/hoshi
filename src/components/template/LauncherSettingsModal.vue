@@ -5,6 +5,7 @@ import { FileCode, FolderOpen } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -95,8 +96,9 @@ function handleResetDefaults() {
 <template>
   <Dialog v-model:open="launcherStore.isSettingsOpen">
     <DialogContent class="w-full max-w-2xl">
-      <DialogHeader>
+      <DialogHeader class="flex-row items-center justify-between">
         <DialogTitle>Launcher Settings</DialogTitle>
+        <DialogCloseButton class="-my-1.5 -mr-2" />
       </DialogHeader>
 
       <div class="flex flex-col gap-4 py-2">

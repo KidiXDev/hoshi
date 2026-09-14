@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -337,12 +338,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleShortcut));
 <template>
   <Dialog :open="open" @update:open="(value) => emit('update:open', value)">
     <DialogContent class="flex max-h-[94vh] min-w-[80vw] flex-col">
-      <DialogHeader>
-        <DialogTitle>Paint Inpainting Mask</DialogTitle>
-        <DialogDescription>
-          White regenerates; black preserves. Alt + right-drag adjusts brush
-          size and hardness. Scroll to zoom; middle-drag to pan.
-        </DialogDescription>
+      <DialogHeader class="flex-row items-start justify-between gap-3">
+        <div class="flex flex-col gap-2">
+          <DialogTitle>Paint Inpainting Mask</DialogTitle>
+          <DialogDescription>
+            White regenerates; black preserves. Alt + right-drag adjusts brush
+            size and hardness. Scroll to zoom; middle-drag to pan.
+          </DialogDescription>
+        </div>
+        <DialogCloseButton class="-mt-1.5 -mr-2" />
       </DialogHeader>
 
       <div

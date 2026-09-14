@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -240,7 +241,7 @@ function getPreviewUrl(model: string, res = 300): string {
         </div>
 
         <!-- Header Actions: Refresh & Layout Toggle -->
-        <div class="flex items-center gap-2 pr-6">
+        <div class="flex items-center gap-2">
           <Button
             size="iconSm"
             variant="outline"
@@ -282,6 +283,7 @@ function getPreviewUrl(model: string, res = 300): string {
               <List class="h-3.5 w-3.5" />
             </ToggleGroupItem>
           </ToggleGroup>
+          <DialogCloseButton class="h-7 w-7" />
         </div>
       </DialogHeader>
 

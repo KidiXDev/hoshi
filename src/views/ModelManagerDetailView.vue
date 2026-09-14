@@ -1,10 +1,4 @@
 <script setup lang="ts">
-/**
- * Model Manager detail. Every model gets the Civitai-browser layout:
- * - linked to Civitai → the shared `CivitaiModelDetail` (live data) with the
- *   local sections appended to its sidebar;
- * - not linked → the same shell with the local preview as the stage.
- */
 import { computed, onMounted, ref, watch } from 'vue';
 import {
   CloudDownload,
@@ -54,7 +48,6 @@ const router = useRouter();
 const downloadStore = useDownloadStore();
 const launcherStore = useLauncherStore();
 
-// ─── Local record ────────────────────────────────────────────────────────────
 const indexQuery = useLocalModelsIndexQuery();
 const model = computed<LocalModel | undefined>(() =>
   indexQuery.data.value?.models.find((item) => item.id === props.id)
@@ -84,7 +77,6 @@ async function runSync() {
   if (model.value) await syncDialog.run(model.value);
 }
 
-// ─── Civitai page (same component + wiring as the Civitai browser) ──────────
 const apiKey = ref('');
 const civitaiQuery = useCivitaiModelDetailQuery(civitaiModelId, apiKey);
 const civitaiModel = computed<CivitaiModel | null>(
@@ -204,7 +196,6 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- Index loading, or a linked model whose Civitai page is still loading -->
   <ModelDetailSkeleton
     v-if="
       indexQuery.isLoading.value ||
@@ -216,7 +207,6 @@ onMounted(async () => {
     @close="goBack"
   />
 
-  <!-- Record gone (deleted / moved) -->
   <ModelDetailShell
     v-else-if="!model"
     back-label="Back to Models"
@@ -242,7 +232,6 @@ onMounted(async () => {
     </template>
   </ModelDetailShell>
 
-  <!-- Linked to Civitai: the browser's detail page + local sections -->
   <CivitaiModelDetail
     v-else-if="civitaiModel"
     :model="civitaiModel"
@@ -306,7 +295,7 @@ onMounted(async () => {
     </template>
   </CivitaiModelDetail>
 
-  <!-- Not linked (or Civitai page unavailable): same layout, local data -->
+  <!-- Not linked (or Civitai page unavailable) -->
   <ModelDetailShell v-else back-label="Back to Models" @close="goBack">
     <template #breadcrumb>
       <span class="text-muted-foreground shrink-0">Models</span>

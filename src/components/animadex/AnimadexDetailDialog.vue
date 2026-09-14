@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -66,15 +67,19 @@ const aiStore = useAiStore();
 
 const imageLoaded = ref(false);
 const imageError = ref(false);
+const copiedAll = ref(false);
+const copiedTrigger = ref(false);
+const copiedTag = ref<string | null>(null);
 watch(
   () => props.item,
   () => {
     imageLoaded.value = false;
     imageError.value = false;
+    copiedAll.value = false;
+    copiedTrigger.value = false;
+    copiedTag.value = null;
   }
 );
-const copiedAll = ref(false);
-const copiedTag = ref<string | null>(null);
 
 const character = computed(() =>
   props.type === 'character' ? (props.item as AnimaDexCharacter) : null
@@ -144,7 +149,6 @@ const typeLabel = computed(() =>
       : 'Series'
 );
 
-const copiedTrigger = ref(false);
 function handleCopyTrigger() {
   if (!triggerPrompt.value) return;
   void copyToClipboard(triggerPrompt.value, 'Trigger');
@@ -358,7 +362,6 @@ async function handleSaveCharacterToLibrary() {
 <template>
   <Dialog :open="open && !charModalOpen" @update:open="handleDetailOpenChange">
     <DialogContent
-      :show-close-button="false"
       class="border-border/60 bg-background w-[92vw] max-w-5xl min-w-0 overflow-hidden p-0 shadow-2xl sm:max-w-5xl sm:rounded-2xl"
     >
       <DialogHeader class="sr-only">
@@ -461,16 +464,19 @@ async function handleSaveCharacterToLibrary() {
                 </button>
               </div>
 
-              <Button
-                v-if="'url' in item && item.url"
-                variant="outline"
-                size="sm"
-                class="h-8 shrink-0 cursor-pointer gap-1.5 rounded-lg px-2.5 text-xs"
-                @click="handleOpenExternal(item.url)"
-              >
-                <span>Danbooru</span>
-                <ExternalLink class="h-3 w-3" />
-              </Button>
+              <div class="flex shrink-0 items-center gap-1.5">
+                <Button
+                  v-if="'url' in item && item.url"
+                  variant="outline"
+                  size="sm"
+                  class="h-8 cursor-pointer gap-1.5 rounded-lg px-2.5 text-xs"
+                  @click="handleOpenExternal(item.url)"
+                >
+                  <span>Danbooru</span>
+                  <ExternalLink class="h-3 w-3" />
+                </Button>
+                <DialogCloseButton class="rounded-lg" />
+              </div>
             </div>
 
             <div class="mt-3 flex flex-wrap items-center gap-1.5">

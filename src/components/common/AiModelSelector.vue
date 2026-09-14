@@ -10,7 +10,6 @@ import {
   Search,
   X
 } from '@lucide/vue';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   Popover,
@@ -158,17 +157,14 @@ watch(isOpen, (open) => {
           <span class="truncate font-mono text-xs">
             {{ currentModelInfo?.name || currentModelId || placeholder }}
           </span>
-          <Badge
+          <Eye
             v-if="
               currentModelInfo?.architecture?.input_modalities?.includes(
                 'image'
               )
             "
-            variant="secondary"
-            class="bg-primary/10 text-primary hover:bg-primary/10 h-4 shrink-0 px-1 py-0 text-xs font-medium"
-          >
-            Vision
-          </Badge>
+            class="text-primary mr-0.5 h-2.5 w-2.5"
+          />
         </div>
         <ChevronsUpDown
           class="text-muted-foreground ml-1 h-3.5 w-3.5 shrink-0 opacity-60"
@@ -261,14 +257,10 @@ watch(isOpen, (open) => {
               <span class="text-foreground truncate font-medium">
                 {{ m.name || m.id }}
               </span>
-              <Badge
+              <Eye
                 v-if="m.architecture?.input_modalities?.includes('image')"
-                variant="secondary"
-                class="bg-primary/10 text-primary hover:bg-primary/10 h-3.5 shrink-0 px-1 py-0 text-xs font-semibold"
-              >
-                <Eye class="mr-0.5 h-2.5 w-2.5" />
-                Vision
-              </Badge>
+                class="text-primary mr-0.5 h-2.5 w-2.5"
+              />
             </div>
             <span
               class="text-muted-foreground truncate font-mono text-xs opacity-75"

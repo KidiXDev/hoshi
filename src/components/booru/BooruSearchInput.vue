@@ -396,7 +396,7 @@ onUnmounted(closeAutocomplete);
       ref="searchInputRef"
       v-model="query"
       class="border-border bg-secondary/50 focus:bg-background h-9 pr-8 pl-9 font-mono text-xs transition-colors"
-      placeholder="Search tags (e.g. 1girl, blue_hair, masterpiece)"
+      placeholder="Search tags..."
       :disabled="disabled"
       autocomplete="off"
       spellcheck="false"

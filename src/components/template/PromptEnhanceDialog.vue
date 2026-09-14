@@ -15,6 +15,7 @@ import { streamText } from 'ai';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -246,33 +247,36 @@ async function copyEnhanced() {
           </div>
         </div>
 
-        <ToggleGroup
-          :model-value="promptTarget"
-          type="single"
-          variant="outline"
-          :disabled="isStreaming"
-          class="border-border bg-muted/60 mr-6 h-8 rounded-md border p-0.5"
-          @update:model-value="
-            (val) => {
-              if (val) promptTarget = val as 'positive' | 'negative';
-            }
-          "
-        >
-          <ToggleGroupItem
-            value="positive"
-            class="data-[state=on]:bg-background data-[state=on]:text-foreground h-7 gap-1.5 px-2.5 text-xs data-[state=on]:shadow-xs"
+        <div class="flex items-center gap-2">
+          <ToggleGroup
+            :model-value="promptTarget"
+            type="single"
+            variant="outline"
+            :disabled="isStreaming"
+            class="border-border bg-muted/60 h-8 rounded-md border p-0.5"
+            @update:model-value="
+              (val) => {
+                if (val) promptTarget = val as 'positive' | 'negative';
+              }
+            "
           >
-            <Plus class="h-3 w-3 text-emerald-500" />
-            Positive
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="negative"
-            class="data-[state=on]:bg-background data-[state=on]:text-foreground h-7 gap-1.5 px-2.5 text-xs data-[state=on]:shadow-xs"
-          >
-            <Minus class="text-destructive h-3 w-3" />
-            Negative
-          </ToggleGroupItem>
-        </ToggleGroup>
+            <ToggleGroupItem
+              value="positive"
+              class="data-[state=on]:bg-background data-[state=on]:text-foreground h-7 gap-1.5 px-2.5 text-xs data-[state=on]:shadow-xs"
+            >
+              <Plus class="h-3 w-3 text-emerald-500" />
+              Positive
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="negative"
+              class="data-[state=on]:bg-background data-[state=on]:text-foreground h-7 gap-1.5 px-2.5 text-xs data-[state=on]:shadow-xs"
+            >
+              <Minus class="text-destructive h-3 w-3" />
+              Negative
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <DialogCloseButton />
+        </div>
       </DialogHeader>
 
       <!-- Body: sidebar controls + result pane -->

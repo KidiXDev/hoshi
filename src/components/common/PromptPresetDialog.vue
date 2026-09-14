@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { useConfirmDialog } from '@/composables/useConfirmDialog';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -226,7 +227,7 @@ async function copyPromptText(entry: LibraryListEntry) {
         </div>
 
         <!-- Header Actions -->
-        <div class="flex items-center gap-2 pr-6">
+        <div class="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -266,6 +267,7 @@ async function copyPromptText(entry: LibraryListEntry) {
               :class="{ 'animate-spin': isLoading }"
             />
           </Button>
+          <DialogCloseButton class="h-7.5 w-7.5" />
         </div>
       </DialogHeader>
 

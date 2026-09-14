@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -397,6 +398,7 @@ defineExpose({ open: openDetail });
             <Skeleton v-else-if="detailLoading" class="h-3.5 w-16" />
           </div>
         </div>
+        <DialogCloseButton class="-my-1.5" />
       </DialogHeader>
 
       <!-- Modal Body (2-Column Grid) -->
@@ -813,7 +815,7 @@ defineExpose({ open: openDetail });
       class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0"
     >
       <DialogHeader
-        class="border-border bg-background/50 shrink-0 border-b px-5 py-4"
+        class="border-border bg-background/50 shrink-0 flex-row items-center justify-between border-b px-5 py-4"
       >
         <DialogTitle
           class="text-foreground flex items-center gap-2 text-sm font-bold"
@@ -821,6 +823,7 @@ defineExpose({ open: openDetail });
           <BookOpen class="text-primary h-4 w-4" />
           <span>Save to Character Library</span>
         </DialogTitle>
+        <DialogCloseButton class="-my-1.5" />
       </DialogHeader>
 
       <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">

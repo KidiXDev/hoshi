@@ -18,6 +18,7 @@ import TerminalDrawer from '@/components/template/TerminalDrawer.vue';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -147,14 +148,17 @@ onUnmounted(() => {
             @update:open="(open) => !open && cancelShutdown()"
           >
             <DialogContent>
-              <DialogHeader>
-                <div class="flex items-center gap-2">
-                  <AlertTriangle class="h-5 w-5 text-amber-400" />
-                  <DialogTitle>ComfyUI is still running</DialogTitle>
+              <DialogHeader class="flex-row items-start justify-between gap-3">
+                <div class="flex flex-col gap-2">
+                  <div class="flex items-center gap-2">
+                    <AlertTriangle class="h-5 w-5 text-amber-400" />
+                    <DialogTitle>ComfyUI is still running</DialogTitle>
+                  </div>
+                  <DialogDescription>
+                    Cancel generation and shut down ComfyUI?
+                  </DialogDescription>
                 </div>
-                <DialogDescription>
-                  Cancel generation and shut down ComfyUI?
-                </DialogDescription>
+                <DialogCloseButton class="-mt-1.5 -mr-2" />
               </DialogHeader>
 
               <p v-if="shutdownError" class="text-destructive text-xs">

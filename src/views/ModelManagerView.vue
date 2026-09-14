@@ -1058,7 +1058,7 @@ onUnmounted(() => {
 
     <!-- Bulk sync progress -->
     <Dialog :open="syncDialogOpen" @update:open="closeSyncDialog">
-      <DialogContent class="sm:max-w-md">
+      <DialogContent class="sm:max-w-md" :show-close-button="!syncRunning">
         <DialogHeader>
           <DialogTitle>Sync with Civitai</DialogTitle>
           <DialogDescription>

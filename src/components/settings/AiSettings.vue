@@ -375,8 +375,8 @@ onMounted(loadAiSettings);
       <Textarea
         :model-value="aiStore.config.customSystemPrompt"
         rows="3"
-        placeholder="Enter custom instructions for the AI Chatbot Assistant..."
-        class="resize-y font-mono text-xs leading-relaxed"
+        placeholder="Enter custom instructions..."
+        class="max-h-96 min-h-32 resize-y font-mono text-xs leading-relaxed"
         @update:model-value="
           (val) => {
             aiStore.config.customSystemPrompt = String(val);
@@ -416,10 +416,10 @@ onMounted(loadAiSettings);
         rows="3"
         :placeholder="
           aiStore.config.enhancerUsesAssistantInstruction
-            ? 'Using Chatbot Assistant Instructions'
-            : 'Enter custom guidelines for the Prompt Enhancer modal...'
+            ? 'Using assistant instructions'
+            : 'Enter custom guidelines...'
         "
-        class="resize-y font-mono text-xs leading-relaxed"
+        class="max-h-96 min-h-24 resize-y font-mono text-xs leading-relaxed"
         @update:model-value="
           (val) => {
             aiStore.config.enhancerSystemPrompt = String(val);

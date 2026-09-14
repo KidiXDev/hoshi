@@ -31,6 +31,7 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -845,7 +846,7 @@ void loadNetworkCacheStats();
                   autocomplete="new-password"
                   :placeholder="
                     hasCivitaiApiKey
-                      ? 'Saved — type to replace'
+                      ? 'Saved'
                       : 'Optional for browsing, required by gated models'
                   "
                   class="pr-10 font-mono text-xs"
@@ -992,8 +993,9 @@ void loadNetworkCacheStats();
 
   <Dialog v-model:open="isInstallDialogOpen">
     <DialogContent>
-      <DialogHeader>
+      <DialogHeader class="flex-row items-center justify-between">
         <DialogTitle>Install custom node</DialogTitle>
+        <DialogCloseButton class="-my-1.5 -mr-2" />
       </DialogHeader>
 
       <Field class="gap-1.5">

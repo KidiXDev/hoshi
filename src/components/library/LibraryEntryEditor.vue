@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogCloseButton,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -288,7 +289,7 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
       class="border-border bg-card flex max-h-[90vh] w-full min-w-[60vw] flex-col gap-0 overflow-hidden p-0"
     >
       <DialogHeader
-        class="border-border bg-background/50 shrink-0 border-b px-5 py-4"
+        class="border-border bg-background/50 shrink-0 flex-row items-center justify-between border-b px-5 py-4"
       >
         <DialogTitle
           class="text-foreground flex items-center gap-2 text-sm font-bold"
@@ -303,6 +304,7 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
               : `Edit "${editorName}"`
           }}
         </DialogTitle>
+        <DialogCloseButton class="-my-1.5" />
       </DialogHeader>
 
       <div
