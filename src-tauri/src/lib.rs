@@ -578,6 +578,7 @@ pub fn run() {
             booru::booru_clear_cache,
             civitai::models,
             civitai::model_by_id,
+            civitai::image_generation_data,
             civitai::model_version_by_id,
             civitai::model_version_by_hash,
             civitai::enums,

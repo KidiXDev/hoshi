@@ -58,7 +58,9 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
+import { useCivitaiImageMetaQuery } from '@/composables/useCivitaiQueries';
 import {
+  civitaiImageId,
   getComfyTargetFolder,
   isVideoMedia,
   type CivitaiFile,
@@ -143,8 +145,21 @@ const currentImages = computed<CivitaiImage[]>(() => {
   return currentVersion.value?.images ?? [];
 });
 
-const activeImage = computed<CivitaiImage | undefined>(() => {
+const carouselImage = computed<CivitaiImage | undefined>(() => {
   return currentImages.value[activeImageIndex.value] ?? currentImages.value[0];
+});
+
+const imageMetaQuery = useCivitaiImageMetaQuery(() => {
+  const image = carouselImage.value;
+  return image && !image.meta && image.hasMeta !== false
+    ? civitaiImageId(image)
+    : null;
+});
+
+const activeImage = computed<CivitaiImage | undefined>(() => {
+  const image = carouselImage.value;
+  if (!image) return;
+  return { ...image, meta: image.meta ?? imageMetaQuery.data.value ?? null };
 });
 
 const primaryModelFile = computed<CivitaiFile | undefined>(() => {
@@ -491,14 +506,6 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Generation Parameters Metadata Card -->
-      <CivitaiSampleMetadata
-        :active-image="activeImage"
-        :applied-to-workflow="appliedToWorkflow"
-        :copied-key="copiedKey"
-        @apply="applyParametersToWorkflow"
-        @copy="copyText"
-      />
       <div class="border-border/60 flex flex-col gap-3.5 border-t pt-6">
         <h2 class="text-foreground text-xl font-bold tracking-tight">
           About this Model
@@ -915,8 +922,10 @@ onUnmounted(() => {
     <ImageLightboxModal
       v-model:open="isLightboxOpen"
       :src="activeImage ? previewUrl(activeImage.url, 2048) : ''"
+      :video="isVideoMedia(activeImage)"
       :alt="`${model.name} - Full Preview`"
       :title="`${model.name} (${activeImage?.width || 0} × ${activeImage?.height || 0})`"
+      inspector-subtitle="Civitai sample parameters"
     >
       <template #actions>
         <Button
@@ -929,6 +938,15 @@ onUnmounted(() => {
           <Wand2 class="h-3.5 w-3.5" />
           <span>Apply to Workflow</span>
         </Button>
+      </template>
+      <template v-if="activeImage?.meta" #inspector>
+        <CivitaiSampleMetadata
+          :active-image="activeImage"
+          :applied-to-workflow="appliedToWorkflow"
+          :copied-key="copiedKey"
+          @apply="applyParametersToWorkflow"
+          @copy="copyText"
+        />
       </template>
     </ImageLightboxModal>
   </ModelDetailShell>

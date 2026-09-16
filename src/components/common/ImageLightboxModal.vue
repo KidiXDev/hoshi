@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onUnmounted } from 'vue';
+import { computed, ref, useSlots, watch, onUnmounted } from 'vue';
 import {
   Check,
   Copy,
@@ -23,23 +23,31 @@ interface Props {
   title?: string;
   /** Generation data for the inspector side panel (hidden by default). */
   workflowState?: WorkflowState;
+  inspectorSubtitle?: string;
+  video?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   src: '',
   alt: 'Image Preview',
-  title: ''
+  title: '',
+  inspectorSubtitle: 'Workflow parameters',
+  video: false
 });
 
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void;
   (e: 'close'): void;
 }>();
+const slots = useSlots();
 const { style: overlayStyle } = useOverlayLayer(
   () => props.open && Boolean(props.src)
 );
 
 const showInspector = ref(false);
+function hasInspector() {
+  return Boolean(props.workflowState || slots.inspector);
+}
 const copied = ref<string | null>(null);
 async function copyText(key: string, text?: string) {
   if (!text) return;
@@ -139,7 +147,7 @@ function handleKeydown(event: KeyboardEvent) {
   if (!props.open) return;
   if (event.key === 'Escape') {
     handleClose();
-  } else if ((event.key === 'i' || event.key === 'I') && props.workflowState) {
+  } else if ((event.key === 'i' || event.key === 'I') && hasInspector()) {
     showInspector.value = !showInspector.value;
   } else if (event.key === '+' || event.key === '=') {
     zoom.value = Math.min(5, Number((zoom.value + 0.25).toFixed(2)));
@@ -214,7 +222,7 @@ onUnmounted(() => {
               <slot name="actions" />
 
               <Button
-                v-if="workflowState"
+                v-if="hasInspector()"
                 size="iconSm"
                 variant="ghost"
                 class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
@@ -280,8 +288,25 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Fullscreen Image with Pan and Zoom -->
+          <!-- Fullscreen Media with Pan and Zoom -->
+          <video
+            v-if="video"
+            :src="src"
+            :title="alt || title"
+            controls
+            autoplay
+            loop
+            playsinline
+            class="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl transition-transform duration-100 ease-out"
+            :style="{
+              transform: `translate3d(${panX}px, ${panY}px, 0px) scale(${zoom})`
+            }"
+            @click.stop
+            @wheel.prevent.stop="handleZoom"
+            @dblclick.stop="zoom === 1 ? (zoom = 2) : resetPanAndZoom()"
+          />
           <img
+            v-else
             :src="src"
             :alt="alt || title || 'Fullscreen Image'"
             draggable="false"
@@ -317,7 +342,7 @@ onUnmounted(() => {
           leave-to-class="translate-x-full"
         >
           <aside
-            v-if="showInspector && workflowState"
+            v-if="showInspector && hasInspector()"
             class="border-border/80 bg-card/95 relative z-20 flex h-full w-105 max-w-[90vw] shrink-0 flex-col overflow-hidden border-l shadow-2xl backdrop-blur-xl"
             @click.stop
           >
@@ -337,7 +362,7 @@ onUnmounted(() => {
                     Generation Data
                   </h2>
                   <p class="text-muted-foreground text-xs">
-                    Workflow parameters
+                    {{ inspectorSubtitle }}
                   </p>
                 </div>
               </div>
@@ -354,159 +379,173 @@ onUnmounted(() => {
 
             <ScrollArea class="min-h-0 flex-1 overflow-hidden">
               <div class="flex flex-col gap-4 p-4 select-text">
-                <div
-                  class="border-border/80 bg-secondary/30 rounded-xl border p-3 font-mono text-xs"
-                >
-                  <dl class="grid grid-cols-[80px_1fr] gap-x-2 gap-y-2.5">
-                    <dt class="text-muted-foreground">Model</dt>
-                    <dd class="text-foreground font-semibold break-all">
-                      {{ workflowState.models.unetName || '—' }}
-                    </dd>
-
-                    <dt class="text-muted-foreground">Sampler</dt>
-                    <dd class="text-foreground font-medium">
-                      {{ workflowState.sampler.samplerName || '—' }}
-                    </dd>
-
-                    <dt class="text-muted-foreground">Scheduler</dt>
-                    <dd class="text-foreground font-medium">
-                      {{ workflowState.sampler.scheduler || '—' }}
-                    </dd>
-
-                    <dt class="text-muted-foreground">Seed</dt>
-                    <dd
-                      class="flex items-center justify-between gap-1 break-all"
+                <slot name="inspector">
+                  <template v-if="workflowState">
+                    <div
+                      class="border-border/80 bg-secondary/30 rounded-xl border p-3 font-mono text-xs"
                     >
-                      <span class="text-foreground font-semibold">{{
-                        workflowState.sampler.seed
-                      }}</span>
-                      <Button
-                        size="iconSm"
-                        variant="ghost"
-                        class="h-6 w-6 shrink-0"
-                        title="Copy Seed"
-                        @click="
-                          copyText('seed', String(workflowState.sampler.seed))
-                        "
-                      >
-                        <Check
-                          v-if="copied === 'seed'"
-                          class="h-3 w-3 text-emerald-400"
-                        />
-                        <Copy v-else class="h-3 w-3" />
-                      </Button>
-                    </dd>
+                      <dl class="grid grid-cols-[80px_1fr] gap-x-2 gap-y-2.5">
+                        <dt class="text-muted-foreground">Model</dt>
+                        <dd class="text-foreground font-semibold break-all">
+                          {{ workflowState.models.unetName || '—' }}
+                        </dd>
 
-                    <dt class="text-muted-foreground">Steps / CFG</dt>
-                    <dd class="text-foreground font-medium">
-                      {{ workflowState.sampler.steps }} /
-                      {{ workflowState.sampler.cfg }}
-                    </dd>
+                        <dt class="text-muted-foreground">Sampler</dt>
+                        <dd class="text-foreground font-medium">
+                          {{ workflowState.sampler.samplerName || '—' }}
+                        </dd>
 
-                    <dt class="text-muted-foreground">Resolution</dt>
-                    <dd class="text-foreground font-medium">
-                      {{
-                        workflowState.resolution.width &&
-                        workflowState.resolution.height
-                          ? `${workflowState.resolution.width} × ${workflowState.resolution.height}`
-                          : workflowState.resolution.preset || '—'
-                      }}
-                    </dd>
+                        <dt class="text-muted-foreground">Scheduler</dt>
+                        <dd class="text-foreground font-medium">
+                          {{ workflowState.sampler.scheduler || '—' }}
+                        </dd>
 
-                    <dt class="text-muted-foreground">Mode</dt>
-                    <dd class="text-foreground font-medium">
-                      {{ workflowState.imageInput.mode }}
-                      <template
-                        v-if="workflowState.imageInput.mode !== 'text2img'"
-                      >
-                        · denoise {{ workflowState.sampler.denoise }}
-                      </template>
-                    </dd>
-
-                    <template v-if="enabledLoras.length">
-                      <dt class="text-muted-foreground">LoRAs</dt>
-                      <dd
-                        class="text-foreground flex flex-col gap-0.5 break-all"
-                      >
-                        <span v-for="lora in enabledLoras" :key="lora.id">
-                          {{ lora.name }}
-                          <span class="text-muted-foreground"
-                            >@ {{ lora.strength }}</span
+                        <dt class="text-muted-foreground">Seed</dt>
+                        <dd
+                          class="flex items-center justify-between gap-1 break-all"
+                        >
+                          <span class="text-foreground font-semibold">{{
+                            workflowState.sampler.seed
+                          }}</span>
+                          <Button
+                            size="iconSm"
+                            variant="ghost"
+                            class="h-6 w-6 shrink-0"
+                            title="Copy Seed"
+                            @click="
+                              copyText(
+                                'seed',
+                                String(workflowState.sampler.seed)
+                              )
+                            "
                           >
+                            <Check
+                              v-if="copied === 'seed'"
+                              class="h-3 w-3 text-emerald-400"
+                            />
+                            <Copy v-else class="h-3 w-3" />
+                          </Button>
+                        </dd>
+
+                        <dt class="text-muted-foreground">Steps / CFG</dt>
+                        <dd class="text-foreground font-medium">
+                          {{ workflowState.sampler.steps }} /
+                          {{ workflowState.sampler.cfg }}
+                        </dd>
+
+                        <dt class="text-muted-foreground">Resolution</dt>
+                        <dd class="text-foreground font-medium">
+                          {{
+                            workflowState.resolution.width &&
+                            workflowState.resolution.height
+                              ? `${workflowState.resolution.width} × ${workflowState.resolution.height}`
+                              : workflowState.resolution.preset || '—'
+                          }}
+                        </dd>
+
+                        <dt class="text-muted-foreground">Mode</dt>
+                        <dd class="text-foreground font-medium">
+                          {{ workflowState.imageInput.mode }}
+                          <template
+                            v-if="workflowState.imageInput.mode !== 'text2img'"
+                          >
+                            · denoise {{ workflowState.sampler.denoise }}
+                          </template>
+                        </dd>
+
+                        <template v-if="enabledLoras.length">
+                          <dt class="text-muted-foreground">LoRAs</dt>
+                          <dd
+                            class="text-foreground flex flex-col gap-0.5 break-all"
+                          >
+                            <span v-for="lora in enabledLoras" :key="lora.id">
+                              {{ lora.name }}
+                              <span class="text-muted-foreground"
+                                >@ {{ lora.strength }}</span
+                              >
+                            </span>
+                          </dd>
+                        </template>
+                      </dl>
+                    </div>
+
+                    <section class="border-border/80 rounded-xl border p-3">
+                      <div class="mb-2 flex items-center justify-between">
+                        <h3
+                          class="text-foreground text-xs font-bold tracking-wider uppercase"
+                        >
+                          Positive Prompt
+                        </h3>
+                        <Button
+                          v-if="workflowState.positivePrompt"
+                          size="sm"
+                          variant="ghost"
+                          class="text-muted-foreground hover:text-primary h-6 gap-1 px-2 text-xs"
+                          @click="
+                            copyText('prompt', workflowState.positivePrompt)
+                          "
+                        >
+                          <Check
+                            v-if="copied === 'prompt'"
+                            class="h-3 w-3 text-emerald-400"
+                          />
+                          <Copy v-else class="h-3 w-3" />
+                          <span>{{
+                            copied === 'prompt' ? 'Copied!' : 'Copy'
+                          }}</span>
+                        </Button>
+                      </div>
+                      <div
+                        v-if="promptTags.length"
+                        class="flex flex-wrap gap-1.5"
+                      >
+                        <span
+                          v-for="tag in promptTags"
+                          :key="tag"
+                          class="border-border/80 bg-muted/60 text-foreground rounded-md border px-2 py-0.5 font-mono text-xs break-all"
+                        >
+                          {{ tag }}
                         </span>
-                      </dd>
-                    </template>
-                  </dl>
-                </div>
+                      </div>
+                      <p v-else class="text-muted-foreground text-xs italic">
+                        No positive prompt.
+                      </p>
+                    </section>
 
-                <section class="border-border/80 rounded-xl border p-3">
-                  <div class="mb-2 flex items-center justify-between">
-                    <h3
-                      class="text-foreground text-xs font-bold tracking-wider uppercase"
+                    <section
+                      v-if="workflowState.negativePrompt"
+                      class="border-border/80 rounded-xl border p-3"
                     >
-                      Positive Prompt
-                    </h3>
-                    <Button
-                      v-if="workflowState.positivePrompt"
-                      size="sm"
-                      variant="ghost"
-                      class="text-muted-foreground hover:text-primary h-6 gap-1 px-2 text-xs"
-                      @click="copyText('prompt', workflowState.positivePrompt)"
-                    >
-                      <Check
-                        v-if="copied === 'prompt'"
-                        class="h-3 w-3 text-emerald-400"
-                      />
-                      <Copy v-else class="h-3 w-3" />
-                      <span>{{
-                        copied === 'prompt' ? 'Copied!' : 'Copy'
-                      }}</span>
-                    </Button>
-                  </div>
-                  <div v-if="promptTags.length" class="flex flex-wrap gap-1.5">
-                    <span
-                      v-for="tag in promptTags"
-                      :key="tag"
-                      class="border-border/80 bg-muted/60 text-foreground rounded-md border px-2 py-0.5 font-mono text-xs break-all"
-                    >
-                      {{ tag }}
-                    </span>
-                  </div>
-                  <p v-else class="text-muted-foreground text-xs italic">
-                    No positive prompt.
-                  </p>
-                </section>
-
-                <section
-                  v-if="workflowState.negativePrompt"
-                  class="border-border/80 rounded-xl border p-3"
-                >
-                  <div class="mb-2 flex items-center justify-between">
-                    <h3
-                      class="text-foreground text-xs font-bold tracking-wider uppercase"
-                    >
-                      Negative Prompt
-                    </h3>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      class="text-muted-foreground hover:text-primary h-6 gap-1 px-2 text-xs"
-                      @click="copyText('neg', workflowState.negativePrompt)"
-                    >
-                      <Check
-                        v-if="copied === 'neg'"
-                        class="h-3 w-3 text-emerald-400"
-                      />
-                      <Copy v-else class="h-3 w-3" />
-                      <span>{{ copied === 'neg' ? 'Copied!' : 'Copy' }}</span>
-                    </Button>
-                  </div>
-                  <p
-                    class="text-muted-foreground font-mono text-xs leading-relaxed whitespace-pre-wrap"
-                  >
-                    {{ workflowState.negativePrompt }}
-                  </p>
-                </section>
+                      <div class="mb-2 flex items-center justify-between">
+                        <h3
+                          class="text-foreground text-xs font-bold tracking-wider uppercase"
+                        >
+                          Negative Prompt
+                        </h3>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          class="text-muted-foreground hover:text-primary h-6 gap-1 px-2 text-xs"
+                          @click="copyText('neg', workflowState.negativePrompt)"
+                        >
+                          <Check
+                            v-if="copied === 'neg'"
+                            class="h-3 w-3 text-emerald-400"
+                          />
+                          <Copy v-else class="h-3 w-3" />
+                          <span>{{
+                            copied === 'neg' ? 'Copied!' : 'Copy'
+                          }}</span>
+                        </Button>
+                      </div>
+                      <p
+                        class="text-muted-foreground font-mono text-xs leading-relaxed whitespace-pre-wrap"
+                      >
+                        {{ workflowState.negativePrompt }}
+                      </p>
+                    </section>
+                  </template>
+                </slot>
               </div>
             </ScrollArea>
           </aside>

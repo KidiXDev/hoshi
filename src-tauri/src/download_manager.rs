@@ -1,8 +1,9 @@
 use reqwest::blocking::Client;
 use reqwest::header::{CONTENT_RANGE, RANGE};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -232,6 +233,12 @@ impl DownloadManager {
             .and_then(content_range_total)
             .or_else(|| response.content_length().map(|n| n + completed))
             .unwrap_or(0);
+        let mut hasher = Sha256::new();
+        if completed > 0 {
+            let mut partial = File::open(&partial_path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut (&mut partial).take(completed), &mut hasher)
+                .map_err(|e| e.to_string())?;
+        }
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -274,6 +281,7 @@ impl DownloadManager {
                 break;
             }
             file.write_all(&buffer[..read]).map_err(|e| e.to_string())?;
+            hasher.update(&buffer[..read]);
             completed += read as u64;
             speed_bytes += read as u64;
             let elapsed = speed_at.elapsed();
@@ -303,6 +311,13 @@ impl DownloadManager {
         file.sync_all().map_err(|e| e.to_string())?;
         drop(file);
         fs::rename(&partial_path, model_path).map_err(|e| e.to_string())?;
+        let sha256 = format!("{:x}", hasher.finalize());
+        if let Err(error) = crate::model_manager::record_downloaded_hash(app, model_path, &sha256) {
+            eprintln!(
+                "Could not record hash for {}: {error}",
+                model_path.display()
+            );
+        }
         self.update_record(
             app,
             &record.gid,

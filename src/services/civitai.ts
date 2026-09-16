@@ -44,6 +44,20 @@ export interface CivitaiImage {
   nsfw?: boolean | string;
   nsfwLevel?: number;
   meta?: Record<string, unknown> | null;
+  hasMeta?: boolean;
+}
+
+// Model responses omit `images[].id`; the CDN file name carries it.
+export function civitaiImageId(image?: CivitaiImage | null) {
+  if (image?.id) return image.id;
+  const match = image?.url.match(/\/(\d+)\.[a-z0-9]+(?:\?|$)/iu);
+  return match ? Number(match[1]) : null;
+}
+
+export function fetchCivitaiImageMeta(id: number) {
+  return invoke<Record<string, unknown> | null>('image_generation_data', {
+    id
+  });
 }
 
 export function isVideoMedia(

@@ -1,5 +1,5 @@
 use reqwest::blocking::{Client, Response};
-use reqwest::header::{CACHE_CONTROL, RANGE};
+use reqwest::header::{CACHE_CONTROL, RANGE, REFERER};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -216,6 +216,31 @@ pub async fn model_by_id(app_handle: AppHandle, id: u64, api_key: String) -> Res
     tauri::async_runtime::spawn_blocking(move || fetch_model_by_id(&app_handle, id, &api_key))
         .await
         .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn image_generation_data(app_handle: AppHandle, id: u64) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = reqwest::Url::parse_with_params(
+            "https://civitai.com/api/trpc/image.getGenerationData",
+            [("input", serde_json::json!({ "json": { "id": id } }).to_string())],
+        )
+        .map_err(|error| error.to_string())?;
+        cached_json(&app_handle, url.as_str(), MODEL_TTL_SECONDS, || {
+            let response = client()?
+                .get(url.clone())
+                .header(REFERER, "https://civitai.com/")
+                .send()
+                .map_err(|error| error.to_string())?;
+            let mut meta = response_json(response)?["result"]["data"]["json"]["meta"].take();
+            if let Some(object) = meta.as_object_mut() {
+                object.remove("comfy");
+            }
+            Ok(meta)
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 /// Cached `GET /model-versions/...` used by the downloader and the Model Manager.

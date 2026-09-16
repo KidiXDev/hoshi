@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/vue-query';
 import { computed, toValue, type MaybeRefOrGetter } from 'vue';
 import {
   fetchCivitaiBaseModels,
+  fetchCivitaiImageMeta,
   fetchCivitaiModelById,
   fetchCivitaiModels
 } from '../services/civitai';
@@ -62,6 +63,17 @@ export function useCivitaiModelDetailQuery(
       return Boolean(currentId) && isCustomEnabled;
     }),
     staleTime: 1000 * 60 * 15
+  });
+}
+
+export function useCivitaiImageMetaQuery(
+  id: MaybeRefOrGetter<number | null | undefined>
+) {
+  return useQuery({
+    queryKey: computed(() => queryKeys.civitai.imageMeta(toValue(id) ?? 0)),
+    queryFn: () => fetchCivitaiImageMeta(toValue(id) ?? 0),
+    enabled: computed(() => Boolean(toValue(id))),
+    staleTime: Number.POSITIVE_INFINITY
   });
 }
 

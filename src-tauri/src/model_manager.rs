@@ -10,12 +10,12 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
-use std::sync::mpsc;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::civitai;
 use crate::image_gallery::{directory_argument, encode_jpeg_thumbnail};
@@ -1295,9 +1295,7 @@ fn hash_file(path: &Path, mut on_progress: impl FnMut(u64, u64) -> bool) -> Resu
         let _ = recycle_tx.send(vec![0u8; HASH_BUFFER]);
     }
     let reader = std::thread::spawn(move || loop {
-        let mut buffer = recycle_rx
-            .recv()
-            .unwrap_or_else(|_| vec![0u8; HASH_BUFFER]);
+        let mut buffer = recycle_rx.recv().unwrap_or_else(|_| vec![0u8; HASH_BUFFER]);
         buffer.resize(HASH_BUFFER, 0);
         match file.read(&mut buffer) {
             Ok(0) => break,
@@ -1376,6 +1374,34 @@ fn ensure_hash(
     model.modified_ms = model.hash_modified_ms.unwrap_or_default();
     index.update(model.clone())?;
     Ok(hash)
+}
+
+pub fn record_downloaded_hash(app: &AppHandle, path: &Path, sha256: &str) -> Result<(), String> {
+    let index = app.state::<ModelIndex>();
+    let root = {
+        let state = index.state.read().map_err(lock_error)?;
+        state
+            .roots
+            .iter()
+            .find(|root| path.starts_with(&root.path))
+            .cloned()
+    };
+    let Some(root) = root else {
+        return Ok(());
+    };
+    index.update(describe_hashed_model(&root, path, sha256)?)
+}
+
+fn describe_hashed_model(
+    root: &CategoryRoot,
+    path: &Path,
+    sha256: &str,
+) -> Result<LocalModel, String> {
+    let mut hashed = describe_model(root, path, None)?;
+    hashed.sha256 = Some(sha256.to_ascii_lowercase());
+    hashed.hash_size = Some(hashed.file_size);
+    hashed.hash_modified_ms = Some(hashed.modified_ms);
+    describe_model(root, path, Some(&hashed))
 }
 
 // ─── civitai sync ─────────────────────────────────────────────────────────────
@@ -1969,6 +1995,40 @@ mod tests {
     }
 
     #[test]
+    fn downloaded_hash_verifies_sidecar_without_rehash() {
+        let root = temp_dir("downloaded");
+        let loras = root.join("models").join("loras");
+        fs::create_dir_all(&loras).unwrap();
+        let path = loras.join("dl.safetensors");
+        fs::write(&path, b"downloaded bytes").unwrap();
+        let hash: String = Sha256::digest(b"downloaded bytes")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        fs::write(
+            loras.join("dl.civitai.info"),
+            format!(
+                r#"{{"id":5,"modelId":6,"name":"v1","model":{{"name":"D","type":"LORA"}},"files":[{{"hashes":{{"SHA256":"{}"}}}}]}}"#,
+                hash.to_uppercase()
+            ),
+        )
+        .unwrap();
+        let category = CategoryRoot {
+            category: "loras".into(),
+            path: loras.to_string_lossy().into_owned(),
+            is_default: true,
+        };
+        let model = describe_hashed_model(&category, &path, &hash.to_uppercase()).unwrap();
+        assert_eq!(model.valid_hash(), Some(hash.as_str()));
+        assert!(model.civitai.as_ref().unwrap().verified);
+        let rescanned = describe_model(&category, &path, Some(&model)).unwrap();
+        assert!(rescanned.civitai.as_ref().unwrap().verified);
+        let foreign = describe_hashed_model(&category, &path, &"0".repeat(64)).unwrap();
+        assert!(!foreign.civitai.as_ref().unwrap().verified);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn reads_safetensors_header_and_suggests_words() {
         let dir = temp_dir("header");
         let header = serde_json::json!({
@@ -2020,7 +2080,11 @@ mod tests {
                 expected.update(&chunk);
             }
         }
-        let expected: String = expected.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        let expected: String = expected
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         let mut seen_total = 0;
         assert_eq!(
             hash_file(&big, |processed, total| {
