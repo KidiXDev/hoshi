@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import {
   CloudDownload,
   CloudOff,
@@ -8,14 +8,13 @@ import {
   RefreshCw
 } from '@lucide/vue';
 import { useRouter } from 'vue-router';
-import CivitaiModelDetail from '@/components/civitai/CivitaiModelDetail.vue';
+import CivitaiModelDetailHost from '@/components/civitai/CivitaiModelDetailHost.vue';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import LocalModelInfoSection from '@/components/models/LocalModelInfoSection.vue';
 import LocalModelMetadataSection from '@/components/models/LocalModelMetadataSection.vue';
 import LocalModelStage from '@/components/models/LocalModelStage.vue';
 import ModelDetailShell from '@/components/models/ModelDetailShell.vue';
 import ModelDetailSkeleton from '@/components/models/ModelDetailSkeleton.vue';
-import ModelFileActions from '@/components/models/ModelFileActions.vue';
 import ModelPreviewMenu from '@/components/models/ModelPreviewMenu.vue';
 import ModelSyncDialog from '@/components/models/ModelSyncDialog.vue';
 import { Badge } from '@/components/ui/badge';
@@ -23,30 +22,15 @@ import { Button } from '@/components/ui/button';
 import { useCivitaiModelDetailQuery } from '@/composables/useCivitaiQueries';
 import {
   loadCivitaiApiKey,
-  useCheckModelUpdateMutation,
   useLocalModelsIndexQuery,
   useModelMetadataQuery
 } from '@/composables/useModelManagerQueries';
 import { useModelSyncDialog } from '@/composables/useModelSyncDialog';
-import {
-  isVideoMedia,
-  type CivitaiModel,
-  type CivitaiVersion
-} from '@/services/civitai';
-import type { DownloadRecord } from '@/services/downloadManager';
-import {
-  modelCategoryLabel,
-  showModelInFolder,
-  type LocalModel
-} from '@/services/modelManager';
-import { useDownloadStore } from '@/stores/downloadStore';
-import { useLauncherStore } from '@/stores/launcherStore';
+import { modelCategoryLabel, type LocalModel } from '@/services/modelManager';
 
 const props = defineProps<{ id: string }>();
 
 const router = useRouter();
-const downloadStore = useDownloadStore();
-const launcherStore = useLauncherStore();
 
 const indexQuery = useLocalModelsIndexQuery();
 const model = computed<LocalModel | undefined>(() =>
@@ -79,116 +63,6 @@ async function runSync() {
 
 const apiKey = ref('');
 const civitaiQuery = useCivitaiModelDetailQuery(civitaiModelId, apiKey);
-const civitaiModel = computed<CivitaiModel | null>(
-  () => civitaiQuery.data.value ?? null
-);
-const civitaiVersionId = ref('');
-const queueingVersions = ref(new Set<number>());
-const downloadError = ref('');
-const checkUpdate = useCheckModelUpdateMutation();
-
-watch(
-  [civitaiModel, () => summary.value?.versionId],
-  ([remote, installed]) => {
-    if (!remote) return;
-    const preferred =
-      remote.modelVersions.find((version) => version.id === installed) ??
-      remote.modelVersions[0];
-    if (preferred && !civitaiVersionId.value)
-      civitaiVersionId.value = String(preferred.id);
-  },
-  { immediate: true }
-);
-// Keep the grid's "Update" badge current whenever the Civitai page is opened.
-watch(
-  () => [civitaiModel.value?.id, model.value?.id] as const,
-  ([remoteId, localId]) => {
-    if (remoteId && localId && !checkUpdate.isPending.value)
-      checkUpdate.mutate(localId);
-  }
-);
-
-const activeCivitaiVersion = computed<CivitaiVersion | undefined>(() => {
-  const remote = civitaiModel.value;
-  const wanted = Number(civitaiVersionId.value);
-  return (
-    remote?.modelVersions.find((version) => version.id === wanted) ??
-    remote?.modelVersions[0]
-  );
-});
-const activeSample = computed(() =>
-  activeCivitaiVersion.value?.images.find((image) => !isVideoMedia(image))
-);
-const downloadProgress = computed<Record<number, DownloadRecord>>(() =>
-  Object.fromEntries(
-    downloadStore.items
-      .filter((item) => ['active', 'waiting', 'paused'].includes(item.status))
-      .map((item) => [item.versionId, item])
-  )
-);
-const downloadedRecords = computed<Record<number, DownloadRecord>>(() =>
-  Object.fromEntries(
-    downloadStore.items
-      .filter((item) => item.status === 'complete' && item.fileExists !== false)
-      .map((item) => [item.versionId, item])
-  )
-);
-const activeVersionInstalled = computed(() => {
-  const version = activeCivitaiVersion.value;
-  return Boolean(
-    version &&
-    (version.id === summary.value?.versionId ||
-      downloadedRecords.value[version.id])
-  );
-});
-
-async function downloadCivitaiVersion(
-  _remote?: CivitaiModel,
-  versionParam?: CivitaiVersion
-) {
-  const version = versionParam ?? activeCivitaiVersion.value;
-  if (!version || queueingVersions.value.has(version.id)) return;
-  if (!launcherStore.hasComfyDirectory) {
-    downloadError.value = launcherStore.localSetupMessage;
-    return;
-  }
-  downloadError.value = '';
-  queueingVersions.value = new Set(queueingVersions.value).add(version.id);
-  try {
-    await downloadStore.enqueueCivitai({
-      versionId: version.id,
-      workingDir: launcherStore.config.workingDir,
-      apiKey: apiKey.value
-    });
-  } catch (error) {
-    downloadError.value = String(error);
-  } finally {
-    const next = new Set(queueingVersions.value);
-    next.delete(version.id);
-    queueingVersions.value = next;
-  }
-}
-
-async function toggleCivitaiDownload(versionId: number) {
-  const item = downloadProgress.value[versionId];
-  if (!item) return;
-  try {
-    if (item.status === 'paused') await downloadStore.resume(item.gid);
-    else await downloadStore.pause(item.gid);
-  } catch (error) {
-    downloadError.value = String(error);
-  }
-}
-
-async function cancelCivitaiDownload(versionId: number) {
-  const item = downloadProgress.value[versionId];
-  if (!item) return;
-  try {
-    await downloadStore.cancel(item.gid);
-  } catch (error) {
-    downloadError.value = String(error);
-  }
-}
 
 onMounted(async () => {
   apiKey.value = await loadCivitaiApiKey();
@@ -232,68 +106,13 @@ onMounted(async () => {
     </template>
   </ModelDetailShell>
 
-  <CivitaiModelDetail
-    v-else-if="civitaiModel"
-    :model="civitaiModel"
-    :selected-version-id="civitaiVersionId"
-    :is-installed="activeVersionInstalled"
-    :is-downloading="!!downloadProgress[activeCivitaiVersion?.id || 0]"
-    :is-queueing="queueingVersions.has(activeCivitaiVersion?.id || 0)"
-    :progress-record="downloadProgress[activeCivitaiVersion?.id || 0]"
-    :downloaded-record="downloadedRecords[activeCivitaiVersion?.id || 0]"
-    :download-disabled="!launcherStore.hasComfyDirectory"
-    :download-message="
-      !launcherStore.hasComfyDirectory ? launcherStore.localSetupMessage : ''
-    "
-    :error-message="downloadError"
+  <CivitaiModelDetailHost
+    v-else-if="civitaiQuery.data.value"
+    :model="civitaiQuery.data.value"
+    :preferred-version-id="summary?.versionId"
     back-label="Back to Models"
-    @update:selected-version-id="(value) => (civitaiVersionId = value)"
     @close="goBack"
-    @download="downloadCivitaiVersion"
-    @pause="toggleCivitaiDownload"
-    @resume="toggleCivitaiDownload"
-    @cancel="cancelCivitaiDownload"
-    @show-in-folder="showModelInFolder"
-    @tag-click="(tag) => router.push({ path: '/civitai', query: { tag } })"
-  >
-    <template #header-actions>
-      <ModelPreviewMenu
-        :model="model"
-        :sample-url="activeSample?.url"
-        sample-label="From current Civitai sample"
-      />
-      <Button
-        variant="outline"
-        size="sm"
-        class="h-8 gap-1.5 text-xs"
-        :disabled="syncDialog.isRunning()"
-        title="Refresh sidecar metadata and preview from Civitai"
-        @click="runSync"
-      >
-        <Loader2
-          v-if="syncDialog.isRunning()"
-          class="h-3.5 w-3.5 animate-spin"
-        />
-        <RefreshCw v-else class="h-3.5 w-3.5" />
-        <span>Re-sync</span>
-      </Button>
-    </template>
-    <template #installed-actions>
-      <ModelFileActions :model="model" />
-    </template>
-    <template #sidebar-bottom>
-      <NoticeBanner v-if="summary && !summary.verified" tone="amber">
-        <span>
-          <span class="font-semibold">Unverified metadata.</span>
-          The Civitai link comes from a sidecar file next to the model; the file
-          hash has not been checked against Civitai yet. Re-sync to verify it is
-          this exact file.
-        </span>
-      </NoticeBanner>
-      <LocalModelInfoSection :model="model" :show-actions="false" />
-      <LocalModelMetadataSection :model="model" />
-    </template>
-  </CivitaiModelDetail>
+  />
 
   <!-- Not linked (or Civitai page unavailable) -->
   <ModelDetailShell v-else back-label="Back to Models" @close="goBack">

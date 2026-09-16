@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query';
+import { useMutation, useQuery } from '@tanstack/vue-query';
 import { computed, toValue, type MaybeRefOrGetter } from 'vue';
+import { queryClient } from '../lib/queryClient';
 import { loadAppData } from '../services/appStorage';
 import {
   checkModelUpdate,
@@ -109,80 +110,79 @@ export function useModelMetadataQuery(
 }
 
 /** Replaces one record inside every cached index snapshot. */
-function useIndexPatcher() {
-  const queryClient = useQueryClient();
-  function replace(model: LocalModel) {
-    queryClient.setQueriesData<LocalModelsIndex>(
-      { queryKey: ['models', 'index'] },
-      (current) =>
-        current && {
-          ...current,
-          models: current.models.map((item) =>
-            item.id === model.id ? model : item
-          )
-        }
-    );
-    queryClient.setQueriesData<LocalModel | null>(
-      { queryKey: ['models', 'byName'] },
-      (current) => (current?.id === model.id ? model : current)
-    );
-  }
-  function remove(id: string) {
-    queryClient.setQueriesData<LocalModelsIndex>(
-      { queryKey: ['models', 'index'] },
-      (current) =>
-        current && {
-          ...current,
-          models: current.models.filter((item) => item.id !== id)
-        }
-    );
-    queryClient.setQueriesData<LocalModel | null>(
-      { queryKey: ['models', 'byName'] },
-      (current) => (current?.id === id ? null : current)
-    );
-    queryClient.removeQueries({ queryKey: queryKeys.models.metadata(id) });
-  }
-  return { queryClient, replace, remove };
+function replaceIndexedModel(model: LocalModel) {
+  queryClient.setQueriesData<LocalModelsIndex>(
+    { queryKey: ['models', 'index'] },
+    (current) =>
+      current && {
+        ...current,
+        models: current.models.map((item) =>
+          item.id === model.id ? model : item
+        )
+      }
+  );
+  queryClient.setQueriesData<LocalModel | null>(
+    { queryKey: ['models', 'byName'] },
+    (current) => (current?.id === model.id ? model : current)
+  );
+}
+
+function removeIndexedModel(id: string) {
+  queryClient.setQueriesData<LocalModelsIndex>(
+    { queryKey: ['models', 'index'] },
+    (current) =>
+      current && {
+        ...current,
+        models: current.models.filter((item) => item.id !== id)
+      }
+  );
+  queryClient.setQueriesData<LocalModel | null>(
+    { queryKey: ['models', 'byName'] },
+    (current) => (current?.id === id ? null : current)
+  );
+  queryClient.removeQueries({ queryKey: queryKeys.models.metadata(id) });
+}
+
+export async function rescanLocalModelIndex(
+  workingDir: string,
+  args: string[]
+) {
+  const index = await rescanModels(workingDir, args);
+  queryClient.setQueryData(queryKeys.models.index(workingDir), index);
+  void queryClient.invalidateQueries({ queryKey: ['models', 'byName'] });
+  return index;
 }
 
 export function useRescanModelsMutation() {
   const { workingDir, args } = useLauncherScan();
-  const { queryClient } = useIndexPatcher();
   return useMutation({
-    mutationFn: () => rescanModels(workingDir.value, args.value),
-    onSuccess: (index) => {
-      queryClient.setQueryData(queryKeys.models.index(workingDir.value), index);
-      void queryClient.invalidateQueries({ queryKey: ['models', 'byName'] });
-    }
+    mutationFn: () => rescanLocalModelIndex(workingDir.value, args.value)
   });
 }
 
 export function useSyncModelMutation() {
-  const { replace } = useIndexPatcher();
   return useMutation({
     mutationFn: async (id: string) =>
       syncModelWithCivitai(id, await loadCivitaiApiKey()),
-    onSuccess: (model) => replace(model)
+    onSuccess: (model) => replaceIndexedModel(model)
   });
 }
 
 export function useSetModelPreviewMutation() {
-  const { replace } = useIndexPatcher();
   return useMutation({
     mutationFn: ({ id, source }: { id: string; source: PreviewSource }) =>
       setModelPreview(id, source),
-    onSuccess: (model) => replace(model)
+    onSuccess: (model) => replaceIndexedModel(model)
   });
 }
 
 export function useDeleteModelMutation() {
-  const { remove } = useIndexPatcher();
   const comfyStore = useComfyStore();
   const civitaiStore = useCivitaiStore();
   return useMutation({
     mutationFn: (id: string) => deleteModel(id),
     onSuccess: (_deleted, id) => {
-      remove(id);
+      removeIndexedModel(id);
       if (comfyStore.isConnected) void comfyStore.refreshModels();
       void civitaiStore.refreshLocalModels();
     }
@@ -191,7 +191,6 @@ export function useDeleteModelMutation() {
 
 /** Refreshes `latestVersionId` for a linked model (cached Civitai lookup). */
 export function useCheckModelUpdateMutation() {
-  const { queryClient } = useIndexPatcher();
   return useMutation({
     mutationFn: async (id: string) =>
       checkModelUpdate(id, await loadCivitaiApiKey()),

@@ -27,11 +27,13 @@ onUnmounted(() => finish(false));
   <AlertDialog :open="open" @update:open="(value) => !value && finish(false)">
     <AlertDialogContent class="border-border bg-card sm:max-w-md">
       <AlertDialogHeader>
-        <AlertDialogTitle class="text-foreground text-base font-bold">
+        <AlertDialogTitle
+          class="text-foreground text-base font-bold wrap-anywhere"
+        >
           {{ options.title }}
         </AlertDialogTitle>
         <AlertDialogDescription
-          class="text-muted-foreground text-xs leading-relaxed"
+          class="text-muted-foreground text-xs leading-relaxed wrap-anywhere"
         >
           {{ options.description }}
         </AlertDialogDescription>

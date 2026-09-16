@@ -74,6 +74,7 @@ interface Props {
   model: CivitaiModel;
   selectedVersionId?: string;
   isInstalled?: boolean;
+  installedVersionIds?: number[];
   isDownloading?: boolean;
   isQueueing?: boolean;
   progressRecord?: DownloadRecord;
@@ -88,6 +89,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   selectedVersionId: '',
   isInstalled: false,
+  installedVersionIds: () => [],
   isDownloading: false,
   isQueueing: false,
   progressRecord: undefined,
@@ -612,6 +614,11 @@ onUnmounted(() => {
                   :key="version.id"
                   :value="String(version.id)"
                 >
+                  <CheckCircle2
+                    v-if="props.installedVersionIds.includes(version.id)"
+                    class="size-3.5 text-emerald-500"
+                    aria-label="Installed"
+                  />
                   {{ version.name }} ({{ version.baseModel || 'Unknown base' }})
                 </SelectItem>
               </SelectGroup>

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
+import { rescanLocalModelIndex } from '../composables/useModelManagerQueries';
 import { loadAppData } from '../services/appStorage';
 import {
   cancelDownload,
@@ -10,7 +11,12 @@ import {
   resumeDownload,
   type DownloadRecord
 } from '../services/downloadManager';
-import { cleanPath } from './launcherStore';
+import { useCivitaiStore } from './civitaiStore';
+import {
+  cleanPath,
+  parseLauncherArgs,
+  useLauncherStore
+} from './launcherStore';
 
 export function shouldPollDownloads(records: Pick<DownloadRecord, 'status'>[]) {
   return records.some((record) =>
@@ -19,6 +25,8 @@ export function shouldPollDownloads(records: Pick<DownloadRecord, 'status'>[]) {
 }
 
 export const useDownloadStore = defineStore('downloads', () => {
+  const launcherStore = useLauncherStore();
+  const civitaiStore = useCivitaiStore();
   const items = ref<DownloadRecord[]>([]);
   const errorMessage = ref('');
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -30,10 +38,28 @@ export const useDownloadStore = defineStore('downloads', () => {
       ).length
   );
 
+  async function indexFinishedDownloads() {
+    const { workingDir, args } = launcherStore.config;
+    if (!cleanPath(workingDir)) return;
+    void civitaiStore.refreshLocalModels();
+    await rescanLocalModelIndex(cleanPath(workingDir), parseLauncherArgs(args));
+  }
+
   async function refresh() {
     try {
+      const unfinished = new Set(
+        items.value
+          .filter((item) => item.status !== 'complete')
+          .map((item) => item.gid)
+      );
       items.value = await listDownloads();
       errorMessage.value = '';
+      if (
+        items.value.some(
+          (item) => item.status === 'complete' && unfinished.has(item.gid)
+        )
+      )
+        await indexFinishedDownloads();
     } catch (error) {
       errorMessage.value =
         error instanceof Error ? error.message : String(error);

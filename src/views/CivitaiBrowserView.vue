@@ -48,19 +48,16 @@ import {
 } from '@/components/ui/tooltip';
 import { storeToRefs } from 'pinia';
 import { useRoute, useRouter } from 'vue-router';
+import { useInstalledCivitaiVersions } from '../composables/useInstalledCivitaiVersions';
 import {
   cacheCivitaiModel,
   fetchCivitaiModels,
   isVideoMedia,
-  normalizeModelFilename,
   type CivitaiModel,
   type CivitaiVersion
 } from '../services/civitai';
-import type { DownloadRecord } from '../services/downloadManager';
 import { loadAppData } from '../services/appStorage';
 import { useCivitaiStore } from '../stores/civitaiStore';
-import { useComfyStore } from '../stores/comfyStore';
-import { useDownloadStore } from '../stores/downloadStore';
 import { useLauncherStore } from '../stores/launcherStore';
 
 defineOptions({ name: 'CivitaiBrowserView' });
@@ -72,22 +69,12 @@ const GRID_GAP = 14;
 const CARD_ASPECT_RATIO = 4 / 3;
 const CARD_FOOTER_HEIGHT = 53;
 const OVERSCAN_ROWS = 3;
-const EMPTY_MODEL_FILES = new Set<string>();
-
-function modelFileSet(...groups: (string[] | undefined)[]) {
-  return new Set(
-    groups
-      .flatMap((group) => group ?? [])
-      .map((name) => normalizeModelFilename(name))
-  );
-}
 
 const router = useRouter();
 const route = useRoute();
-const comfyStore = useComfyStore();
-const launcherStore = useLauncherStore();
-const downloadStore = useDownloadStore();
 const civitaiStore = useCivitaiStore();
+const launcherStore = useLauncherStore();
+const { isVersionInstalled } = useInstalledCivitaiVersions();
 const { query, modelType, baseModel, sort, period, baseModels } =
   storeToRefs(civitaiStore);
 const apiKey = ref('');
@@ -106,27 +93,6 @@ let resizeObserver: ResizeObserver | null = null;
 let savedScrollTop = 0;
 
 const hasModels = computed(() => models.value.length > 0);
-const downloaded = computed<Record<number, DownloadRecord>>(() =>
-  Object.fromEntries(
-    downloadStore.items
-      .filter((item) => item.status === 'complete' && item.fileExists !== false)
-      .map((item) => [item.versionId, item])
-  )
-);
-const discoveredModelFiles = computed(() => {
-  const bridge =
-    civitaiStore.localModels ??
-    (launcherStore.hasComfyDirectory ? comfyStore.bridgeModels : null);
-  return {
-    checkpoints: modelFileSet(bridge?.checkpoints, bridge?.unets),
-    loras: modelFileSet(bridge?.loras),
-    vaes: modelFileSet(bridge?.vaes),
-    embeddings: modelFileSet(bridge?.embeddings),
-    controlnet: modelFileSet(bridge?.controlnet),
-    upscalers: modelFileSet(bridge?.upscale_models),
-    hypernetworks: modelFileSet(bridge?.hypernetworks)
-  };
-});
 const columns = computed(() => {
   if (gridWidth.value < 600) return 1;
   if (gridWidth.value < 760) return 2;
@@ -193,46 +159,6 @@ function changeCardImage(model: CivitaiModel, offset: number) {
   if (images.length < 2) return;
   activeImageIndices.value[model.id] =
     (getActiveImageIndex(model.id) + offset + images.length) % images.length;
-}
-
-function discoveredFilesForType(type: string) {
-  const files = discoveredModelFiles.value;
-  switch (type.toLowerCase()) {
-    case 'checkpoint':
-      return files.checkpoints;
-    case 'lora':
-    case 'locon':
-    case 'dora':
-      return files.loras;
-    case 'vae':
-      return files.vaes;
-    case 'textualinversion':
-      return files.embeddings;
-    case 'controlnet':
-      return files.controlnet;
-    case 'upscaler':
-      return files.upscalers;
-    case 'hypernetwork':
-      return files.hypernetworks;
-    default:
-      return EMPTY_MODEL_FILES;
-  }
-}
-
-function isVersionInstalled(
-  model?: CivitaiModel | null,
-  version?: CivitaiVersion
-) {
-  return (
-    !!model &&
-    !!version &&
-    (!!downloaded.value[version.id] ||
-      version.files.some((file) =>
-        discoveredFilesForType(model.type).has(
-          normalizeModelFilename(file.name)
-        )
-      ))
-  );
 }
 
 function isModelDownloaded(model: CivitaiModel): boolean {

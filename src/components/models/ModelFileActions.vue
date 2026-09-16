@@ -4,7 +4,7 @@
  * delete it (with confirmation; navigates back to the Model Manager after).
  */
 import { FolderOpen, Loader2, Trash2 } from '@lucide/vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +19,7 @@ import { formatFileSize } from '@/utils/formatters';
 
 const props = defineProps<{ model: LocalModel }>();
 
+const route = useRoute();
 const router = useRouter();
 const { confirm } = useConfirmDialog();
 const deleteMutation = useDeleteModelMutation();
@@ -34,7 +35,8 @@ async function confirmAndDelete() {
   try {
     await deleteMutation.mutateAsync(model.id);
     toast.success(`Deleted ${model.filename}`);
-    router.push('/models');
+    if (route.name === 'model-detail' && route.params.id === model.id)
+      router.push('/models');
   } catch (error) {
     toast.error(`Delete failed: ${String(error)}`);
   }
