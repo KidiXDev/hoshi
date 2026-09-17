@@ -374,6 +374,7 @@ fn default_categories() -> Vec<String> {
 pub(crate) fn provider(source: &str) -> Result<&'static dyn Provider, String> {
     match source {
         "danbooru" => Ok(&danbooru::DANBOORU),
+        "aibooru" => Ok(&danbooru::AIBOORU),
         "gelbooru" => Ok(&gelbooru::GELBOORU),
         "safebooru" => Ok(&safebooru::SAFEBOORU),
         "aitag" => Ok(&aitag::AI_TAG),
@@ -384,9 +385,10 @@ pub(crate) fn provider(source: &str) -> Result<&'static dyn Provider, String> {
     }
 }
 
-fn providers() -> [&'static dyn Provider; 7] {
+fn providers() -> [&'static dyn Provider; 8] {
     [
         &danbooru::DANBOORU,
+        &danbooru::AIBOORU,
         &gelbooru::GELBOORU,
         &safebooru::SAFEBOORU,
         &aitag::AI_TAG,
@@ -1059,10 +1061,9 @@ pub async fn booru_settings_save(
         let (target, allowed): (&mut HashMap<String, String>, &[&str]) = match source.as_str() {
             "danbooru" => (&mut settings.credentials.danbooru, &["username", "apiKey"]),
             "gelbooru" => (&mut settings.credentials.gelbooru, &["userId", "apiKey"]),
-            "konachan" | "konachan.com" => (
-                &mut settings.credentials.konachan,
-                &["cookie", "userAgent"],
-            ),
+            "konachan" | "konachan.com" => {
+                (&mut settings.credentials.konachan, &["cookie", "userAgent"])
+            }
             _ => return Err(format!("invalid credential source: {source}")),
         };
         for (key, value) in values {
@@ -1333,6 +1334,7 @@ fn clear_json_caches(app: &AppHandle) {
 fn media_hosts(source: &str) -> &'static [&'static str] {
     match source {
         "danbooru" => &["cdn.donmai.us", "danbooru.donmai.us"],
+        "aibooru" => &["cdn.aibooru.download", "aibooru.online"],
         "gelbooru" => &["gelbooru.com", "img3.gelbooru.com", "img4.gelbooru.com"],
         "safebooru" => &["safebooru.org", "images.safebooru.org"],
         "aitag" => &["ai-img.10118899.xyz"],

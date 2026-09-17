@@ -223,7 +223,10 @@ pub async fn image_generation_data(app_handle: AppHandle, id: u64) -> Result<Val
     tauri::async_runtime::spawn_blocking(move || {
         let url = reqwest::Url::parse_with_params(
             "https://civitai.com/api/trpc/image.getGenerationData",
-            [("input", serde_json::json!({ "json": { "id": id } }).to_string())],
+            [(
+                "input",
+                serde_json::json!({ "json": { "id": id } }).to_string(),
+            )],
         )
         .map_err(|error| error.to_string())?;
         cached_json(&app_handle, url.as_str(), MODEL_TTL_SECONDS, || {

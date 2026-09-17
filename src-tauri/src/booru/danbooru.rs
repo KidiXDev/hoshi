@@ -1,8 +1,24 @@
 use super::*;
 
-pub struct Danbooru;
-pub static DANBOORU: Danbooru = Danbooru;
-const BASE: &str = "https://danbooru.donmai.us";
+pub struct Danbooru {
+    source: &'static str,
+    display_name: &'static str,
+    base: &'static str,
+    accounts: bool,
+}
+
+pub static DANBOORU: Danbooru = Danbooru {
+    source: "danbooru",
+    display_name: "Danbooru",
+    base: "https://danbooru.donmai.us",
+    accounts: true,
+};
+pub static AIBOORU: Danbooru = Danbooru {
+    source: "aibooru",
+    display_name: "AIBooru",
+    base: "https://aibooru.online",
+    accounts: false,
+};
 
 fn auth(credentials: &HashMap<String, String>) -> Vec<(String, String)> {
     match (credentials.get("username"), credentials.get("apiKey")) {
@@ -16,12 +32,12 @@ fn auth(credentials: &HashMap<String, String>) -> Vec<(String, String)> {
     }
 }
 
-fn summary(post: &Value) -> PostSummary {
+fn summary(site: &Danbooru, post: &Value) -> PostSummary {
     let id = string(post.get("id"));
     PostSummary {
-        source: "danbooru".into(),
+        source: site.source.into(),
         post_id: id.clone(),
-        post_url: format!("{BASE}/posts/{id}"),
+        post_url: format!("{}/posts/{id}", site.base),
         preview_url: string(post.get("large_file_url"))
             .or_else_value(string(post.get("preview_file_url"))),
         sample_url: string(post.get("large_file_url")),
@@ -50,6 +66,7 @@ impl NonEmpty for String {
 }
 
 fn page_from_raw(
+    site: &Danbooru,
     raw: Value,
     page: usize,
     limit: usize,
@@ -58,7 +75,7 @@ fn page_from_raw(
 ) -> Result<Page, String> {
     let values = raw
         .as_array()
-        .ok_or("danbooru search response must be a list")?;
+        .ok_or_else(|| format!("{} search response must be a list", site.source))?;
     let candidates: Vec<_> = values
         .iter()
         .filter(|post| post.get("id").is_some() && is_static_post(post))
@@ -70,8 +87,8 @@ fn page_from_raw(
         .collect();
     let posts: Vec<_> = visible
         .iter()
-        .map(|post| summary(post))
-        .filter(|post| rating_matches("danbooru", &post.rating, ratings))
+        .map(|post| summary(site, post))
+        .filter(|post| rating_matches(site.source, &post.rating, ratings))
         .collect();
     let mut warnings = if visible.len() < candidates.len() {
         vec!["local-blacklist-filtered".into()]
@@ -115,6 +132,7 @@ fn search_tags(request: &SearchRequest, limit: usize) -> String {
 }
 
 fn categories(
+    site: &Danbooru,
     client: &Client,
     tags: &[String],
     credentials: &HashMap<String, String>,
@@ -130,8 +148,10 @@ fn categories(
         ];
         params.extend(auth(credentials));
         let raw = send_json(
-            "danbooru",
-            client.get(format!("{BASE}/tags.json")).query(&params),
+            site.source,
+            client
+                .get(format!("{}/tags.json", site.base))
+                .query(&params),
         )?;
         let known: HashMap<String, String> = raw
             .as_array()
@@ -162,16 +182,20 @@ fn categories(
 impl Provider for Danbooru {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            source: "danbooru",
-            display_name: "Danbooru",
+            source: self.source,
+            display_name: self.display_name,
             ratings: &["general", "sensitive", "questionable", "explicit"],
             sort_values: &["latest", "score", "favcount"],
             pagination: "page",
             max_page_size: 200,
-            auth_fields: &["username", "apiKey"],
+            auth_fields: if self.accounts {
+                &["username", "apiKey"]
+            } else {
+                &[]
+            },
             categorized_tags: true,
-            favorite_read: true,
-            favorite_write: true,
+            favorite_read: self.accounts,
+            favorite_write: self.accounts,
             ranking_periods: &["day", "week", "month"],
             page_jump: true,
             detail_hydration: true,
@@ -179,7 +203,11 @@ impl Provider for Danbooru {
             auth_required: false,
             tag_search: true,
             max_search_tags: Some(2),
-            credentials_url: "https://danbooru.donmai.us/settings",
+            credentials_url: if self.accounts {
+                "https://danbooru.donmai.us/settings"
+            } else {
+                ""
+            },
         }
     }
 
@@ -205,9 +233,12 @@ impl Provider for Danbooru {
         ];
         params.extend(auth(credentials));
         page_from_raw(
+            self,
             send_json(
-                "danbooru",
-                client.get(format!("{BASE}/posts.json")).query(&params),
+                self.source,
+                client
+                    .get(format!("{}/posts.json", self.base))
+                    .query(&params),
             )?,
             page,
             limit,
@@ -238,10 +269,11 @@ impl Provider for Danbooru {
         ];
         params.extend(auth(credentials));
         page_from_raw(
+            self,
             send_json(
-                "danbooru",
+                self.source,
                 client
-                    .get(format!("{BASE}/explore/posts/popular.json"))
+                    .get(format!("{}/explore/posts/popular.json", self.base))
                     .query(&params),
             )?,
             page,
@@ -258,12 +290,12 @@ impl Provider for Danbooru {
         credentials: &HashMap<String, String>,
     ) -> Result<PostDetail, String> {
         let raw = send_json(
-            "danbooru",
+            self.source,
             client
-                .get(format!("{BASE}/posts/{post_id}.json"))
+                .get(format!("{}/posts/{post_id}.json", self.base))
                 .query(&auth(credentials)),
         )?;
-        let mut detail = PostDetail::from_summary(summary(&raw));
+        let mut detail = PostDetail::from_summary(summary(self, &raw));
         detail.media_url = string(raw.get("file_url"));
         detail.sample_url =
             string(raw.get("large_file_url")).or_else_value(string(raw.get("preview_file_url")));
@@ -288,7 +320,7 @@ impl Provider for Danbooru {
         tags: &[String],
         credentials: &HashMap<String, String>,
     ) -> Result<HashMap<String, Vec<String>>, String> {
-        categories(client, tags, credentials)
+        categories(self, client, tags, credentials)
     }
 
     fn known_tags(
@@ -305,8 +337,10 @@ impl Provider for Danbooru {
             ];
             params.extend(auth(credentials));
             let raw = send_json(
-                "danbooru",
-                client.get(format!("{BASE}/tags.json")).query(&params),
+                self.source,
+                client
+                    .get(format!("{}/tags.json", self.base))
+                    .query(&params),
             )?;
             for tag in raw.as_array().into_iter().flatten() {
                 if as_i64(tag.get("post_count")) > 0
@@ -334,11 +368,11 @@ impl Provider for Danbooru {
         let username = credentials
             .get("username")
             .filter(|v| !v.is_empty())
-            .ok_or("danbooru username is required to read favorites")?;
+            .ok_or_else(|| format!("{} username is required to read favorites", self.source))?;
         self.search(
             client,
             &SearchRequest {
-                source: "danbooru".into(),
+                source: self.source.into(),
                 query: format!("ordfav:{username}"),
                 ratings: Vec::new(),
                 sort: if request.random {
@@ -365,19 +399,19 @@ impl Provider for Danbooru {
     ) -> Result<bool, String> {
         let params = auth(credentials);
         if params.is_empty() {
-            return Err("danbooru username and API key are required".into());
+            return Err(format!("{} username and API key are required", self.source));
         }
         let request = if favorite {
             client
-                .post(format!("{BASE}/favorites.json"))
+                .post(format!("{}/favorites.json", self.base))
                 .query(&params)
                 .json(&serde_json::json!({"post_id": post_id}))
         } else {
             client
-                .delete(format!("{BASE}/favorites/{post_id}.json"))
+                .delete(format!("{}/favorites/{post_id}.json", self.base))
                 .query(&params)
         };
-        send_status("danbooru", request)?;
+        send_status(self.source, request)?;
         Ok(favorite)
     }
 }
@@ -389,11 +423,17 @@ mod tests {
     #[test]
     fn maps_post_payload() {
         let post = serde_json::json!({"id": 12, "preview_file_url": "https://cdn.donmai.us/preview.jpg", "large_file_url": "https://cdn.donmai.us/large.jpg", "image_width": 800, "rating": "g"});
-        let mapped = summary(&post);
+        let mapped = summary(&DANBOORU, &post);
         assert_eq!(mapped.post_id, "12");
+        assert_eq!(mapped.post_url, "https://danbooru.donmai.us/posts/12");
         assert_eq!(mapped.preview_url, "https://cdn.donmai.us/large.jpg");
         assert_eq!(mapped.width, 800);
         assert_eq!(mapped.rating, "g");
+        let aibooru = summary(&AIBOORU, &post);
+        assert_eq!(aibooru.source, "aibooru");
+        assert_eq!(aibooru.post_url, "https://aibooru.online/posts/12");
+        assert!(AIBOORU.capabilities().auth_fields.is_empty());
+        assert!(!AIBOORU.capabilities().favorite_write);
     }
 
     #[test]
