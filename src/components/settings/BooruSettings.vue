@@ -2,10 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import {
-  Eye,
-  EyeOff,
   Image as ImageIcon,
-  KeyRound,
   Loader2,
   ShieldCheck,
   Tag,
@@ -43,6 +40,15 @@ import { BRAND_NAME } from '@/lib/brand';
 import { loadAppData, saveAppData } from '@/services/appStorage';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import SettingsSection from '@/components/layout/SettingsSection.vue';
+import BooruAccountCard from './BooruAccountCard.vue';
+
+type AccountSource = 'danbooru' | 'gelbooru' | 'rule34' | 'konachan.com';
+const ACCOUNT_LABELS: Record<AccountSource, string> = {
+  danbooru: 'Danbooru',
+  gelbooru: 'Gelbooru',
+  rule34: 'Rule34',
+  'konachan.com': 'Konachan'
+};
 
 const emit = defineEmits<{ saved: [] }>();
 function showSaved() {
@@ -51,13 +57,13 @@ function showSaved() {
 const booruSettings = ref<BooruSettings | null>(null);
 const booruSources = ref<BooruSource[]>([]);
 const booruAvailable = ref<boolean | null>(null);
-const booruCredentials = ref<BooruCredentials>({
+const emptyCredentials = (): BooruCredentials => ({
   danbooru: { username: '', apiKey: '' },
   gelbooru: { userId: '', apiKey: '' },
+  rule34: { userId: '', apiKey: '' },
   konachan: { cookie: '', userAgent: '' }
 });
-const showDanbooruKey = ref(false);
-const showGelbooruKey = ref(false);
+const booruCredentials = ref<BooruCredentials>(emptyCredentials());
 const showKonachanManual = ref(false);
 const isSolvingKonachan = ref(false);
 const booruDefaultSource = ref('danbooru');
@@ -73,12 +79,15 @@ const booruEscapeParentheses = ref(false);
 const booruTimeout = ref(30);
 const booruCacheBudget = ref(1024);
 const booruCacheMessage = ref('');
-const booruTesting = ref<'danbooru' | 'gelbooru' | 'konachan.com' | null>(null);
+const booruTesting = ref<AccountSource | null>(null);
 const booruResult = ref<{
-  source: 'danbooru' | 'gelbooru' | 'konachan.com';
+  source: AccountSource;
   ok: boolean;
   message: string;
 } | null>(null);
+function resultFor(source: AccountSource) {
+  return booruResult.value?.source === source ? booruResult.value : null;
+}
 async function loadBooruPromptFormatOptions() {
   try {
     const saved = await loadAppData<{
@@ -106,6 +115,11 @@ const gelbooruConfigured = computed(
   () =>
     booruSettings.value?.credentialStatus.gelbooru?.hasUserId &&
     booruSettings.value?.credentialStatus.gelbooru?.hasApiKey
+);
+const rule34Configured = computed(
+  () =>
+    booruSettings.value?.credentialStatus.rule34?.hasUserId &&
+    booruSettings.value?.credentialStatus.rule34?.hasApiKey
 );
 const konachanConfigured = computed(() =>
   Boolean(booruSettings.value?.credentialStatus.konachan?.hasCookie)
@@ -179,6 +193,12 @@ async function saveGalleryPreferences() {
       credentials.gelbooru = booruCredentials.value.gelbooru;
     }
     if (
+      booruCredentials.value.rule34.userId &&
+      booruCredentials.value.rule34.apiKey
+    ) {
+      credentials.rule34 = booruCredentials.value.rule34;
+    }
+    if (
       booruCredentials.value.konachan.cookie ||
       booruCredentials.value.konachan.userAgent
     ) {
@@ -208,11 +228,7 @@ async function saveGalleryPreferences() {
     applyGallerySettings(await saveBooruSettings(update));
     if (Object.keys(credentials).length > 0) {
       applyingGallerySettings = true;
-      booruCredentials.value = {
-        danbooru: { username: '', apiKey: '' },
-        gelbooru: { userId: '', apiKey: '' },
-        konachan: { cookie: '', userAgent: '' }
-      };
+      booruCredentials.value = emptyCredentials();
       applyingGallerySettings = false;
     }
     showSaved();
@@ -246,9 +262,7 @@ watch([booruReplaceUnderscores, booruEscapeParentheses], ([rep, esc]) => {
   }).catch(console.error);
 });
 
-async function testBooruAccount(
-  source: 'danbooru' | 'gelbooru' | 'konachan.com'
-) {
+async function testBooruAccount(source: AccountSource) {
   booruTesting.value = source;
   booruResult.value = null;
   try {
@@ -259,16 +273,10 @@ async function testBooruAccount(
     await testBooruCredentials(source, {
       ...creds
     });
-    const label =
-      source === 'danbooru'
-        ? 'Danbooru'
-        : source === 'gelbooru'
-          ? 'Gelbooru'
-          : 'Konachan';
     booruResult.value = {
       source,
       ok: true,
-      message: `${label} connection succeeded.`
+      message: `${ACCOUNT_LABELS[source]} connection succeeded.`
     };
   } catch (error) {
     booruResult.value = {
@@ -542,186 +550,49 @@ onMounted(() => {
       class="grid grid-cols-1 gap-4 lg:grid-cols-2"
       :class="{ 'pointer-events-none opacity-50': !booruAvailable }"
     >
-      <!-- Danbooru Account Card -->
-      <div
-        class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs"
-      >
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <KeyRound class="text-primary h-4 w-4" />
-            <div>
-              <Label class="text-foreground text-xs font-semibold">
-                Danbooru
-              </Label>
-            </div>
-          </div>
-          <Badge
-            variant="outline"
-            :class="
-              danbooruConfigured
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                : 'border-border text-muted-foreground'
-            "
-            class="font-mono text-xs"
-          >
-            <span
-              class="mr-1.5 h-1.5 w-1.5 rounded-full"
-              :class="
-                danbooruConfigured ? 'bg-emerald-400' : 'bg-muted-foreground'
-              "
-            />
-            {{ danbooruConfigured ? 'Configured' : 'Not configured' }}
-          </Badge>
-        </div>
+      <BooruAccountCard
+        v-model:id="booruCredentials.danbooru.username"
+        v-model:secret="booruCredentials.danbooru.apiKey"
+        title="Danbooru"
+        :configured="Boolean(danbooruConfigured)"
+        :disabled="!booruAvailable"
+        id-placeholder="Username"
+        key-placeholder="API Key"
+        :testing="booruTesting === 'danbooru'"
+        :test-disabled="booruTesting !== null"
+        :result="resultFor('danbooru')"
+        @test="testBooruAccount('danbooru')"
+      />
 
-        <Input
-          v-model="booruCredentials.danbooru.username"
-          :disabled="!booruAvailable"
-          autocomplete="off"
-          placeholder="Username"
-          class="font-mono text-xs"
-        />
+      <BooruAccountCard
+        v-model:id="booruCredentials.gelbooru.userId"
+        v-model:secret="booruCredentials.gelbooru.apiKey"
+        title="Gelbooru"
+        subtitle="User ID & API Key"
+        :configured="Boolean(gelbooruConfigured)"
+        :disabled="!booruAvailable"
+        id-placeholder="User ID (numeric)"
+        key-placeholder="API Key or copied account fragment"
+        :testing="booruTesting === 'gelbooru'"
+        :test-disabled="booruTesting !== null"
+        :result="resultFor('gelbooru')"
+        @test="testBooruAccount('gelbooru')"
+      />
 
-        <div class="relative">
-          <Input
-            v-model="booruCredentials.danbooru.apiKey"
-            :disabled="!booruAvailable"
-            :type="showDanbooruKey ? 'text' : 'password'"
-            autocomplete="new-password"
-            :placeholder="
-              danbooruConfigured
-                ? 'API Key (leave blank to keep current)'
-                : 'API Key'
-            "
-            class="pr-9 font-mono text-xs"
-          />
-          <button
-            type="button"
-            class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
-            @click="showDanbooruKey = !showDanbooruKey"
-          >
-            <EyeOff v-if="showDanbooruKey" class="h-3.5 w-3.5" />
-            <Eye v-else class="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <div class="flex items-center justify-between pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            :disabled="!booruAvailable || booruTesting !== null"
-            class="border-border bg-secondary text-xs font-medium"
-            @click="testBooruAccount('danbooru')"
-          >
-            <Loader2
-              v-if="booruTesting === 'danbooru'"
-              class="h-3.5 w-3.5 animate-spin"
-            />
-            <Wifi v-else class="h-3.5 w-3.5" />
-            <span>Test Account</span>
-          </Button>
-
-          <p
-            v-if="booruResult?.source === 'danbooru'"
-            class="text-xs font-medium"
-            :class="booruResult.ok ? 'text-emerald-400' : 'text-destructive'"
-          >
-            {{ booruResult.message }}
-          </p>
-        </div>
-      </div>
-
-      <!-- Gelbooru Account Card -->
-      <div
-        class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4 shadow-2xs"
-      >
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <KeyRound class="text-primary h-4 w-4" />
-            <div>
-              <Label class="text-foreground text-xs font-semibold">
-                Gelbooru
-              </Label>
-              <p class="text-muted-foreground text-xs">User ID & API Key</p>
-            </div>
-          </div>
-          <Badge
-            variant="outline"
-            :class="
-              gelbooruConfigured
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                : 'border-border text-muted-foreground'
-            "
-            class="font-mono text-xs"
-          >
-            <span
-              class="mr-1.5 h-1.5 w-1.5 rounded-full"
-              :class="
-                gelbooruConfigured ? 'bg-emerald-400' : 'bg-muted-foreground'
-              "
-            />
-            {{ gelbooruConfigured ? 'Configured' : 'Not configured' }}
-          </Badge>
-        </div>
-
-        <Input
-          v-model="booruCredentials.gelbooru.userId"
-          :disabled="!booruAvailable"
-          autocomplete="off"
-          placeholder="User ID (numeric)"
-          class="font-mono text-xs"
-        />
-
-        <div class="relative">
-          <Input
-            v-model="booruCredentials.gelbooru.apiKey"
-            :disabled="!booruAvailable"
-            :type="showGelbooruKey ? 'text' : 'password'"
-            autocomplete="new-password"
-            :placeholder="
-              gelbooruConfigured
-                ? 'API Key (leave blank to keep current)'
-                : 'API Key or copied account fragment'
-            "
-            class="pr-9 font-mono text-xs"
-          />
-          <button
-            type="button"
-            class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 p-1"
-            @click="showGelbooruKey = !showGelbooruKey"
-          >
-            <EyeOff v-if="showGelbooruKey" class="h-3.5 w-3.5" />
-            <Eye v-else class="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <div class="flex items-center justify-between pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            :disabled="!booruAvailable || booruTesting !== null"
-            class="border-border bg-secondary text-xs font-medium"
-            @click="testBooruAccount('gelbooru')"
-          >
-            <Loader2
-              v-if="booruTesting === 'gelbooru'"
-              class="h-3.5 w-3.5 animate-spin"
-            />
-            <Wifi v-else class="h-3.5 w-3.5" />
-            <span>Test Account</span>
-          </Button>
-
-          <p
-            v-if="booruResult?.source === 'gelbooru'"
-            class="text-xs font-medium"
-            :class="booruResult.ok ? 'text-emerald-400' : 'text-destructive'"
-          >
-            {{ booruResult.message }}
-          </p>
-        </div>
-      </div>
+      <BooruAccountCard
+        v-model:id="booruCredentials.rule34.userId"
+        v-model:secret="booruCredentials.rule34.apiKey"
+        title="Rule34"
+        subtitle="User ID & API Key (My Account > Options)"
+        :configured="Boolean(rule34Configured)"
+        :disabled="!booruAvailable"
+        id-placeholder="User ID (numeric)"
+        key-placeholder="API Key or copied account fragment"
+        :testing="booruTesting === 'rule34'"
+        :test-disabled="booruTesting !== null"
+        :result="resultFor('rule34')"
+        @test="testBooruAccount('rule34')"
+      />
 
       <!-- Konachan (konachan.com) Cloudflare Card -->
       <div

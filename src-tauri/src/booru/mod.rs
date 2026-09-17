@@ -1,8 +1,7 @@
-mod aitag;
 mod danbooru;
 mod gelbooru;
 mod moebooru;
-mod safebooru;
+mod sources;
 
 use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::header::{ACCEPT, CONTENT_LENGTH, CONTENT_TYPE, LOCATION, REFERER};
@@ -189,6 +188,8 @@ struct Credentials {
     gelbooru: HashMap<String, String>,
     #[serde(default)]
     konachan: HashMap<String, String>,
+    #[serde(default)]
+    rule34: HashMap<String, String>,
 }
 
 impl Credentials {
@@ -196,9 +197,23 @@ impl Credentials {
         match source {
             "danbooru" => self.danbooru.clone(),
             "gelbooru" => self.gelbooru.clone(),
+            "rule34" => self.rule34.clone(),
             "konachan.com" | "konachan" => self.konachan.clone(),
             _ => HashMap::new(),
         }
+    }
+
+    fn slot(
+        &mut self,
+        source: &str,
+    ) -> Option<(&mut HashMap<String, String>, &'static [&'static str])> {
+        Some(match source {
+            "danbooru" => (&mut self.danbooru, &["username", "apiKey"]),
+            "gelbooru" => (&mut self.gelbooru, &["userId", "apiKey"]),
+            "rule34" => (&mut self.rule34, &["userId", "apiKey"]),
+            "konachan" | "konachan.com" => (&mut self.konachan, &["cookie", "userAgent"]),
+            _ => return None,
+        })
     }
 }
 
@@ -252,6 +267,7 @@ pub struct SettingsUpdate {
 
 pub(crate) trait Provider: Sync {
     fn capabilities(&self) -> Capabilities;
+    fn media_hosts(&self) -> &'static [&'static str];
     fn search(
         &self,
         client: &Client,
@@ -349,7 +365,7 @@ pub(crate) trait Provider: Sync {
         Ok(serde_json::json!({"ok": true}))
     }
     fn validate_media_url(&self, url: &str) -> Result<(), String> {
-        validate_media_url(self.capabilities().source, url)
+        validate_media_url(self.capabilities().source, self.media_hosts(), url)
     }
     fn media_referer(&self) -> Option<&'static str> {
         None
@@ -372,30 +388,7 @@ fn default_categories() -> Vec<String> {
 }
 
 pub(crate) fn provider(source: &str) -> Result<&'static dyn Provider, String> {
-    match source {
-        "danbooru" => Ok(&danbooru::DANBOORU),
-        "aibooru" => Ok(&danbooru::AIBOORU),
-        "gelbooru" => Ok(&gelbooru::GELBOORU),
-        "safebooru" => Ok(&safebooru::SAFEBOORU),
-        "aitag" => Ok(&aitag::AI_TAG),
-        "yandere" => Ok(&moebooru::YANDERE),
-        "konachan.net" => Ok(&moebooru::KONACHAN_NET),
-        "konachan.com" => Ok(&moebooru::KONACHAN_COM),
-        _ => Err(format!("unsupported booru source: {source}")),
-    }
-}
-
-fn providers() -> [&'static dyn Provider; 8] {
-    [
-        &danbooru::DANBOORU,
-        &danbooru::AIBOORU,
-        &gelbooru::GELBOORU,
-        &safebooru::SAFEBOORU,
-        &aitag::AI_TAG,
-        &moebooru::YANDERE,
-        &moebooru::KONACHAN_NET,
-        &moebooru::KONACHAN_COM,
-    ]
+    sources::by_id(source)
 }
 
 pub(crate) fn client(timeout: u64) -> Result<Client, String> {
@@ -585,6 +578,7 @@ pub(crate) fn is_static_post(post: &Value) -> bool {
         "preview_url",
         "large_file_url",
         "preview_file_url",
+        "image",
     ]
     .iter()
     .filter_map(|key| post.get(key).and_then(Value::as_str))
@@ -739,6 +733,7 @@ fn validate_settings(settings: &mut Settings) -> Result<(), String> {
         .categories
         .retain(|value| CATEGORY_ORDER.contains(&value.as_str()));
     gelbooru::normalize_credentials(&mut settings.credentials.gelbooru);
+    gelbooru::normalize_credentials(&mut settings.credentials.rule34);
     Ok(())
 }
 
@@ -769,6 +764,10 @@ fn public_settings(settings: &Settings) -> Value {
             "gelbooru": {
                 "hasUserId": settings.credentials.gelbooru.get("userId").is_some_and(|v| !v.is_empty()),
                 "hasApiKey": settings.credentials.gelbooru.get("apiKey").is_some_and(|v| !v.is_empty())
+            },
+            "rule34": {
+                "hasUserId": settings.credentials.rule34.get("userId").is_some_and(|v| !v.is_empty()),
+                "hasApiKey": settings.credentials.rule34.get("apiKey").is_some_and(|v| !v.is_empty())
             },
             "konachan": {
                 "hasCookie": settings.credentials.konachan.get("cookie").is_some_and(|v| !v.is_empty()),
@@ -861,9 +860,9 @@ fn random_page(total: usize, page_size: usize) -> usize {
 
 #[tauri::command]
 pub async fn booru_sources() -> Result<Vec<Capabilities>, String> {
-    Ok(providers()
-        .into_iter()
-        .map(Provider::capabilities)
+    Ok(sources::all()
+        .iter()
+        .map(|provider| provider.capabilities())
         .collect())
 }
 
@@ -1058,14 +1057,10 @@ pub async fn booru_settings_save(
         settings.cache_budget_mi_b = value;
     }
     for (source, values) in update.credentials.unwrap_or_default() {
-        let (target, allowed): (&mut HashMap<String, String>, &[&str]) = match source.as_str() {
-            "danbooru" => (&mut settings.credentials.danbooru, &["username", "apiKey"]),
-            "gelbooru" => (&mut settings.credentials.gelbooru, &["userId", "apiKey"]),
-            "konachan" | "konachan.com" => {
-                (&mut settings.credentials.konachan, &["cookie", "userAgent"])
-            }
-            _ => return Err(format!("invalid credential source: {source}")),
-        };
+        let (target, allowed) = settings
+            .credentials
+            .slot(&source)
+            .ok_or_else(|| format!("invalid credential source: {source}"))?;
         for (key, value) in values {
             if !allowed.contains(&key.as_str()) {
                 return Err(format!("invalid credential field {source}.{key}"));
@@ -1076,11 +1071,8 @@ pub async fn booru_settings_save(
         }
     }
     for (source, keys) in update.clear_credentials.unwrap_or_default() {
-        let target = match source.as_str() {
-            "danbooru" => &mut settings.credentials.danbooru,
-            "gelbooru" => &mut settings.credentials.gelbooru,
-            "konachan" | "konachan.com" => &mut settings.credentials.konachan,
-            _ => continue,
+        let Some((target, _)) = settings.credentials.slot(&source) else {
+            continue;
         };
         for key in keys {
             target.remove(&key);
@@ -1331,26 +1323,13 @@ fn clear_json_caches(app: &AppHandle) {
     }
 }
 
-fn media_hosts(source: &str) -> &'static [&'static str] {
-    match source {
-        "danbooru" => &["cdn.donmai.us", "danbooru.donmai.us"],
-        "aibooru" => &["cdn.aibooru.download", "aibooru.online"],
-        "gelbooru" => &["gelbooru.com", "img3.gelbooru.com", "img4.gelbooru.com"],
-        "safebooru" => &["safebooru.org", "images.safebooru.org"],
-        "aitag" => &["ai-img.10118899.xyz"],
-        "yandere" => &["yande.re", "files.yande.re", "assets.yande.re"],
-        "konachan.net" | "konachan.com" => &["konachan.net", "konachan.com"],
-        _ => &[],
-    }
-}
-
-fn validate_media_url(source: &str, url: &str) -> Result<(), String> {
+fn validate_media_url(source: &str, hosts: &[&str], url: &str) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|_| "invalid media URL".to_string())?;
     let host = parsed.host_str().unwrap_or_default().to_lowercase();
     if parsed.scheme() != "https"
         || !parsed.username().is_empty()
         || parsed.password().is_some()
-        || !media_hosts(source).contains(&host.as_str())
+        || !hosts.contains(&host.as_str())
     {
         return Err(format!(
             "{source} media URL is not on an allowed HTTPS host"
@@ -1613,9 +1592,20 @@ mod tests {
 
     #[test]
     fn validates_provider_media_hosts() {
-        assert!(validate_media_url("danbooru", "https://cdn.donmai.us/a.jpg").is_ok());
-        assert!(validate_media_url("danbooru", "https://example.com/a.jpg").is_err());
-        assert!(validate_media_url("danbooru", "http://cdn.donmai.us/a.jpg").is_err());
+        let danbooru = provider("danbooru").unwrap();
+        assert!(danbooru
+            .validate_media_url("https://cdn.donmai.us/a.jpg")
+            .is_ok());
+        assert!(danbooru
+            .validate_media_url("https://example.com/a.jpg")
+            .is_err());
+        assert!(danbooru
+            .validate_media_url("http://cdn.donmai.us/a.jpg")
+            .is_err());
+        assert!(provider("rule34")
+            .unwrap()
+            .validate_media_url("https://api-cdn.rule34.xxx/images/1/a.jpg")
+            .is_ok());
     }
 
     #[test]

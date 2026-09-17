@@ -1,4 +1,4 @@
-use super::*;
+use super::super::*;
 
 pub struct AiTag;
 pub static AI_TAG: AiTag = AiTag;
@@ -258,6 +258,10 @@ impl Provider for AiTag {
         detail.tags = group_as_general(&tags);
         detail.complete = true;
         Ok(detail)
+    }
+
+    fn media_hosts(&self) -> &'static [&'static str] {
+        &["ai-img.10118899.xyz"]
     }
 
     fn media_referer(&self) -> Option<&'static str> {

@@ -1,27 +1,16 @@
 use super::gelbooru::first_string;
 use super::*;
 
+// Engine for Moebooru sites (yande.re, konachan); each site is a
+// `sources/*.rs` static
 pub struct Moebooru {
-    source: &'static str,
-    base: &'static str,
-    ratings: &'static [&'static str],
+    pub(crate) source: &'static str,
+    pub(crate) display_name: &'static str,
+    pub(crate) base: &'static str,
+    pub(crate) media_hosts: &'static [&'static str],
+    pub(crate) ratings: &'static [&'static str],
+    pub(crate) cookie_auth: bool,
 }
-
-pub static YANDERE: Moebooru = Moebooru {
-    source: "yandere",
-    base: "https://yande.re",
-    ratings: &[],
-};
-pub static KONACHAN_NET: Moebooru = Moebooru {
-    source: "konachan.net",
-    base: "https://konachan.net",
-    ratings: &["safe"],
-};
-pub static KONACHAN_COM: Moebooru = Moebooru {
-    source: "konachan.com",
-    base: "https://konachan.com",
-    ratings: &["safe", "questionable", "explicit"],
-};
 
 fn posts(raw: &Value) -> Result<&Vec<Value>, String> {
     raw.get("posts")
@@ -178,16 +167,12 @@ impl Provider for Moebooru {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             source: self.source,
-            display_name: match self.source {
-                "konachan.com" => "Konachan (R18)",
-                "konachan.net" => "Konachan",
-                _ => self.base.trim_start_matches("https://"),
-            },
+            display_name: self.display_name,
             ratings: self.ratings,
             sort_values: &["latest", "score"],
             pagination: "page",
             max_page_size: 100,
-            auth_fields: if self.source == "konachan.com" {
+            auth_fields: if self.cookie_auth {
                 &["cookie", "userAgent"]
             } else {
                 &[]
@@ -202,12 +187,12 @@ impl Provider for Moebooru {
             auth_required: false,
             tag_search: true,
             max_search_tags: None,
-            credentials_url: if self.source == "konachan.com" {
-                "https://konachan.com"
-            } else {
-                ""
-            },
+            credentials_url: if self.cookie_auth { self.base } else { "" },
         }
+    }
+
+    fn media_hosts(&self) -> &'static [&'static str] {
+        self.media_hosts
     }
 
     fn media_referer(&self) -> Option<&'static str> {
@@ -228,7 +213,14 @@ impl Provider for Moebooru {
             .unwrap_or(1)
             .max(1);
         let limit = request.limit.clamp(1, 100);
-        let raw = self.fetch(client, &self.query(request), page, limit, false, credentials)?;
+        let raw = self.fetch(
+            client,
+            &self.query(request),
+            page,
+            limit,
+            false,
+            credentials,
+        )?;
         self.map_page(&raw, request, blacklist, page, limit)
     }
 
@@ -248,6 +240,7 @@ impl Provider for Moebooru {
 
 #[cfg(test)]
 mod tests {
+    use super::super::sources::{KONACHAN_COM, KONACHAN_NET, YANDERE};
     use super::*;
 
     #[test]

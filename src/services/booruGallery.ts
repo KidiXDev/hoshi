@@ -70,6 +70,7 @@ export interface BooruSettings {
 export interface BooruCredentials {
   danbooru: { username: string; apiKey: string };
   gelbooru: { userId: string; apiKey: string };
+  rule34: { userId: string; apiKey: string };
   konachan: { cookie: string; userAgent: string };
 }
 

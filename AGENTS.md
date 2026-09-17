@@ -78,7 +78,7 @@ koharu/
 │   │   ├── model_manager.rs      # Local model index, hashing, Civitai sync, previews
 │   │   ├── library_manager.rs  preset_manager.rs  prompt_suggestions.rs  download_manager.rs
 │   │   ├── civitai.rs  animadex.rs  danbooru_wiki.rs  network_cache.rs
-│   │   └── booru/                # Provider trait (mod.rs) + danbooru, gelbooru, moebooru, safebooru, aitag
+│   │   └── booru/                # Provider trait (mod.rs) + API engines danbooru/gelbooru/moebooru; sources/ has one file per site
 │   ├── Cargo.toml  tauri.conf.json  capabilities/default.json
 ├── tests/                        # Standalone *.check.* scripts (not picked up by `bun test`)
 ├── .github/workflows/release.yml # v* tag → Windows NSIS + portable zip

@@ -75,7 +75,7 @@ fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_config_dir()
         .map_err(|e| e.to_string())?
-        .join("aria2"))
+        .join("downloads"))
 }
 
 fn load_history(inner: &mut Inner, app: &AppHandle) -> Result<(), String> {
@@ -109,7 +109,6 @@ fn save_history(inner: &Inner, app: &AppHandle) -> Result<(), String> {
 fn cleanup_files(model_path: &Path) {
     let _ = fs::remove_file(model_path);
     let _ = fs::remove_file(format!("{}.part", model_path.display()));
-    let _ = fs::remove_file(format!("{}.aria2", model_path.display()));
     let (Some(parent), Some(stem)) = (
         model_path.parent(),
         model_path.file_stem().and_then(|v| v.to_str()),
@@ -200,9 +199,7 @@ impl DownloadManager {
         control: &JobControl,
     ) -> Result<(), String> {
         if record.url.is_empty() {
-            return Err(
-                "This legacy aria2 download cannot be resumed; cancel and retry it.".into(),
-            );
+            return Err("This download cannot be resumed; cancel and retry it.".into());
         }
         let model_path = Path::new(&record.model_path);
         let partial_path = PathBuf::from(format!("{}.part", model_path.display()));
@@ -568,7 +565,6 @@ mod tests {
         for path in [
             model.clone(),
             directory.join("model.safetensors.part"),
-            directory.join("model.safetensors.aria2"),
             directory.join("model.civitai.info"),
             directory.join("model.cm-info.json"),
             directory.join("model.preview.jpg"),

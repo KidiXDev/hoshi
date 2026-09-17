@@ -1,24 +1,15 @@
 use super::*;
 
+// Engine for Danbooru-API sites; each site is a `sources/*.rs` static
 pub struct Danbooru {
-    source: &'static str,
-    display_name: &'static str,
-    base: &'static str,
-    accounts: bool,
+    pub(crate) source: &'static str,
+    pub(crate) display_name: &'static str,
+    pub(crate) base: &'static str,
+    pub(crate) media_hosts: &'static [&'static str],
+    pub(crate) ratings: &'static [&'static str],
+    pub(crate) accounts: bool,
+    pub(crate) credentials_url: &'static str,
 }
-
-pub static DANBOORU: Danbooru = Danbooru {
-    source: "danbooru",
-    display_name: "Danbooru",
-    base: "https://danbooru.donmai.us",
-    accounts: true,
-};
-pub static AIBOORU: Danbooru = Danbooru {
-    source: "aibooru",
-    display_name: "AIBooru",
-    base: "https://aibooru.online",
-    accounts: false,
-};
 
 fn auth(credentials: &HashMap<String, String>) -> Vec<(String, String)> {
     match (credentials.get("username"), credentials.get("apiKey")) {
@@ -184,7 +175,7 @@ impl Provider for Danbooru {
         Capabilities {
             source: self.source,
             display_name: self.display_name,
-            ratings: &["general", "sensitive", "questionable", "explicit"],
+            ratings: self.ratings,
             sort_values: &["latest", "score", "favcount"],
             pagination: "page",
             max_page_size: 200,
@@ -203,12 +194,12 @@ impl Provider for Danbooru {
             auth_required: false,
             tag_search: true,
             max_search_tags: Some(2),
-            credentials_url: if self.accounts {
-                "https://danbooru.donmai.us/settings"
-            } else {
-                ""
-            },
+            credentials_url: self.credentials_url,
         }
+    }
+
+    fn media_hosts(&self) -> &'static [&'static str] {
+        self.media_hosts
     }
 
     fn search(
@@ -418,6 +409,7 @@ impl Provider for Danbooru {
 
 #[cfg(test)]
 mod tests {
+    use super::super::sources::{AIBOORU, DANBOORU};
     use super::*;
 
     #[test]
