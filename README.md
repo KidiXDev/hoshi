@@ -20,7 +20,6 @@
   <img src="screenshot/banner.png" alt="Hoshi Studio" />
 </p>
 
-
 > **Work in Progress**: Hoshi is currently under active development. Features and interfaces are subject to change, and you may encounter bugs or incomplete functionality.
 
 ## Overview

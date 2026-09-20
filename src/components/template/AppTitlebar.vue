@@ -18,6 +18,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import ServerStatusBadge from '../common/ServerStatusBadge.vue';
 import { useAiStore } from '../../stores/aiStore';
 import { useLauncherStore } from '../../stores/launcherStore';
+import { getComfyOutputDir } from '@/utils/pathTools';
 
 const route = useRoute();
 const launcherStore = useLauncherStore();
@@ -46,11 +47,8 @@ const activeViewTitle = computed(() => {
 });
 
 async function openOutputFolder() {
-  const workingDir = launcherStore.config.workingDir.replace(/[\\/]+$/u, '');
-  if (!workingDir) return;
-  const path = /[\\/]comfyui$/iu.test(workingDir)
-    ? `${workingDir}\\output`
-    : `${workingDir}\\ComfyUI\\output`;
+  const path = getComfyOutputDir(launcherStore.config.workingDir);
+  if (!path) return;
   try {
     await invoke('show_in_folder', { path });
   } catch (error) {

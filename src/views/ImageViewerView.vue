@@ -16,6 +16,7 @@ import { useVirtualizer } from '@tanstack/vue-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { formatFileSize } from '@/utils/formatters';
+import { getComfyOutputDir } from '@/utils/pathTools';
 import {
   ArrowUpDown,
   Columns2,
@@ -338,10 +339,7 @@ function outputDirectory() {
   if (path && marker >= 0) return path.slice(0, marker + 7);
   const markerFwd = path?.toLowerCase().lastIndexOf('/output/') ?? -1;
   if (path && markerFwd >= 0) return path.slice(0, markerFwd + 7);
-  const root = launcherStore.config.workingDir.replace(/[\\/]+$/u, '');
-  return /[\\/]comfyui$/iu.test(root)
-    ? `${root}\\output`
-    : `${root}\\ComfyUI\\output`;
+  return getComfyOutputDir(launcherStore.config.workingDir);
 }
 
 watch([query, selectedSubfolder, sortBy], () => {

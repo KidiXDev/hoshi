@@ -7,6 +7,7 @@ import StudioLayout from '@/components/layout/StudioLayout.vue';
 import ImageBatchQueue from '@/components/common/ImageBatchQueue.vue';
 import ImageComparison from '@/components/common/ImageComparison.vue';
 import { useImageBatch } from '@/composables/useImageBatch';
+import { getComfyOutputDir } from '@/utils/pathTools';
 import type { ImageBatchItem, ImageComparisonMode } from '@/types/imageBatch';
 import {
   computed,
@@ -373,11 +374,8 @@ async function queueBatch() {
 }
 
 async function openOutputFolder() {
-  const workingDir = launcherStore.config.workingDir.replace(/[\\/]+$/u, '');
-  if (!workingDir) return;
-  const path = /[\\/]comfyui$/iu.test(workingDir)
-    ? `${workingDir}\\output`
-    : `${workingDir}\\ComfyUI\\output`;
+  const path = getComfyOutputDir(launcherStore.config.workingDir);
+  if (!path) return;
   try {
     await invoke('show_in_folder', { path });
   } catch (error) {

@@ -315,7 +315,24 @@ async fn install_custom_node(
 #[tauri::command]
 fn show_in_folder(path: String) -> Result<(), String> {
     let trimmed = path.trim().trim_matches(['"', '\'']);
+    #[cfg(not(windows))]
+    let path_buf = {
+        let p = std::path::PathBuf::from(trimmed);
+        if !p.exists() && trimmed.contains('\\') {
+            let normalized = trimmed.replace('\\', "/");
+            let alt = std::path::PathBuf::from(&normalized);
+            if alt.exists() {
+                alt
+            } else {
+                p
+            }
+        } else {
+            p
+        }
+    };
+    #[cfg(windows)]
     let path_buf = std::path::PathBuf::from(trimmed);
+
     if !path_buf.exists() {
         return Err(format!("Path does not exist: {}", path_buf.display()));
     }
@@ -324,10 +341,11 @@ fn show_in_folder(path: String) -> Result<(), String> {
     {
         use std::process::Command;
         let mut cmd = Command::new("explorer");
+        let win_path = path_buf.to_string_lossy().replace('/', "\\");
         if path_buf.is_file() {
-            cmd.args(["/select,", &path_buf.to_string_lossy()]);
+            cmd.args(["/select,", &win_path]);
         } else {
-            cmd.arg(&path_buf.to_string_lossy().to_string());
+            cmd.arg(&win_path);
         }
         cmd.spawn().map_err(|e| e.to_string())?;
         Ok(())

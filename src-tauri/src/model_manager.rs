@@ -720,7 +720,12 @@ fn normalize_path(path: &Path) -> PathBuf {
 fn expand_path(value: &str) -> String {
     let mut text = value.trim().to_string();
     if text == "~" || text.starts_with("~/") || text.starts_with("~\\") {
-        if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+        let home = if cfg!(windows) {
+            std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))
+        } else {
+            std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
+        };
+        if let Some(home) = home {
             text = format!("{}{}", home.to_string_lossy(), &text[1..]);
         }
     }

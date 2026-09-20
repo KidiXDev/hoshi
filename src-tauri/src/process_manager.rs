@@ -489,6 +489,9 @@ impl ProcessManager {
             final_args.push("--enable-cors-header".to_string());
         }
 
+        #[cfg(not(target_os = "windows"))]
+        final_args.retain(|a| a != "--windows-standalone-build");
+
         let mut cmd = Command::new(&resolved_python);
         cmd.current_dir(&exec_work_dir);
         cmd.args(&final_args);

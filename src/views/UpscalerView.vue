@@ -5,6 +5,7 @@ import { useImageClipboard } from '@/composables/useImageClipboard';
 import ImageComparisonModes from '@/components/common/ImageComparisonModes.vue';
 import StudioLayout from '@/components/layout/StudioLayout.vue';
 import { resolveDynamicPromptWithSeed } from '@/utils/dynamicPrompt';
+import { getComfyOutputDir } from '@/utils/pathTools';
 import ImageBatchQueue from '@/components/common/ImageBatchQueue.vue';
 import ImageComparison from '@/components/common/ImageComparison.vue';
 import { useImageBatch, extractDimensions } from '@/composables/useImageBatch';
@@ -369,11 +370,8 @@ async function queueBatch() {
 }
 
 async function openOutputFolder() {
-  const workingDir = launcherStore.config.workingDir.replace(/[\\/]+$/u, '');
-  if (!workingDir) return;
-  const path = /[\\/]comfyui$/iu.test(workingDir)
-    ? `${workingDir}\\output`
-    : `${workingDir}\\ComfyUI\\output`;
+  const path = getComfyOutputDir(launcherStore.config.workingDir);
+  if (!path) return;
   try {
     await invoke('show_in_folder', { path });
   } catch (error) {
