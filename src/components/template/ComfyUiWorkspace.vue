@@ -265,10 +265,6 @@ async function retry() {
             Server Logs
           </Button>
         </div>
-
-        <p class="text-muted-foreground/70 text-xs">
-          Will automatically connect when the API is online.
-        </p>
       </div>
     </div>
 
