@@ -6,6 +6,7 @@ import { useDebounceFn } from '@vueuse/core';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
+  AppWindow,
   Bot,
   Check,
   CheckCircle2,
@@ -74,6 +75,7 @@ const tabs = [
   { id: 'booru', label: 'Booru gallery', icon: ImageIcon },
   { id: 'civitai', label: 'Civitai', icon: KeyRound },
   { id: 'ai', label: 'AI assistant', icon: Bot },
+  { id: 'general', label: 'General', icon: AppWindow },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'about', label: 'About', icon: Info }
 ] as const;
@@ -85,6 +87,7 @@ const pythonPath = ref(launcherStore.config.pythonPath);
 const args = ref(launcherStore.config.args);
 const serverUrl = ref(launcherStore.config.serverUrl);
 const autoStart = ref(launcherStore.config.autoStart);
+const closeToTray = ref(launcherStore.config.closeToTray);
 const autocompleteEnabled = ref(launcherStore.config.autocompleteEnabled);
 const autocompleteAlgorithm = ref(launcherStore.config.autocompleteAlgorithm);
 const autocompleteLimit = ref(launcherStore.config.autocompleteLimit);
@@ -214,6 +217,7 @@ async function saveApplicationSettings() {
     args: args.value.trim(),
     serverUrl: cleanedServerUrl,
     autoStart: autoStart.value,
+    closeToTray: closeToTray.value,
     autocompleteEnabled: autocompleteEnabled.value,
     autocompleteAlgorithm: autocompleteAlgorithm.value,
     autocompleteLimit: autocompleteLimit.value,
@@ -265,6 +269,7 @@ watch(
     args,
     serverUrl,
     autoStart,
+    closeToTray,
     autocompleteEnabled,
     autocompleteAlgorithm,
     autocompleteLimit,
@@ -308,6 +313,7 @@ function handleResetDefaults() {
   args.value = DEFAULT_LAUNCHER_CONFIG.args;
   serverUrl.value = DEFAULT_LAUNCHER_CONFIG.serverUrl;
   autoStart.value = DEFAULT_LAUNCHER_CONFIG.autoStart;
+  closeToTray.value = DEFAULT_LAUNCHER_CONFIG.closeToTray;
   autocompleteEnabled.value = DEFAULT_LAUNCHER_CONFIG.autocompleteEnabled;
   autocompleteAlgorithm.value = DEFAULT_LAUNCHER_CONFIG.autocompleteAlgorithm;
   autocompleteLimit.value = DEFAULT_LAUNCHER_CONFIG.autocompleteLimit;
@@ -888,6 +894,23 @@ void loadNetworkCacheStats();
 
           <!-- AI -->
           <AiSettings v-show="activeTab === 'ai'" @saved="showSaved" />
+
+          <!-- General -->
+          <SettingsSection
+            v-if="activeTab === 'general'"
+            title="Window"
+            description="What happens when you close the main window."
+            icon-class="text-sky-400"
+          >
+            <template #icon>
+              <AppWindow class="h-3.5 w-3.5" />
+            </template>
+            <SettingsSwitchRow
+              v-model="closeToTray"
+              label="Minimize to tray on close"
+              :description="`Keep ${BRAND_NAME} running in the system tray. Use Quit from the tray menu to exit completely.`"
+            />
+          </SettingsSection>
 
           <!-- Storage -->
           <SettingsSection

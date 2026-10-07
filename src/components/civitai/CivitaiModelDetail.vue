@@ -6,6 +6,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
+  Bookmark,
+  BookmarkCheck,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -69,6 +71,7 @@ import {
   type CivitaiVersion
 } from '@/services/civitai';
 import type { DownloadRecord } from '@/services/downloadManager';
+import { useCivitaiStore } from '@/stores/civitaiStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { appendPromptTerms } from '@/utils/promptTools';
 
@@ -107,11 +110,13 @@ const emit = defineEmits<{
   (e: 'resume', versionId: number): void;
   (e: 'cancel', versionId: number): void;
   (e: 'show-in-folder', path: string): void;
-  (e: 'tag-click', tag: string): void;
+  (e: 'search', query: string): void;
 }>();
 
 const router = useRouter();
 const workflowStore = useWorkflowStore();
+const civitaiStore = useCivitaiStore();
+const isBookmarked = computed(() => civitaiStore.isBookmarked(props.model.id));
 
 // Carousel and preview state
 const activeImageIndex = ref(0);
@@ -331,6 +336,17 @@ onUnmounted(() => {
 
     <template #actions>
       <slot name="header-actions" />
+      <Button
+        :variant="isBookmarked ? 'default' : 'outline'"
+        size="sm"
+        class="h-8 cursor-pointer gap-1.5 text-xs"
+        :aria-pressed="isBookmarked"
+        @click="civitaiStore.toggleBookmark(model)"
+      >
+        <BookmarkCheck v-if="isBookmarked" class="h-3.5 w-3.5" />
+        <Bookmark v-else class="h-3.5 w-3.5" />
+        <span>{{ isBookmarked ? 'Bookmarked' : 'Bookmark' }}</span>
+      </Button>
       <Tooltip>
         <TooltipTrigger as-child>
           <Button
@@ -550,9 +566,16 @@ onUnmounted(() => {
         >
           <span>
             Created by
-            <strong class="text-foreground">{{
-              model.creator?.username || 'Unknown'
-            }}</strong>
+            <button
+              v-if="model.creator?.username"
+              type="button"
+              class="text-foreground hover:text-primary cursor-pointer font-bold transition-colors hover:underline"
+              title="Search models by this creator"
+              @click="emit('search', model.creator.username)"
+            >
+              {{ model.creator.username }}
+            </button>
+            <strong v-else class="text-foreground">Unknown</strong>
           </span>
           <span>·</span>
           <span class="flex items-center gap-1">
@@ -582,7 +605,7 @@ onUnmounted(() => {
             type="button"
             class="border-border/60 bg-muted/60 text-muted-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary cursor-pointer rounded-md border px-2 py-0.5 text-xs font-medium transition-colors"
             title="Filter by tag"
-            @click="emit('tag-click', tag)"
+            @click="emit('search', tag)"
           >
             {{ tag }}
           </button>

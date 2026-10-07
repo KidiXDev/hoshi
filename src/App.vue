@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AlertTriangle, Loader2 } from '@lucide/vue';
 import {
@@ -27,6 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
+import { BRAND_NAME } from '@/lib/brand';
 import { useCivitaiStore } from './stores/civitaiStore';
 import { useComfyStore } from './stores/comfyStore';
 import { useDownloadStore } from './stores/downloadStore';
@@ -57,6 +59,17 @@ const shutdownDialogOpen = ref(false);
 const isShuttingDown = ref(false);
 const shutdownError = ref('');
 let unlistenClose: (() => void) | null = null;
+let unlistenTrayQuit: (() => void) | null = null;
+
+const isComfyRunning = computed(() =>
+  ['starting', 'stopping', 'running'].includes(launcherStore.processStatus)
+);
+const downloadingCount = computed(
+  () =>
+    downloadStore.items.filter((item) =>
+      ['active', 'waiting'].includes(item.status)
+    ).length
+);
 
 function cancelShutdown() {
   if (!isShuttingDown.value) shutdownDialogOpen.value = false;
@@ -67,7 +80,7 @@ async function continueShutdown() {
   shutdownError.value = '';
   try {
     if (comfyStore.isGenerating) await comfyStore.interrupt();
-    await launcherStore.stopServer();
+    if (isComfyRunning.value) await launcherStore.stopServer();
     await getCurrentWindow().close();
   } catch (error) {
     shutdownError.value = String(error);
@@ -78,17 +91,23 @@ async function continueShutdown() {
 onMounted(async () => {
   try {
     const appWindow = getCurrentWindow();
+    let quitRequested = false;
     unlistenClose = await appWindow.onCloseRequested((event) => {
-      if (
-        !isShuttingDown.value &&
-        ['starting', 'stopping', 'running'].includes(
-          launcherStore.processStatus
-        )
-      ) {
+      const quitting = quitRequested;
+      quitRequested = false;
+      if (isShuttingDown.value) return;
+      if (launcherStore.config.closeToTray && !quitting) {
+        event.preventDefault();
+        void appWindow.hide();
+      } else if (isComfyRunning.value || downloadingCount.value > 0) {
         event.preventDefault();
         shutdownError.value = '';
         shutdownDialogOpen.value = true;
       }
+    });
+    unlistenTrayQuit = await listen('tray-quit', () => {
+      quitRequested = true;
+      void appWindow.close();
     });
   } catch {
     // Browser preview mode.
@@ -104,6 +123,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   unlistenClose?.();
+  unlistenTrayQuit?.();
   downloadStore.stop();
 });
 </script>
@@ -150,10 +170,23 @@ onUnmounted(() => {
                 <div class="flex flex-col gap-2">
                   <div class="flex items-center gap-2">
                     <AlertTriangle class="h-5 w-5 text-amber-400" />
-                    <DialogTitle>ComfyUI is still running</DialogTitle>
+                    <DialogTitle>
+                      {{
+                        isComfyRunning
+                          ? 'ComfyUI is still running'
+                          : 'Downloads in progress'
+                      }}
+                    </DialogTitle>
                   </div>
-                  <DialogDescription>
+                  <DialogDescription v-if="isComfyRunning">
                     Cancel generation and shut down ComfyUI?
+                  </DialogDescription>
+                  <DialogDescription v-if="downloadingCount > 0">
+                    {{ downloadingCount }} download{{
+                      downloadingCount > 1 ? 's' : ''
+                    }}
+                    will be paused and resume automatically the next time you
+                    open {{ BRAND_NAME }}.
                   </DialogDescription>
                 </div>
                 <DialogCloseButton class="-mt-1.5 -mr-2" />

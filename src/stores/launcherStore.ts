@@ -16,6 +16,7 @@ export const DEFAULT_LAUNCHER_CONFIG: LauncherConfig = {
   args: '--windows-standalone-build --fast fp16_accumulation --cuda-malloc --use-sage-attention --preview-method latent2rgb --enable-manager --disable-auto-launch --enable-cors-header',
   serverUrl: 'http://127.0.0.1:8188',
   autoStart: false,
+  closeToTray: false,
   autocompleteEnabled: true,
   autocompleteAlgorithm: 'fuzzy',
   autocompleteLimit: 20,

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
+import { toast } from 'vue-sonner';
 import { rescanLocalModelIndex } from '../composables/useModelManagerQueries';
 import { loadAppData } from '../services/appStorage';
 import {
@@ -18,6 +19,10 @@ import {
   useLauncherStore
 } from './launcherStore';
 
+function isRunning(status: DownloadRecord['status']) {
+  return ['active', 'waiting', 'paused'].includes(status);
+}
+
 export function shouldPollDownloads(records: Pick<DownloadRecord, 'status'>[]) {
   return records.some((record) =>
     ['active', 'waiting'].includes(record.status)
@@ -32,10 +37,7 @@ export const useDownloadStore = defineStore('downloads', () => {
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   const activeCount = computed(
-    () =>
-      items.value.filter((item) =>
-        ['active', 'waiting', 'paused'].includes(item.status)
-      ).length
+    () => items.value.filter((item) => isRunning(item.status)).length
   );
 
   async function indexFinishedDownloads() {
@@ -47,16 +49,22 @@ export const useDownloadStore = defineStore('downloads', () => {
 
   async function refresh() {
     try {
-      const unfinished = new Set(
+      const running = new Set(
         items.value
-          .filter((item) => item.status !== 'complete')
+          .filter((item) => isRunning(item.status))
           .map((item) => item.gid)
       );
       items.value = await listDownloads();
       errorMessage.value = '';
+      for (const item of items.value) {
+        if (item.status === 'error' && running.has(item.gid))
+          toast.error(`Download failed: ${item.name}`, {
+            description: item.errorMessage
+          });
+      }
       if (
         items.value.some(
-          (item) => item.status === 'complete' && unfinished.has(item.gid)
+          (item) => item.status === 'complete' && running.has(item.gid)
         )
       )
         await indexFinishedDownloads();
@@ -125,8 +133,7 @@ export const useDownloadStore = defineStore('downloads', () => {
       await clearDownloadHistory(gid);
       items.value = items.value.filter(
         (item) =>
-          (gid !== undefined && item.gid !== gid) ||
-          ['active', 'waiting', 'paused'].includes(item.status)
+          (gid !== undefined && item.gid !== gid) || isRunning(item.status)
       );
     } catch (error) {
       errorMessage.value =

@@ -14,7 +14,49 @@ mod prompt_suggestions;
 use process_manager::ProcessManager;
 use std::fs;
 use std::sync::{Mutex, OnceLock};
-use tauri::{AppHandle, Manager, State};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let show = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let mut tray = TrayIconBuilder::new()
+        .tooltip(&app.package_info().name)
+        .menu(&Menu::with_items(app, &[&show, &quit])?)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_main_window(app),
+            "quit" => {
+                show_main_window(app);
+                let _ = app.emit("tray-quit", ());
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
 
 #[cfg(windows)]
 fn style_native_window(window: &tauri::WebviewWindow) -> tauri::Result<()> {
@@ -392,11 +434,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            show_main_window(app)
         }))
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -557,6 +595,7 @@ pub fn run() {
                 .configure(app.path().app_config_dir()?)
                 .map_err(std::io::Error::other)?;
             network_cache::prune_expired_in_background(app.handle());
+            build_tray(app)?;
             if let (Some(window), Some(icon)) =
                 (app.get_webview_window("main"), app.default_window_icon())
             {
@@ -645,6 +684,12 @@ pub fn run() {
             network_cache::clear_network_cache,
             network_cache::get_network_cache_stats
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                app.state::<download_manager::DownloadManager>()
+                    .suspend_all(app, std::time::Duration::from_secs(5));
+            }
+        });
 }

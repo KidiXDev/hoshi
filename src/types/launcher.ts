@@ -7,6 +7,7 @@ export interface LauncherConfig {
   args: string;
   serverUrl: string;
   autoStart: boolean;
+  closeToTray: boolean;
   autocompleteEnabled: boolean;
   autocompleteAlgorithm: 'fuzzy' | 'contains' | 'prefix';
   autocompleteLimit: number;

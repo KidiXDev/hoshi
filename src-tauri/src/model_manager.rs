@@ -1411,7 +1411,7 @@ fn describe_hashed_model(
 
 // ─── civitai sync ─────────────────────────────────────────────────────────────
 
-fn resolve_api_key(app: &AppHandle, api_key: &str) -> String {
+pub(crate) fn resolve_api_key(app: &AppHandle, api_key: &str) -> String {
     if !api_key.trim().is_empty() {
         return api_key.trim().to_string();
     }

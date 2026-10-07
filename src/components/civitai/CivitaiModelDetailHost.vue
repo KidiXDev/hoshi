@@ -179,7 +179,7 @@ onMounted(async () => {
     @resume="toggleDownload"
     @cancel="cancelDownload"
     @show-in-folder="showModelInFolder"
-    @tag-click="(tag) => router.push({ path: '/civitai', query: { tag } })"
+    @search="(q) => router.push({ path: '/civitai', query: { q } })"
   >
     <template v-if="localModel" #header-actions>
       <ModelPreviewMenu

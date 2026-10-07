@@ -12,24 +12,39 @@ import {
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
+  Bookmark,
+  BookmarkMinus,
+  BookmarkPlus,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
   ExternalLink,
   HardDriveDownload,
   ImageOff,
+  Info,
+  Link,
   Loader2,
   RefreshCw,
   Search,
   ThumbsUp,
+  UserRoundSearch,
   Video,
   X
 } from '@lucide/vue';
+import { toast } from 'vue-sonner';
 import FilterField from '@/components/common/FilterField.vue';
 import FilterPopover from '@/components/common/FilterPopover.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu';
 import PageLayout from '@/components/layout/PageLayout.vue';
 import { Input } from '@/components/ui/input';
 import {
@@ -58,6 +73,7 @@ import {
 } from '../services/civitai';
 import { loadAppData } from '../services/appStorage';
 import { useCivitaiStore } from '../stores/civitaiStore';
+import { useDownloadStore } from '../stores/downloadStore';
 import { useLauncherStore } from '../stores/launcherStore';
 
 defineOptions({ name: 'CivitaiBrowserView' });
@@ -73,8 +89,9 @@ const OVERSCAN_ROWS = 3;
 const router = useRouter();
 const route = useRoute();
 const civitaiStore = useCivitaiStore();
+const downloadStore = useDownloadStore();
 const launcherStore = useLauncherStore();
-const { isVersionInstalled } = useInstalledCivitaiVersions();
+const { progress, isVersionInstalled } = useInstalledCivitaiVersions();
 const { query, modelType, baseModel, sort, period, baseModels } =
   storeToRefs(civitaiStore);
 const apiKey = ref('');
@@ -89,10 +106,32 @@ const errorMessage = ref('');
 const scrollViewport = ref<HTMLElement | null>(null);
 const gridWidth = ref(1200);
 const isViewActive = ref(true);
+const showBookmarks = ref(false);
 let resizeObserver: ResizeObserver | null = null;
 let savedScrollTop = 0;
 
-const hasModels = computed(() => models.value.length > 0);
+const bookmarkedModels = computed(() => {
+  const term = query.value.trim().toLowerCase();
+  return civitaiStore.bookmarks.filter(
+    (model) =>
+      (modelType.value === 'all' || model.type === modelType.value) &&
+      (!term ||
+        model.name.toLowerCase().includes(term) ||
+        !!model.creator?.username?.toLowerCase().includes(term))
+  );
+});
+const visibleModels = computed(() =>
+  showBookmarks.value ? bookmarkedModels.value : models.value
+);
+const canLoadMore = computed(
+  () =>
+    !showBookmarks.value &&
+    !loading.value &&
+    !loadingMore.value &&
+    !!nextCursor.value &&
+    models.value.length > 0
+);
+const hasModels = computed(() => visibleModels.value.length > 0);
 const columns = computed(() => {
   if (gridWidth.value < 600) return 1;
   if (gridWidth.value < 760) return 2;
@@ -108,7 +147,7 @@ const rowHeight = computed(
   () => cardWidth.value * CARD_ASPECT_RATIO + CARD_FOOTER_HEIGHT + GRID_GAP
 );
 const totalRows = computed(() =>
-  Math.ceil(models.value.length / columns.value)
+  Math.ceil(visibleModels.value.length / columns.value)
 );
 const rowVirtualizer = useVirtualizer(
   computed(() => ({
@@ -175,6 +214,61 @@ function refreshModels() {
 function openDetail(model: CivitaiModel) {
   cacheCivitaiModel(model);
   router.push(`/civitai/model/${model.id}`);
+}
+
+function civitaiUrl(model: CivitaiModel) {
+  return `https://civitai.com/models/${model.id}`;
+}
+
+async function copyText(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success(`${label} copied`);
+  } catch (error) {
+    toast.error(`Copy failed: ${String(error)}`);
+  }
+}
+
+async function toggleBookmark(model: CivitaiModel) {
+  try {
+    const bookmarked = await civitaiStore.toggleBookmark(model);
+    toast.success(
+      bookmarked ? `Bookmarked ${model.name}` : `Removed ${model.name}`
+    );
+  } catch (error) {
+    toast.error(`Bookmark failed: ${String(error)}`);
+  }
+}
+
+function searchCreator(username: string) {
+  showBookmarks.value = false;
+  query.value = username;
+  void loadModels(false);
+}
+
+function canDownload(model: CivitaiModel) {
+  const version = selectedVersion(model);
+  return (
+    !!version?.files.length &&
+    launcherStore.hasComfyDirectory &&
+    !isVersionInstalled(model, version) &&
+    !progress.value[version.id]
+  );
+}
+
+async function downloadSelectedVersion(model: CivitaiModel) {
+  const version = selectedVersion(model);
+  if (!version) return;
+  try {
+    await downloadStore.enqueueCivitai({
+      versionId: version.id,
+      workingDir: launcherStore.config.workingDir,
+      apiKey: apiKey.value
+    });
+    toast.success(`Downloading ${model.name} — ${version.name}`);
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  }
 }
 
 function clearSearch() {
@@ -247,13 +341,7 @@ function handleScroll(event: Event) {
   const target = event.target as HTMLElement;
   if (!target) return;
   savedScrollTop = target.scrollTop;
-  if (
-    loading.value ||
-    loadingMore.value ||
-    !nextCursor.value ||
-    models.value.length === 0
-  )
-    return;
+  if (!canLoadMore.value) return;
   const bottomThreshold = 600;
   if (
     target.scrollHeight - target.scrollTop - target.clientHeight <
@@ -264,19 +352,16 @@ function handleScroll(event: Event) {
 }
 
 watch(virtualRows, (rows) => {
-  if (
-    !isViewActive.value ||
-    rows.length === 0 ||
-    loading.value ||
-    loadingMore.value ||
-    !nextCursor.value ||
-    models.value.length === 0
-  )
-    return;
+  if (!isViewActive.value || rows.length === 0 || !canLoadMore.value) return;
   const lastRow = rows.at(-1);
   if (lastRow && lastRow.index >= totalRows.value - 2) {
     void loadModels(true);
   }
+});
+
+watch(showBookmarks, () => {
+  savedScrollTop = 0;
+  scrollViewport.value?.scrollTo({ top: 0 });
 });
 
 async function restoreBrowseScroll() {
@@ -301,9 +386,7 @@ onMounted(async () => {
   if (!civitaiStore.isLoaded) {
     await civitaiStore.init();
   }
-  if (route.query.tag) {
-    query.value = String(route.query.tag);
-  }
+  consumeRouteQuery();
   const settings = await loadAppData<{ apiKey?: string; nsfw?: boolean }>(
     'civitai_settings'
   );
@@ -316,12 +399,19 @@ onMounted(async () => {
   await restoreBrowseScroll();
 });
 
+function consumeRouteQuery() {
+  const requested = route.query.q;
+  if (typeof requested !== 'string' || !requested) return false;
+  void router.replace({ query: {} });
+  showBookmarks.value = false;
+  if (requested === query.value) return false;
+  query.value = requested;
+  return true;
+}
+
 onActivated(() => {
   isViewActive.value = true;
-  if (route.query.tag && route.query.tag !== query.value) {
-    query.value = String(route.query.tag);
-    void loadModels(false);
-  }
+  if (consumeRouteQuery()) void loadModels(false);
   void restoreBrowseScroll();
 });
 
@@ -358,6 +448,24 @@ onUnmounted(() => {
       <HardDriveDownload class="h-4 w-4" />
     </template>
     <template #actions>
+      <Button
+        :variant="showBookmarks ? 'default' : 'outline'"
+        size="sm"
+        class="h-8 text-xs"
+        :aria-pressed="showBookmarks"
+        @click="showBookmarks = !showBookmarks"
+      >
+        <Bookmark class="h-3.5 w-3.5" />
+        <span class="hidden sm:inline">Bookmarks</span>
+        <Badge
+          v-if="civitaiStore.bookmarks.length"
+          variant="secondary"
+          class="h-4 min-w-4 px-1 text-xs font-semibold"
+        >
+          {{ civitaiStore.bookmarks.length }}
+        </Badge>
+      </Button>
+
       <Tooltip>
         <TooltipTrigger as-child>
           <Button
@@ -552,7 +660,7 @@ onUnmounted(() => {
         >
       </div>
       <div
-        v-if="errorMessage"
+        v-if="errorMessage && !showBookmarks"
         class="border-destructive/30 bg-destructive/10 text-destructive mb-4 flex items-center justify-between rounded-lg border px-4 py-3 text-xs shadow-xs"
       >
         <span>{{ errorMessage }}</span>
@@ -567,7 +675,7 @@ onUnmounted(() => {
       </div>
 
       <div
-        v-if="loading"
+        v-if="loading && !showBookmarks"
         class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
       >
         <div
@@ -591,12 +699,21 @@ onUnmounted(() => {
         <div
           class="bg-muted text-muted-foreground mb-3 flex h-12 w-12 items-center justify-center rounded-full"
         >
-          <ImageOff class="h-6 w-6" />
+          <Bookmark v-if="showBookmarks" class="h-6 w-6" />
+          <ImageOff v-else class="h-6 w-6" />
         </div>
-        <h3 class="text-sm font-semibold">No models found</h3>
-        <p class="text-muted-foreground mt-1 text-xs">
-          Try adjusting your search query, model type, or time period filters.
-        </p>
+        <template v-if="showBookmarks">
+          <h3 class="text-sm font-semibold">No bookmarked models</h3>
+          <p class="text-muted-foreground mt-1 text-xs">
+            Right-click a model and choose Bookmark to keep it here.
+          </p>
+        </template>
+        <template v-else>
+          <h3 class="text-sm font-semibold">No models found</h3>
+          <p class="text-muted-foreground mt-1 text-xs">
+            Try adjusting your search query, model type, or time period filters.
+          </p>
+        </template>
         <Button
           variant="outline"
           size="sm"
@@ -623,195 +740,248 @@ onUnmounted(() => {
             gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
           }"
         >
-          <article
-            v-for="model in models.slice(
+          <ContextMenu
+            v-for="model in visibleModels.slice(
               virtualRow.index * columns,
               (virtualRow.index + 1) * columns
             )"
             :key="model.id"
-            class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:shadow-md"
-            @click="openDetail(model)"
           >
-            <div
-              class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
-            >
-              <!-- Render only the active preview to keep scrolling lightweight. -->
-              <template v-if="currentImage(model)?.url">
-                <video
-                  v-if="isVideoMedia(currentImage(model))"
-                  :key="`video-${currentImage(model)!.url}`"
-                  :src="previewUrl(currentImage(model)!.url, 450)"
-                  autoplay
-                  loop
-                  muted
-                  playsinline
-                  class="pointer-events-none h-full w-full object-cover"
-                />
-                <img
-                  v-else
-                  :key="`img-${currentImage(model)!.url}`"
-                  :src="previewUrl(currentImage(model)!.url, 450)"
-                  :alt="`${model.name} preview`"
-                  class="h-full w-full object-cover"
-                  loading="lazy"
-                  decoding="async"
-                  draggable="false"
-                />
-
-                <!-- Multi-Image Hover Carousel Controls -->
-                <button
-                  v-if="(selectedVersion(model)?.images?.length || 0) > 1"
-                  type="button"
-                  aria-label="Previous preview image"
-                  class="absolute top-1/2 left-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                  @click.stop="changeCardImage(model, -1)"
-                >
-                  <ChevronLeft class="h-3.5 w-3.5" />
-                </button>
-                <button
-                  v-if="(selectedVersion(model)?.images?.length || 0) > 1"
-                  type="button"
-                  aria-label="Next preview image"
-                  class="absolute top-1/2 right-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/90"
-                  @click.stop="changeCardImage(model, 1)"
-                >
-                  <ChevronRight class="h-3.5 w-3.5" />
-                </button>
-
-                <!-- Carousel Indicators (Dots) -->
+            <ContextMenuTrigger as-child>
+              <article
+                class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:shadow-md"
+                @click="openDetail(model)"
+              >
                 <div
-                  v-if="(selectedVersion(model)?.images?.length || 0) > 1"
-                  class="absolute inset-x-0 bottom-8 z-10 flex justify-center gap-1"
+                  class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
                 >
-                  <button
-                    v-for="(_, imgIdx) in (
-                      selectedVersion(model)?.images || []
-                    ).slice(0, 5)"
-                    :key="imgIdx"
-                    type="button"
-                    :aria-label="`Go to preview ${imgIdx + 1}`"
-                    class="h-1 cursor-pointer rounded-full transition-all"
-                    :class="
-                      imgIdx === getActiveImageIndex(model.id)
-                        ? 'w-3 bg-white shadow-xs'
-                        : 'w-1 bg-white/50 hover:bg-white/80'
-                    "
-                    @click.stop="activeImageIndices[model.id] = imgIdx"
+                  <!-- Render only the active preview to keep scrolling lightweight. -->
+                  <template v-if="currentImage(model)?.url">
+                    <video
+                      v-if="isVideoMedia(currentImage(model))"
+                      :key="`video-${currentImage(model)!.url}`"
+                      :src="previewUrl(currentImage(model)!.url, 450)"
+                      autoplay
+                      loop
+                      muted
+                      playsinline
+                      class="pointer-events-none h-full w-full object-cover"
+                    />
+                    <img
+                      v-else
+                      :key="`img-${currentImage(model)!.url}`"
+                      :src="previewUrl(currentImage(model)!.url, 450)"
+                      :alt="`${model.name} preview`"
+                      class="h-full w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      draggable="false"
+                    />
+
+                    <!-- Multi-Image Hover Carousel Controls -->
+                    <button
+                      v-if="(selectedVersion(model)?.images?.length || 0) > 1"
+                      type="button"
+                      aria-label="Previous preview image"
+                      class="absolute top-1/2 left-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                      @click.stop="changeCardImage(model, -1)"
+                    >
+                      <ChevronLeft class="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      v-if="(selectedVersion(model)?.images?.length || 0) > 1"
+                      type="button"
+                      aria-label="Next preview image"
+                      class="absolute top-1/2 right-1.5 z-20 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/90"
+                      @click.stop="changeCardImage(model, 1)"
+                    >
+                      <ChevronRight class="h-3.5 w-3.5" />
+                    </button>
+
+                    <!-- Carousel Indicators (Dots) -->
+                    <div
+                      v-if="(selectedVersion(model)?.images?.length || 0) > 1"
+                      class="absolute inset-x-0 bottom-8 z-10 flex justify-center gap-1"
+                    >
+                      <button
+                        v-for="(_, imgIdx) in (
+                          selectedVersion(model)?.images || []
+                        ).slice(0, 5)"
+                        :key="imgIdx"
+                        type="button"
+                        :aria-label="`Go to preview ${imgIdx + 1}`"
+                        class="h-1 cursor-pointer rounded-full transition-all"
+                        :class="
+                          imgIdx === getActiveImageIndex(model.id)
+                            ? 'w-3 bg-white shadow-xs'
+                            : 'w-1 bg-white/50 hover:bg-white/80'
+                        "
+                        @click.stop="activeImageIndices[model.id] = imgIdx"
+                      />
+                    </div>
+                  </template>
+
+                  <!-- Fallback empty -->
+                  <div
+                    v-else
+                    class="text-muted-foreground flex h-full items-center justify-center"
+                  >
+                    <ImageOff class="h-8 w-8" />
+                  </div>
+
+                  <!-- Top Gradient Overlay -->
+                  <div
+                    class="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-linear-to-b from-black/75 via-black/30 to-transparent"
                   />
-                </div>
-              </template>
 
-              <!-- Fallback empty -->
-              <div
-                v-else
-                class="text-muted-foreground flex h-full items-center justify-center"
+                  <!-- Top Badges Row -->
+                  <div
+                    class="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-1"
+                  >
+                    <!-- Model Type Badge & Video Indicator -->
+                    <div class="flex items-center gap-1">
+                      <Badge
+                        variant="outline"
+                        class="border-white/20 bg-black/65 px-2 py-0.5 text-xs font-medium text-white shadow-sm backdrop-blur-md"
+                      >
+                        {{ model.type }}
+                      </Badge>
+                      <Badge
+                        v-if="isVideoMedia(currentImage(model))"
+                        variant="outline"
+                        class="flex items-center gap-1 border-sky-400/30 bg-sky-950/70 px-1.5 py-0.5 text-xs font-medium text-sky-300 shadow-sm backdrop-blur-md"
+                      >
+                        <Video class="h-3 w-3" />
+                        <span>Video</span>
+                      </Badge>
+                    </div>
+
+                    <!-- Installed or Base Model Badge -->
+                    <div class="flex items-center gap-1">
+                      <Badge
+                        v-if="civitaiStore.isBookmarked(model.id)"
+                        class="border-primary/40 bg-primary/90 text-primary-foreground px-1 py-0.5 shadow-sm backdrop-blur-md"
+                        title="Bookmarked"
+                      >
+                        <Bookmark class="h-3 w-3 fill-current" />
+                      </Badge>
+                      <Badge
+                        v-if="isModelDownloaded(model)"
+                        class="flex items-center gap-1 border-emerald-500/30 bg-emerald-600/90 px-1.5 py-0.5 text-xs text-white shadow-sm backdrop-blur-md"
+                      >
+                        <CheckCircle2 class="h-3 w-3" />
+                        <span>Installed</span>
+                      </Badge>
+                      <Badge
+                        v-else-if="selectedVersion(model)?.baseModel"
+                        variant="outline"
+                        class="max-w-28 truncate border-amber-500/30 bg-black/65 px-1.5 py-0.5 text-xs text-amber-300 shadow-sm backdrop-blur-md"
+                      >
+                        {{ selectedVersion(model)?.baseModel }}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <!-- Bottom Gradient Overlay with Stats -->
+                  <div
+                    class="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between bg-linear-to-t from-black/85 via-black/40 to-transparent p-2 text-white"
+                  >
+                    <div class="flex items-center gap-2 text-xs font-medium">
+                      <span class="flex items-center gap-1 drop-shadow-xs">
+                        <Download class="h-3 w-3 text-white/80" />
+                        {{ formatCount(model.stats?.downloadCount) }}
+                      </span>
+                      <span
+                        v-if="model.stats?.thumbsUpCount"
+                        class="flex items-center gap-1 drop-shadow-xs"
+                      >
+                        <ThumbsUp class="h-3 w-3 text-white/80" />
+                        {{ formatCount(model.stats?.thumbsUpCount) }}
+                      </span>
+                    </div>
+
+                    <span
+                      class="text-xs text-white/70 transition-colors group-hover:text-white"
+                    >
+                      {{ model.modelVersions.length }}
+                      {{ model.modelVersions.length > 1 ? 'vers' : 'ver' }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Pure Card Footer: Name & Creator -->
+                <div class="flex flex-col gap-0.5 p-2.5">
+                  <h2
+                    class="group-hover:text-primary truncate text-xs font-semibold transition-colors"
+                    :title="model.name"
+                  >
+                    {{ model.name }}
+                  </h2>
+                  <p class="text-muted-foreground truncate text-xs">
+                    by {{ model.creator?.username || 'Unknown' }}
+                  </p>
+                </div>
+              </article>
+            </ContextMenuTrigger>
+            <ContextMenuContent class="w-60">
+              <ContextMenuItem @select="openDetail(model)">
+                <Info /> Details
+              </ContextMenuItem>
+              <ContextMenuItem @select="toggleBookmark(model)">
+                <template v-if="civitaiStore.isBookmarked(model.id)">
+                  <BookmarkMinus /> Remove bookmark
+                </template>
+                <template v-else> <BookmarkPlus /> Bookmark </template>
+              </ContextMenuItem>
+              <ContextMenuItem
+                :disabled="!canDownload(model)"
+                @select="downloadSelectedVersion(model)"
               >
-                <ImageOff class="h-8 w-8" />
-              </div>
-
-              <!-- Top Gradient Overlay -->
-              <div
-                class="pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-linear-to-b from-black/75 via-black/30 to-transparent"
-              />
-
-              <!-- Top Badges Row -->
-              <div
-                class="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-start justify-between gap-1"
-              >
-                <!-- Model Type Badge & Video Indicator -->
-                <div class="flex items-center gap-1">
-                  <Badge
-                    variant="outline"
-                    class="border-white/20 bg-black/65 px-2 py-0.5 text-xs font-medium text-white shadow-sm backdrop-blur-md"
-                  >
-                    {{ model.type }}
-                  </Badge>
-                  <Badge
-                    v-if="isVideoMedia(currentImage(model))"
-                    variant="outline"
-                    class="flex items-center gap-1 border-sky-400/30 bg-sky-950/70 px-1.5 py-0.5 text-xs font-medium text-sky-300 shadow-sm backdrop-blur-md"
-                  >
-                    <Video class="h-3 w-3" />
-                    <span>Video</span>
-                  </Badge>
-                </div>
-
-                <!-- Installed or Base Model Badge -->
-                <div class="flex items-center gap-1">
-                  <Badge
-                    v-if="isModelDownloaded(model)"
-                    class="flex items-center gap-1 border-emerald-500/30 bg-emerald-600/90 px-1.5 py-0.5 text-xs text-white shadow-sm backdrop-blur-md"
-                  >
-                    <CheckCircle2 class="h-3 w-3" />
-                    <span>Installed</span>
-                  </Badge>
-                  <Badge
-                    v-else-if="selectedVersion(model)?.baseModel"
-                    variant="outline"
-                    class="max-w-28 truncate border-amber-500/30 bg-black/65 px-1.5 py-0.5 text-xs text-amber-300 shadow-sm backdrop-blur-md"
-                  >
-                    {{ selectedVersion(model)?.baseModel }}
-                  </Badge>
-                </div>
-              </div>
-
-              <!-- Bottom Gradient Overlay with Stats -->
-              <div
-                class="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between bg-linear-to-t from-black/85 via-black/40 to-transparent p-2 text-white"
-              >
-                <div class="flex items-center gap-2 text-xs font-medium">
-                  <span class="flex items-center gap-1 drop-shadow-xs">
-                    <Download class="h-3 w-3 text-white/80" />
-                    {{ formatCount(model.stats?.downloadCount) }}
-                  </span>
-                  <span
-                    v-if="model.stats?.thumbsUpCount"
-                    class="flex items-center gap-1 drop-shadow-xs"
-                  >
-                    <ThumbsUp class="h-3 w-3 text-white/80" />
-                    {{ formatCount(model.stats?.thumbsUpCount) }}
-                  </span>
-                </div>
-
-                <span
-                  class="text-xs text-white/70 transition-colors group-hover:text-white"
-                >
-                  {{ model.modelVersions.length }}
-                  {{ model.modelVersions.length > 1 ? 'vers' : 'ver' }}
+                <Download />
+                <span class="truncate">
+                  Download {{ selectedVersion(model)?.name }}
                 </span>
-              </div>
-            </div>
-
-            <!-- Pure Card Footer: Name & Creator -->
-            <div class="flex flex-col gap-0.5 p-2.5">
-              <h2
-                class="group-hover:text-primary truncate text-xs font-semibold transition-colors"
-                :title="model.name"
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                v-if="model.creator?.username"
+                @select="searchCreator(model.creator.username)"
               >
-                {{ model.name }}
-              </h2>
-              <p class="text-muted-foreground truncate text-xs">
-                by {{ model.creator?.username || 'Unknown' }}
-              </p>
-            </div>
-          </article>
+                <UserRoundSearch />
+                <span class="truncate">
+                  More from {{ model.creator.username }}
+                </span>
+              </ContextMenuItem>
+              <ContextMenuItem @select="copyText(model.name, 'Model name')">
+                <Copy /> Copy name
+              </ContextMenuItem>
+              <ContextMenuItem @select="copyText(civitaiUrl(model), 'Link')">
+                <Link /> Copy Civitai link
+              </ContextMenuItem>
+              <ContextMenuItem @select="openUrl(civitaiUrl(model))">
+                <ExternalLink /> Open on Civitai
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         </div>
       </div>
 
       <!-- Infinite Scroll Loading Spinner / Indicator -->
-      <div
-        v-if="loadingMore"
-        class="text-muted-foreground flex items-center justify-center gap-2 py-8 text-xs"
-      >
-        <Loader2 class="text-primary h-4 w-4 animate-spin" />
-        <span>Loading more models...</span>
-      </div>
-      <div
-        v-else-if="hasModels && !nextCursor && !loading"
-        class="text-muted-foreground py-8 text-center text-xs"
-      >
-        All models loaded
-      </div>
+      <template v-if="!showBookmarks">
+        <div
+          v-if="loadingMore"
+          class="text-muted-foreground flex items-center justify-center gap-2 py-8 text-xs"
+        >
+          <Loader2 class="text-primary h-4 w-4 animate-spin" />
+          <span>Loading more models...</span>
+        </div>
+        <div
+          v-else-if="hasModels && !nextCursor && !loading"
+          class="text-muted-foreground py-8 text-center text-xs"
+        >
+          All models loaded
+        </div>
+      </template>
     </div>
   </PageLayout>
 </template>

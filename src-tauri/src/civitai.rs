@@ -51,7 +51,7 @@ pub(crate) fn authorized(
     }
 }
 
-fn resolve_download_url(
+pub(crate) fn resolve_download_url(
     client: &Client,
     mut url: reqwest::Url,
     api_key: &str,
@@ -511,6 +511,7 @@ fn download_blocking(
     if download_url.scheme() != "https" || download_url.domain() != Some("civitai.com") {
         return Err("Civitai returned an unexpected download host.".into());
     }
+    let source_url = download_url.to_string();
     let download_url = resolve_download_url(&client, download_url, &api_key)?;
 
     let directory = root
@@ -552,6 +553,7 @@ fn download_blocking(
                 .and_then(|image| image["url"].as_str())
                 .map(str::to_string),
             url: download_url,
+            source_url,
         },
     )
 }

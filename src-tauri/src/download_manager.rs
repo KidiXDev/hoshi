@@ -1,5 +1,6 @@
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, Response};
 use reqwest::header::{CONTENT_RANGE, RANGE};
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -35,6 +36,8 @@ pub struct DownloadRecord {
     pub file_exists: bool,
     #[serde(default, rename = "_url", skip_serializing)]
     url: String,
+    #[serde(default, rename = "_sourceUrl", skip_serializing)]
+    source_url: String,
 }
 
 fn default_file_exists() -> bool {
@@ -50,12 +53,14 @@ pub struct NewDownload {
     pub model_path: PathBuf,
     pub preview_url: Option<String>,
     pub url: String,
+    pub source_url: String,
 }
 
 #[derive(Default)]
 struct JobControl {
     cancelled: AtomicBool,
     paused: AtomicBool,
+    suspended: AtomicBool,
 }
 
 #[derive(Default)]
@@ -63,6 +68,7 @@ struct Inner {
     records: Vec<DownloadRecord>,
     jobs: HashMap<String, Arc<JobControl>>,
     loaded: bool,
+    suspended: bool,
 }
 
 #[derive(Clone, Default)]
@@ -99,6 +105,7 @@ fn save_history(inner: &Inner, app: &AppHandle) -> Result<(), String> {
         .map(|record| {
             let mut value = serde_json::to_value(record).map_err(|e| e.to_string())?;
             value["_url"] = record.url.clone().into();
+            value["_sourceUrl"] = record.source_url.clone().into();
             Ok(value)
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -131,7 +138,39 @@ fn content_range_total(value: &str) -> Option<u64> {
     value.rsplit('/').next()?.parse().ok()
 }
 
+const EXPIRED_LINK: &str =
+    "Download link expired and Civitai could not issue a new one, so this download cannot be continued.";
+
+fn is_expired_link(status: StatusCode) -> bool {
+    matches!(status.as_u16(), 400 | 401 | 403 | 404 | 410)
+}
+
+fn request_from(client: &Client, url: &str, offset: u64) -> Result<Response, String> {
+    let mut request = client.get(url);
+    if offset > 0 {
+        request = request.header(RANGE, format!("bytes={offset}-"));
+    }
+    request.send().map_err(|e| e.to_string())
+}
+
 impl DownloadManager {
+    fn renew_link(
+        &self,
+        app: &AppHandle,
+        client: &Client,
+        record: &DownloadRecord,
+    ) -> Result<String, String> {
+        let source = reqwest::Url::parse(&record.source_url)
+            .ok()
+            .filter(|url| url.scheme() == "https" && url.domain() == Some("civitai.com"))
+            .ok_or(EXPIRED_LINK)?;
+        let api_key = crate::model_manager::resolve_api_key(app, "");
+        let url = crate::civitai::resolve_download_url(client, source, &api_key)
+            .map_err(|error| format!("{EXPIRED_LINK} {error}"))?;
+        self.update_record(app, &record.gid, |item| item.url = url.clone(), true);
+        Ok(url)
+    }
+
     fn update_record(
         &self,
         app: &AppHandle,
@@ -157,7 +196,7 @@ impl DownloadManager {
             let Ok(mut inner) = self.inner.lock() else {
                 return;
             };
-            if inner.jobs.contains_key(&record.gid) {
+            if inner.suspended || inner.jobs.contains_key(&record.gid) {
                 return;
             }
             let control = Arc::new(JobControl::default());
@@ -172,20 +211,23 @@ impl DownloadManager {
     }
 
     fn run_download(&self, app: AppHandle, record: DownloadRecord, control: Arc<JobControl>) {
-        let result = self.download(&app, &record, &control);
-        if control.cancelled.load(Ordering::Relaxed) {
-            cleanup_files(Path::new(&record.model_path));
-        } else if let Err(error) = result {
-            self.update_record(
-                &app,
-                &record.gid,
-                |item| {
-                    item.status = "error".into();
-                    item.download_speed = 0;
-                    item.error_message = Some(error);
-                },
-                true,
-            );
+        match self.download(&app, &record, &control) {
+            _ if control.cancelled.load(Ordering::Relaxed) => {
+                cleanup_files(Path::new(&record.model_path));
+            }
+            Err(error) if !control.suspended.load(Ordering::Relaxed) => {
+                self.update_record(
+                    &app,
+                    &record.gid,
+                    |item| {
+                        item.status = "error".into();
+                        item.download_speed = 0;
+                        item.error_message = Some(error);
+                    },
+                    true,
+                );
+            }
+            _ => {}
         }
         if let Ok(mut inner) = self.inner.lock() {
             inner.jobs.remove(&record.gid);
@@ -206,17 +248,15 @@ impl DownloadManager {
         let mut completed = fs::metadata(&partial_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
-        let client = Client::builder()
-            .user_agent("Koharu/1.0")
-            .connect_timeout(Duration::from_secs(20))
-            .timeout(Duration::from_secs(60 * 60 * 6))
-            .build()
-            .map_err(|e| e.to_string())?;
-        let mut request = client.get(&record.url);
-        if completed > 0 {
-            request = request.header(RANGE, format!("bytes={completed}-"));
+        let client = crate::civitai::client()?;
+        let mut response = request_from(&client, &record.url, completed)?;
+        if is_expired_link(response.status()) {
+            let renewed_url = self.renew_link(app, &client, record)?;
+            response = request_from(&client, &renewed_url, completed)?;
+            if is_expired_link(response.status()) {
+                return Err(EXPIRED_LINK.into());
+            }
         }
-        let mut response = request.send().map_err(|e| e.to_string())?;
         if !response.status().is_success() {
             return Err(format!("Model download failed with {}.", response.status()));
         }
@@ -263,15 +303,28 @@ impl DownloadManager {
         let mut buffer = [0_u8; 256 * 1024];
         let mut speed_bytes = 0_u64;
         let mut speed_at = Instant::now();
+        let stopping = || {
+            control.cancelled.load(Ordering::Relaxed) || control.suspended.load(Ordering::Relaxed)
+        };
         loop {
+            while control.paused.load(Ordering::Relaxed) && !stopping() {
+                thread::sleep(Duration::from_millis(100));
+            }
             if control.cancelled.load(Ordering::Relaxed) {
                 return Ok(());
             }
-            while control.paused.load(Ordering::Relaxed) {
-                if control.cancelled.load(Ordering::Relaxed) {
-                    return Ok(());
-                }
-                thread::sleep(Duration::from_millis(100));
+            if control.suspended.load(Ordering::Relaxed) {
+                file.sync_all().map_err(|e| e.to_string())?;
+                self.update_record(
+                    app,
+                    &record.gid,
+                    |item| {
+                        item.completed_length = completed;
+                        item.download_speed = 0;
+                    },
+                    true,
+                );
+                return Ok(());
             }
             let read = response.read(&mut buffer).map_err(|e| e.to_string())?;
             if read == 0 {
@@ -368,6 +421,7 @@ impl DownloadManager {
                 created_at,
                 file_exists: false,
                 url: download.url,
+                source_url: download.source_url,
             };
             inner.records.insert(0, record.clone());
             save_history(&inner, app)?;
@@ -456,6 +510,32 @@ impl DownloadManager {
         remove_history_records(&mut inner.records, gid);
         save_history(&inner, app)
     }
+
+    pub fn suspend_all(&self, app: &AppHandle, timeout: Duration) {
+        let Ok(mut inner) = self.inner.lock() else {
+            return;
+        };
+        inner.suspended = true;
+        if inner.jobs.is_empty() {
+            return;
+        }
+        for control in inner.jobs.values() {
+            control.suspended.store(true, Ordering::Relaxed);
+        }
+        drop(inner);
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline
+            && self.inner.lock().is_ok_and(|inner| !inner.jobs.is_empty())
+        {
+            thread::sleep(Duration::from_millis(50));
+        }
+        if let Ok(mut inner) = self.inner.lock() {
+            for record in &mut inner.records {
+                record.download_speed = 0;
+            }
+            let _ = save_history(&inner, app);
+        }
+    }
 }
 
 fn remove_history_records(records: &mut Vec<DownloadRecord>, gid: Option<&str>) {
@@ -538,10 +618,9 @@ mod tests {
         }).collect();
         super::remove_history_records(&mut records, Some("error"));
         assert_eq!(records.len(), 5);
-        assert!(serde_json::to_value(&records[0])
-            .unwrap()
-            .get("_url")
-            .is_none());
+        let serialized = serde_json::to_value(&records[0]).unwrap();
+        assert!(serialized.get("_url").is_none());
+        assert!(serialized.get("_sourceUrl").is_none());
         for gid in ["active", "waiting", "paused", "missing"] {
             super::remove_history_records(&mut records, Some(gid));
             assert_eq!(records.len(), 5);

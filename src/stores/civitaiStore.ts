@@ -1,10 +1,11 @@
 import { useDebounceFn } from '@vueuse/core';
 import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import {
   discoverLocalModels,
-  fetchCivitaiBaseModels
+  fetchCivitaiBaseModels,
+  type CivitaiModel
 } from '../services/civitai';
 import type { BridgeModelsResponse } from '../types/comfy';
 import { parseLauncherArgs, useLauncherStore } from './launcherStore';
@@ -123,8 +124,36 @@ export const useCivitaiStore = defineStore('civitai', () => {
     period.value = 'AllTime';
   }
 
+  // Bookmarks
+  const bookmarks = ref<CivitaiModel[]>([]);
+  const bookmarkIds = computed(
+    () => new Set(bookmarks.value.map((model) => model.id))
+  );
+
+  async function loadBookmarks() {
+    try {
+      const saved = await loadAppData<CivitaiModel[]>('civitai_bookmarks');
+      if (Array.isArray(saved)) bookmarks.value = saved;
+    } catch (err) {
+      console.error('Failed to load civitai bookmarks:', err);
+    }
+  }
+
+  function isBookmarked(modelId: number) {
+    return bookmarkIds.value.has(modelId);
+  }
+
+  async function toggleBookmark(model: CivitaiModel) {
+    const bookmarked = !isBookmarked(model.id);
+    bookmarks.value = bookmarked
+      ? [model, ...bookmarks.value]
+      : bookmarks.value.filter((item) => item.id !== model.id);
+    await saveAppData('civitai_bookmarks', bookmarks.value);
+    return bookmarked;
+  }
+
   async function init() {
-    await Promise.all([loadState(), loadBaseModels()]);
+    await Promise.all([loadState(), loadBaseModels(), loadBookmarks()]);
   }
 
   return {
@@ -138,6 +167,9 @@ export const useCivitaiStore = defineStore('civitai', () => {
     sort,
     period,
     baseModels,
+    bookmarks,
+    isBookmarked,
+    toggleBookmark,
     init,
     loadState,
     loadBaseModels,
