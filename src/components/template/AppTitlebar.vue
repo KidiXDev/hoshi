@@ -33,6 +33,7 @@ const activeViewTitle = computed(() => {
   if (route.path.startsWith('/server')) return 'Server Terminal';
   if (route.path.startsWith('/settings')) return 'Preferences';
   if (route.path.startsWith('/library')) return 'Library';
+  if (route.path.startsWith('/statistics')) return 'Statistics';
   if (route.path.startsWith('/booru')) return 'Booru Gallery';
   if (route.path.startsWith('/animadex')) return 'Animadex Explore';
   if (route.path.startsWith('/models/')) return 'Model Detail';

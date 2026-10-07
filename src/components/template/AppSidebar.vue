@@ -3,6 +3,7 @@ import { computed, h, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   BookOpen,
+  ChartColumn,
   Compass,
   Eraser,
   GalleryVerticalEnd,
@@ -107,6 +108,13 @@ const navItems = [
     label: 'Image Viewer',
     icon: Images,
     route: '/viewer',
+    group: 'browse'
+  },
+  {
+    id: 'statistics',
+    label: 'Statistics',
+    icon: ChartColumn,
+    route: '/statistics',
     group: 'browse'
   },
   {
