@@ -17,8 +17,11 @@ import {
   WandSparkles,
   X
 } from '@lucide/vue';
-import { useRouter } from 'vue-router';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
+import { useImageClipboard } from '@/composables/useImageClipboard';
+import { useImageTransfer } from '@/composables/useImageTransfer';
+import { saveImage } from '@/composables/useSaveImage';
+import type { TransferTarget } from '@/stores/imageTransferStore';
 import { Button } from '@/components/ui/button';
 import {
   ContextMenu,
@@ -38,46 +41,31 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useHistoryStore } from '../../stores/historyStore';
-import { useImageTransferStore } from '../../stores/imageTransferStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 
-const router = useRouter();
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
 const historyStore = useHistoryStore();
-const transferStore = useImageTransferStore();
+const { sendImageTo } = useImageTransfer();
+const { copySuccess, copyImageToClipboard } = useImageClipboard();
 
 const isZoomModalOpen = ref(false);
 const isTransferMenuOpen = ref(false);
-const copySuccess = ref(false);
 const liveElapsedMs = ref(0);
 let timerInterval: ReturnType<typeof setInterval> | null = null;
 
-async function handleSendToUpscaler() {
-  if (!comfyStore.lastGeneratedImage?.url) return;
-  await transferStore.sendToUpscaler(
-    comfyStore.lastGeneratedImage.url,
-    comfyStore.lastGeneratedImage.filename
-  );
-  void router.push('/upscaler');
+function sendResultTo(target: TransferTarget) {
+  const image = comfyStore.lastGeneratedImage;
+  void sendImageTo(target, image?.url, image?.filename);
 }
 
-async function handleSendToRmbg() {
-  if (!comfyStore.lastGeneratedImage?.url) return;
-  await transferStore.sendToRmbg(
-    comfyStore.lastGeneratedImage.url,
-    comfyStore.lastGeneratedImage.filename
-  );
-  void router.push('/remove-bg');
+function copyResult() {
+  void copyImageToClipboard(comfyStore.lastGeneratedImage?.url);
 }
 
-async function handleSendToFaceDetailer() {
-  if (!comfyStore.lastGeneratedImage?.url) return;
-  await transferStore.sendToFaceDetailer(
-    comfyStore.lastGeneratedImage.url,
-    comfyStore.lastGeneratedImage.filename
-  );
-  void router.push('/face-detailer');
+function downloadResult() {
+  const image = comfyStore.lastGeneratedImage;
+  void saveImage(image?.url, image?.filename);
 }
 
 watch(
@@ -119,36 +107,6 @@ function handleGenerateShortcut(event: KeyboardEvent) {
 }
 
 onMounted(() => window.addEventListener('keydown', handleGenerateShortcut));
-
-async function copyImageToClipboard() {
-  const url = comfyStore.lastGeneratedImage?.url;
-  if (!url) return;
-
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        [blob.type]: blob
-      })
-    ]);
-    copySuccess.value = true;
-    setTimeout(() => {
-      copySuccess.value = false;
-    }, 2000);
-  } catch {}
-}
-
-function downloadImage() {
-  const url = comfyStore.lastGeneratedImage?.url;
-  if (!url) return;
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = comfyStore.lastGeneratedImage?.filename || 'comfyui-image.png';
-  document.body.append(a);
-  a.click();
-  a.remove();
-}
 
 const resolutionText = computed(() => {
   if (
@@ -345,13 +303,13 @@ const durationText = computed(() => {
           <ContextMenuSeparator />
           <ContextMenuItem
             :disabled="!comfyStore.lastGeneratedImage?.url"
-            @select="copyImageToClipboard"
+            @select="copyResult"
           >
             <Copy /> Copy Image
           </ContextMenuItem>
           <ContextMenuItem
             :disabled="!comfyStore.lastGeneratedImage?.url"
-            @select="downloadImage"
+            @select="downloadResult"
           >
             <Download /> Download Image
           </ContextMenuItem>
@@ -465,21 +423,21 @@ const durationText = computed(() => {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               class="cursor-pointer gap-2 text-xs"
-              @click="handleSendToUpscaler"
+              @click="sendResultTo('upscaler')"
             >
               <Scaling class="h-3.5 w-3.5 text-blue-400" />
               <span>Send to Upscaler</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               class="cursor-pointer gap-2 text-xs"
-              @click="handleSendToRmbg"
+              @click="sendResultTo('remove-background')"
             >
               <WandSparkles class="h-3.5 w-3.5 text-pink-400" />
               <span>Send to RMBG</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               class="cursor-pointer gap-2 text-xs"
-              @click="handleSendToFaceDetailer"
+              @click="sendResultTo('face-detailer')"
             >
               <ScanFace class="h-3.5 w-3.5 text-emerald-400" />
               <span>Send to Face Detailer</span>
@@ -492,7 +450,7 @@ const durationText = computed(() => {
           variant="ghost"
           :title="copySuccess ? 'Copied!' : 'Copy to Clipboard'"
           class="text-muted-foreground hover:text-foreground"
-          @click="copyImageToClipboard"
+          @click="copyResult"
         >
           <Check v-if="copySuccess" class="h-3.5 w-3.5 text-emerald-400" />
           <Copy v-else class="h-3.5 w-3.5" />
@@ -503,7 +461,7 @@ const durationText = computed(() => {
           variant="ghost"
           title="Download Image"
           class="text-muted-foreground hover:text-foreground"
-          @click="downloadImage"
+          @click="downloadResult"
         >
           <Download class="h-3.5 w-3.5" />
         </Button>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import SearchableSelect from '../common/SearchableSelect.vue';
-import { computed, onMounted, ref, watch } from 'vue';
+import { useImageDropZone } from '@/composables/useImageDropZone';
+import { imageExtension, isImageFile } from '@/utils/imageFiles';
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue';
 import {
   AlertCircle,
   ArrowRight,
@@ -36,7 +38,6 @@ const launcherStore = useLauncherStore();
 const workflowStore = useWorkflowStore();
 
 const isUploading = ref(false);
-const isDragging = ref(false);
 const isMaskPainterOpen = ref(false);
 const errorMessage = ref('');
 const modelPatches = ref<string[]>([]);
@@ -188,15 +189,18 @@ function triggerFilePicker() {
 }
 
 async function uploadSource(file?: File) {
-  if (!file || !file.type.startsWith('image/')) return;
+  if (!file) return;
+  if (!isImageFile(file)) {
+    errorMessage.value = 'Please choose an image file.';
+    return;
+  }
   isUploading.value = true;
   errorMessage.value = '';
   try {
-    const extension = file.name.match(/\.[^.]+$/u)?.[0] || '.png';
     const uploaded = await ComfyApi.uploadImage(
       launcherStore.config.serverUrl,
       file,
-      `koharu-${crypto.randomUUID()}${extension}`
+      `koharu-${crypto.randomUUID()}${imageExtension(file)}`
     );
     workflowStore.imageInput.imageName = uploaded.name;
     workflowStore.imageInput.maskName = '';
@@ -210,37 +214,16 @@ async function uploadSource(file?: File) {
   }
 }
 
-async function handleDrop(event: DragEvent) {
-  isDragging.value = false;
-  const file = event.dataTransfer?.files[0];
-  if (file) return uploadSource(file);
-  const url = event.dataTransfer
-    ?.getData('text/uri-list')
-    .split(/\r?\n/u)
-    .find((line) => line && !line.startsWith('#'));
-  if (!url) return;
-  try {
-    const response = await fetch(url);
-    if (!response.ok)
-      throw new Error(`Could not read dropped image (${response.status}).`);
-    const blob = await response.blob();
-    await uploadSource(
-      new File([blob], 'dropped-image.png', { type: blob.type })
-    );
-  } catch (error) {
+const isDragging = useImageDropZone(
+  useTemplateRef<HTMLElement>('dropZone'),
+  (files) =>
+    files.length > 0
+      ? uploadSource(files[0])
+      : (errorMessage.value = 'Please drop an image file.'),
+  (error) => {
     errorMessage.value = error instanceof Error ? error.message : String(error);
   }
-}
-
-function handleDragLeave(event: DragEvent) {
-  const container = event.currentTarget as HTMLElement;
-  if (
-    !(event.relatedTarget instanceof Node) ||
-    !container.contains(event.relatedTarget)
-  ) {
-    isDragging.value = false;
-  }
-}
+);
 
 function clearSourceImage() {
   workflowStore.imageInput.imageName = '';
@@ -342,16 +325,11 @@ async function saveMask(blob: Blob) {
       </div>
 
       <!-- Image Upload Dropzone & Preview -->
-      <div
-        class="flex flex-col gap-2"
-        @dragover.prevent="isDragging = true"
-        @dragleave="handleDragLeave"
-        @drop.prevent="handleDrop"
-      >
+      <div ref="dropZone" class="flex flex-col gap-2">
         <input
           ref="fileInputRef"
           type="file"
-          accept="image/png,image/jpeg,image/webp"
+          accept="image/*"
           class="sr-only"
           @change="uploadSource(($event.target as HTMLInputElement).files?.[0])"
         />

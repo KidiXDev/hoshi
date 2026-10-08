@@ -39,7 +39,7 @@ import { useWorkflowStore } from './stores/workflowStore';
 const launcherStore = useLauncherStore();
 const downloadStore = useDownloadStore();
 const comfyStore = useComfyStore();
-const workflowStore = useWorkflowStore();
+useWorkflowStore();
 const promptSuggestionStore = usePromptSuggestionStore();
 const civitaiStore = useCivitaiStore();
 const route = useRoute();
@@ -116,7 +116,6 @@ onMounted(async () => {
   await launcherStore.initTauriListeners();
   void downloadStore.init();
   comfyStore.init();
-  void workflowStore.init();
   void promptSuggestionStore.init();
   void civitaiStore.init();
 });

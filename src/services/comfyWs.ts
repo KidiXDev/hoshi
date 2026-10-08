@@ -10,6 +10,7 @@ export class ComfyWsClient {
   private clientId = '';
   private shouldReconnect = true;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
 
   private onStatusChange: WsStatusCallback | null = null;
   private onMessage: WsMessageCallback | null = null;
@@ -56,16 +57,13 @@ export class ComfyWsClient {
       this.ws.binaryType = 'arraybuffer';
 
       this.ws.onopen = () => {
+        this.reconnectAttempts = 0;
         if (this.onStatusChange) this.onStatusChange(true);
       };
 
       this.ws.onclose = () => {
         if (this.onStatusChange) this.onStatusChange(false);
         this.scheduleReconnect();
-      };
-
-      this.ws.onerror = () => {
-        if (this.onStatusChange) this.onStatusChange(false);
       };
 
       this.ws.onmessage = (event) => {
@@ -140,10 +138,11 @@ export class ComfyWsClient {
     if (!this.shouldReconnect) return;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
 
+    const delay = Math.min(1000 * 2 ** this.reconnectAttempts++, 15000);
     this.reconnectTimer = setTimeout(() => {
       if (this.serverUrl && this.clientId && this.shouldReconnect) {
         this.connect(this.serverUrl, this.clientId);
       }
-    }, 2000);
+    }, delay);
   }
 }

@@ -29,7 +29,9 @@ import type {
   ToolName
 } from '../types/ai';
 import type { CharacterData } from '../types/library';
-import { mentionReference, supportsVision } from '../utils/aiMentions';
+import { toModelMessages } from '../utils/aiHistory';
+import { supportsVision } from '../utils/aiMentions';
+import { downscaledDataUrl } from '../utils/imageFiles';
 import { searchCharacterEntries } from '../utils/librarySearch';
 import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
@@ -153,13 +155,7 @@ async function prepareMentionImages(
       try {
         const response = await fetch(mention.imageUrl);
         if (!response.ok) throw new Error('Image request failed');
-        const blob = await response.blob();
-        const imageDataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
+        const imageDataUrl = await downscaledDataUrl(await response.blob());
         return { ...mention, imageDataUrl, imageUnavailable: false };
       } catch {
         return { ...mention, imageUnavailable: true };
@@ -517,57 +513,10 @@ export const useAiStore = defineStore('ai', () => {
       };
       let approvalTail = Promise.resolve();
 
-      // Exclude the empty assistant placeholder from history
-      const coreMessages = session.messages
-        .slice(0, -1)
-        .filter((m) => m.role === 'user' || m.content.trim())
-        .map((m) => {
-          if (m.role === 'user') {
-            const textWithReferences = [
-              m.content,
-              ...(m.mentions ?? []).map((mention) => mentionReference(mention))
-            ]
-              .filter(Boolean)
-              .join('\n\n');
-            const mentionImages = supportsVision(selectedModelInfo.value)
-              ? (m.mentions ?? []).filter(
-                  (mention) => mention.includeImage && mention.imageDataUrl
-                )
-              : [];
-            if (
-              (m.attachments && m.attachments.length > 0) ||
-              mentionImages.length > 0
-            ) {
-              const parts: Array<
-                | { type: 'text'; text: string }
-                | { type: 'image'; image: string }
-              > = [];
-              if (textWithReferences) {
-                parts.push({ type: 'text', text: textWithReferences });
-              }
-              for (const att of m.attachments ?? []) {
-                parts.push({ type: 'image', image: att.dataUrl });
-              }
-              for (const mention of mentionImages) {
-                if (mention.imageDataUrl) {
-                  parts.push({ type: 'image', image: mention.imageDataUrl });
-                }
-              }
-              return {
-                role: 'user' as const,
-                content: parts
-              };
-            }
-            return {
-              role: 'user' as const,
-              content: textWithReferences
-            };
-          }
-          return {
-            role: 'assistant' as const,
-            content: m.content
-          };
-        });
+      const coreMessages = toModelMessages(
+        session.messages.slice(0, -1),
+        supportsVision(selectedModelInfo.value)
+      );
 
       const executeStudioTool = async (
         name:

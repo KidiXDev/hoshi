@@ -708,7 +708,7 @@ fn repair_spaced_tags(tokens: &[String], known: &HashSet<String>) -> Vec<String>
 }
 
 fn settings(app: &AppHandle) -> Result<Settings, String> {
-    let value = crate::load_app_data_entry(app, "state", "booru_gallery")?;
+    let value = crate::app_data::load_app_data_entry(app, "state", "booru_gallery")?;
     let mut settings = value
         .map(serde_json::from_value)
         .transpose()
@@ -1080,7 +1080,7 @@ pub async fn booru_settings_save(
     }
     settings.revision += 1;
     validate_settings(&mut settings)?;
-    crate::save_app_data_entry(
+    crate::app_data::save_app_data_entry(
         &app_handle,
         "state",
         "booru_gallery",
@@ -1232,7 +1232,7 @@ pub async fn booru_solve_cloudflare(
                         .insert("userAgent".into(), CLOUDFLARE_SOLVER_UA.into());
                     current_settings.revision += 1;
                     validate_settings(&mut current_settings)?;
-                    crate::save_app_data_entry(
+                    crate::app_data::save_app_data_entry(
                         &app_handle_clone,
                         "state",
                         "booru_gallery",

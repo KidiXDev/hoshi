@@ -4,7 +4,8 @@ import { createPinia, setActivePinia } from 'pinia';
 
 mock.module('../src/services/appStorage', () => ({
   loadAppData: async () => null,
-  saveAppData: async () => {}
+  saveAppData: async () => {},
+  deleteAppData: async () => {}
 }));
 const { useWorkflowStore } = await import('../src/stores/workflowStore');
 
@@ -22,15 +23,8 @@ test('shared LoRA actions affect only the selected stack', async () => {
   workflow.removeLora('missing', detailer);
   assert.equal(detailer.length, 2);
   workflow.removeLora(detailer[0].id, detailer);
-  assert.equal(detailer[0].name, 'face-a.safetensors');
-  workflow.customPresets.push({
-    id: 'preset',
-    name: 'Face',
-    loras: [{ name: 'preset.safetensors', strength: 0.5, enabled: true }]
-  });
-  workflow.loadCustomPreset('preset', detailer);
   assert.equal(detailer.length, 1);
-  assert.equal(detailer[0].name, 'preset.safetensors');
+  assert.equal(detailer[0].name, 'face-a.safetensors');
   assert.equal(JSON.stringify(workflow.loras), generation);
   workflow.removeLora(workflow.loras[0].id);
   assert.equal(workflow.loras.length, 0);

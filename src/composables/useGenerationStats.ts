@@ -33,7 +33,8 @@ export function useGenerationStats() {
     errorMessage.value = '';
     try {
       const result = await (rescan ? refreshOutputImages : listOutputImages)(
-        workingDir
+        workingDir,
+        launcherStore.launchArgs
       );
       if (workingDir !== launcherStore.config.workingDir) return;
       images.value = result;
@@ -47,7 +48,7 @@ export function useGenerationStats() {
   }
 
   watch(
-    () => launcherStore.config.workingDir,
+    () => [launcherStore.config.workingDir, launcherStore.config.args],
     async () => {
       await load();
       void load(true);

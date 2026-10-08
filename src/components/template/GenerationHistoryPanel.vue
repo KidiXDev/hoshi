@@ -12,8 +12,8 @@ import {
   WandSparkles,
   X
 } from '@lucide/vue';
-import { useRouter } from 'vue-router';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
+import { useImageTransfer } from '@/composables/useImageTransfer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,15 +30,13 @@ import {
 } from '@/components/ui/tooltip';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useHistoryStore } from '../../stores/historyStore';
-import { useImageTransferStore } from '../../stores/imageTransferStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import type { HistoryItem, WorkflowState } from '../../types/workflow';
 
 const historyStore = useHistoryStore();
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
-const transferStore = useImageTransferStore();
-const router = useRouter();
+const { sendImageTo } = useImageTransfer();
 
 const isLightboxOpen = ref(false);
 const lightboxSrc = ref('');
@@ -69,16 +67,11 @@ function openLightbox(item: HistoryItem) {
   isLightboxOpen.value = true;
 }
 
-async function transferImage(
-  item: HistoryItem,
-  target: 'upscaler' | 'remove-bg' | 'face-detailer'
-) {
-  if (target === 'upscaler')
-    await transferStore.sendToUpscaler(item.imageUrl, item.filename);
-  else if (target === 'remove-bg')
-    await transferStore.sendToRmbg(item.imageUrl, item.filename);
-  else await transferStore.sendToFaceDetailer(item.imageUrl, item.filename);
-  void router.push(`/${target}`);
+function isSelected(item: HistoryItem) {
+  const selected = comfyStore.lastGeneratedImage;
+  return (
+    selected?.promptId === item.promptId && selected.filename === item.filename
+  );
 }
 
 function formatTime(timestamp: number) {
@@ -161,7 +154,7 @@ function formatTime(timestamp: number) {
               @dragstart="dragHistoryImage($event, item)"
               class="group relative aspect-3/4 cursor-pointer overflow-hidden rounded-lg border bg-black/40 transition-all duration-150"
               :class="
-                comfyStore.lastGeneratedImage?.url === item.imageUrl
+                isSelected(item)
                   ? 'border-primary ring-primary/40 shadow-sm ring-2'
                   : 'border-border/60 hover:border-primary/50 hover:shadow-xs'
               "
@@ -229,13 +222,23 @@ function formatTime(timestamp: number) {
               <Wand2 /> Apply Settings
             </ContextMenuItem>
             <ContextMenuSeparator />
-            <ContextMenuItem @select="transferImage(item, 'upscaler')">
+            <ContextMenuItem
+              @select="sendImageTo('upscaler', item.imageUrl, item.filename)"
+            >
               <Scaling /> Send to Upscaler
             </ContextMenuItem>
-            <ContextMenuItem @select="transferImage(item, 'remove-bg')">
+            <ContextMenuItem
+              @select="
+                sendImageTo('remove-background', item.imageUrl, item.filename)
+              "
+            >
               <WandSparkles /> Send to RMBG
             </ContextMenuItem>
-            <ContextMenuItem @select="transferImage(item, 'face-detailer')">
+            <ContextMenuItem
+              @select="
+                sendImageTo('face-detailer', item.imageUrl, item.filename)
+              "
+            >
               <ScanFace /> Send to Face Detailer
             </ContextMenuItem>
             <ContextMenuSeparator />

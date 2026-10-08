@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { customSchemeUrl } from '../lib/customScheme';
 
 export interface BooruSource {
   source: string;
@@ -106,10 +107,10 @@ export function fetchBooruDetail(source: string, postId: string) {
 }
 
 export function getBooruMediaUrl(source: string, url: string) {
-  const query = new URLSearchParams({ source, url });
-  return navigator.userAgent.includes('Windows')
-    ? `http://booru-image.localhost/?${query}`
-    : `booru-image://localhost/?${query}`;
+  return customSchemeUrl(
+    'booru-image',
+    `?${new URLSearchParams({ source, url })}`
+  );
 }
 
 export function fetchBooruSettings() {

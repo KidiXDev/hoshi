@@ -1,4 +1,5 @@
 import type { ImageBatchItem } from '@/types/imageBatch';
+import { isImageFile } from '@/utils/imageFiles';
 import {
   computed,
   onActivated,
@@ -8,7 +9,7 @@ import {
   ref,
   watch
 } from 'vue';
-const IMAGE_FILE_NAME = /\.(?:avif|bmp|gif|jpe?g|png|tiff?|webp)$/iu;
+
 export async function extractDimensions(
   url: string
 ): Promise<{ width: number; height: number }> {
@@ -23,13 +24,12 @@ export async function extractDimensions(
     img.src = url;
   });
 }
+
 export function useImageBatch() {
   let disposed = false;
   const fileInput = ref<HTMLInputElement>();
   const items = ref<ImageBatchItem[]>([]);
   const selectedItemId = ref<string | null>(null);
-  const isDragging = ref(false);
-  const isDraggingQueue = ref(false);
   watch(
     () => items.value.length,
     (newCount) => {
@@ -72,9 +72,7 @@ export function useImageBatch() {
   function addFiles(files: Iterable<File>) {
     if (disposed) return;
     for (const file of files) {
-      if (!file.type.startsWith('image/') && !IMAGE_FILE_NAME.test(file.name)) {
-        continue;
-      }
+      if (!isImageFile(file)) continue;
       const previewUrl = URL.createObjectURL(file);
       const item = reactive<ImageBatchItem>({
         id: crypto.randomUUID(),
@@ -99,29 +97,6 @@ export function useImageBatch() {
     addFiles(Array.from((event.target as HTMLInputElement).files ?? []));
     if (fileInput.value) fileInput.value.value = '';
   }
-  async function handleDrop(event: DragEvent) {
-    isDragging.value = false;
-    isDraggingQueue.value = false;
-    const files = Array.from(event.dataTransfer?.files ?? []);
-    if (files.length > 0) {
-      addFiles(files);
-      return;
-    }
-    const droppedUrl = event.dataTransfer
-      ?.getData('text/uri-list')
-      .split(/\r?\n/u)
-      .find((url) => url && !url.startsWith('#'));
-    if (!droppedUrl) return;
-    try {
-      const response = await fetch(droppedUrl);
-      if (!response.ok) return;
-      const blob = await response.blob();
-      const name = droppedUrl.split('/').pop()?.split('?')[0] || 'image.png';
-      addFiles([new File([blob], name, { type: blob.type })]);
-    } catch {
-      // Unsupported remote drops are ignored.
-    }
-  }
   function handleGlobalPaste(event: ClipboardEvent) {
     const clipboardItems = event.clipboardData?.items;
     if (!clipboardItems) return;
@@ -142,21 +117,6 @@ export function useImageBatch() {
     if (imageFiles.length > 0) {
       event.preventDefault();
       addFiles(imageFiles);
-    }
-  }
-  function handleDragEnterViewport(e: DragEvent) {
-    e.preventDefault();
-    isDragging.value = true;
-  }
-  function handleDragLeaveViewport(e: DragEvent) {
-    const currentTarget = e.currentTarget as HTMLElement | null;
-    const relatedTarget = e.relatedTarget as Node | null;
-    if (
-      !currentTarget ||
-      !relatedTarget ||
-      !currentTarget.contains(relatedTarget)
-    ) {
-      isDragging.value = false;
     }
   }
   function removeItem(item: ImageBatchItem) {
@@ -182,8 +142,6 @@ export function useImageBatch() {
     fileInput,
     items,
     selectedItemId,
-    isDragging,
-    isDraggingQueue,
     activeItem,
     readyItems,
     processingItems,
@@ -191,9 +149,6 @@ export function useImageBatch() {
     overallProgress,
     addFiles,
     handleFileInput,
-    handleDrop,
-    handleDragEnterViewport,
-    handleDragLeaveViewport,
     removeItem,
     clearItems
   };

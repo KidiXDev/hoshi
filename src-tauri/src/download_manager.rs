@@ -38,6 +38,8 @@ pub struct DownloadRecord {
     url: String,
     #[serde(default, rename = "_sourceUrl", skip_serializing)]
     source_url: String,
+    #[serde(default, rename = "_expectedSha256", skip_serializing)]
+    expected_sha256: Option<String>,
 }
 
 fn default_file_exists() -> bool {
@@ -54,6 +56,7 @@ pub struct NewDownload {
     pub preview_url: Option<String>,
     pub url: String,
     pub source_url: String,
+    pub expected_sha256: Option<String>,
 }
 
 #[derive(Default)]
@@ -106,11 +109,12 @@ fn save_history(inner: &Inner, app: &AppHandle) -> Result<(), String> {
             let mut value = serde_json::to_value(record).map_err(|e| e.to_string())?;
             value["_url"] = record.url.clone().into();
             value["_sourceUrl"] = record.source_url.clone().into();
+            value["_expectedSha256"] = record.expected_sha256.clone().into();
             Ok(value)
         })
         .collect::<Result<Vec<_>, String>>()?;
     let bytes = serde_json::to_vec_pretty(&records).map_err(|e| e.to_string())?;
-    fs::write(directory.join("downloads.json"), bytes).map_err(|e| e.to_string())
+    crate::app_data::write_atomic(&directory.join("downloads.json"), &bytes)
 }
 
 fn cleanup_files(model_path: &Path) {
@@ -137,6 +141,8 @@ fn cleanup_files(model_path: &Path) {
 fn content_range_total(value: &str) -> Option<u64> {
     value.rsplit('/').next()?.parse().ok()
 }
+
+const MAX_STREAM_RETRIES: u64 = 3;
 
 const EXPIRED_LINK: &str =
     "Download link expired and Civitai could not issue a new one, so this download cannot be continued.";
@@ -234,6 +240,28 @@ impl DownloadManager {
         }
     }
 
+    fn open_stream(
+        &self,
+        app: &AppHandle,
+        client: &Client,
+        record: &DownloadRecord,
+        url: &mut String,
+        offset: u64,
+    ) -> Result<Response, String> {
+        let mut response = request_from(client, url, offset)?;
+        if is_expired_link(response.status()) {
+            *url = self.renew_link(app, client, record)?;
+            response = request_from(client, url, offset)?;
+            if is_expired_link(response.status()) {
+                return Err(EXPIRED_LINK.into());
+            }
+        }
+        if !response.status().is_success() {
+            return Err(format!("Model download failed with {}.", response.status()));
+        }
+        Ok(response)
+    }
+
     fn download(
         &self,
         app: &AppHandle,
@@ -249,27 +277,19 @@ impl DownloadManager {
             .map(|meta| meta.len())
             .unwrap_or(0);
         let client = crate::civitai::client()?;
-        let mut response = request_from(&client, &record.url, completed)?;
-        if is_expired_link(response.status()) {
-            let renewed_url = self.renew_link(app, &client, record)?;
-            response = request_from(&client, &renewed_url, completed)?;
-            if is_expired_link(response.status()) {
-                return Err(EXPIRED_LINK.into());
-            }
-        }
-        if !response.status().is_success() {
-            return Err(format!("Model download failed with {}.", response.status()));
-        }
-        if completed > 0 && response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+        let mut url = record.url.clone();
+        let first = self.open_stream(app, &client, record, &mut url, completed)?;
+        if completed > 0 && first.status() != StatusCode::PARTIAL_CONTENT {
             completed = 0;
         }
-        let total = response
+        let total = first
             .headers()
             .get(CONTENT_RANGE)
             .and_then(|v| v.to_str().ok())
             .and_then(content_range_total)
-            .or_else(|| response.content_length().map(|n| n + completed))
+            .or_else(|| first.content_length().map(|n| n + completed))
             .unwrap_or(0);
+        let mut response = Some(first);
         let mut hasher = Sha256::new();
         if completed > 0 {
             let mut partial = File::open(&partial_path).map_err(|e| e.to_string())?;
@@ -303,12 +323,16 @@ impl DownloadManager {
         let mut buffer = [0_u8; 256 * 1024];
         let mut speed_bytes = 0_u64;
         let mut speed_at = Instant::now();
+        let mut retries = 0;
         let stopping = || {
             control.cancelled.load(Ordering::Relaxed) || control.suspended.load(Ordering::Relaxed)
         };
         loop {
-            while control.paused.load(Ordering::Relaxed) && !stopping() {
-                thread::sleep(Duration::from_millis(100));
+            if control.paused.load(Ordering::Relaxed) {
+                response = None;
+                while control.paused.load(Ordering::Relaxed) && !stopping() {
+                    thread::sleep(Duration::from_millis(100));
+                }
             }
             if control.cancelled.load(Ordering::Relaxed) {
                 return Ok(());
@@ -326,7 +350,30 @@ impl DownloadManager {
                 );
                 return Ok(());
             }
-            let read = response.read(&mut buffer).map_err(|e| e.to_string())?;
+            if response.is_none() {
+                let resumed = self.open_stream(app, &client, record, &mut url, completed)?;
+                if completed > 0 && resumed.status() != StatusCode::PARTIAL_CONTENT {
+                    return Err(
+                        "The server no longer supports resuming this download; cancel and retry it."
+                            .into(),
+                    );
+                }
+                response = Some(resumed);
+            }
+            let Some(stream) = response.as_mut() else {
+                continue;
+            };
+            let read = match stream.read(&mut buffer) {
+                Ok(read) => read,
+                Err(_) if retries < MAX_STREAM_RETRIES => {
+                    retries += 1;
+                    response = None;
+                    thread::sleep(Duration::from_secs(2 * retries));
+                    continue;
+                }
+                Err(error) => return Err(error.to_string()),
+            };
+            retries = 0;
             if read == 0 {
                 break;
             }
@@ -360,8 +407,18 @@ impl DownloadManager {
         }
         file.sync_all().map_err(|e| e.to_string())?;
         drop(file);
-        fs::rename(&partial_path, model_path).map_err(|e| e.to_string())?;
         let sha256 = format!("{:x}", hasher.finalize());
+        if record
+            .expected_sha256
+            .as_deref()
+            .is_some_and(|expected| !expected.eq_ignore_ascii_case(&sha256))
+        {
+            let _ = fs::remove_file(&partial_path);
+            return Err(
+                "The downloaded file is corrupted (SHA-256 mismatch); retry the download.".into(),
+            );
+        }
+        fs::rename(&partial_path, model_path).map_err(|e| e.to_string())?;
         if let Err(error) = crate::model_manager::record_downloaded_hash(app, model_path, &sha256) {
             eprintln!(
                 "Could not record hash for {}: {error}",
@@ -400,6 +457,13 @@ impl DownloadManager {
                     return Ok(existing.clone());
                 }
             }
+            let model_path = download.model_path.to_string_lossy().to_string();
+            if inner.records.iter().any(|record| {
+                record.model_path == model_path
+                    && matches!(record.status.as_str(), "active" | "waiting" | "paused")
+            }) {
+                return Err(format!("Another download is already writing {model_path}."));
+            }
             let created_at = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
@@ -411,7 +475,7 @@ impl DownloadManager {
                 file_name: download.file_name,
                 model_type: download.model_type,
                 base_model: download.base_model,
-                model_path: download.model_path.to_string_lossy().to_string(),
+                model_path,
                 preview_url: download.preview_url,
                 status: "waiting".into(),
                 completed_length: 0,
@@ -422,6 +486,7 @@ impl DownloadManager {
                 file_exists: false,
                 url: download.url,
                 source_url: download.source_url,
+                expected_sha256: download.expected_sha256,
             };
             inner.records.insert(0, record.clone());
             save_history(&inner, app)?;

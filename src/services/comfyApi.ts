@@ -2,10 +2,55 @@ import type {
   BridgeModelsResponse,
   BridgeSystemResponse,
   ComfyHistoryEntry,
+  ComfyHistoryOutput,
   ComfyObjectInfo,
-  ComfyPromptResponse
+  ComfyPromptResponse,
+  ComfyQueueResponse
 } from '../types/comfy';
 import { http, type RequestProgressCallback } from './httpClient';
+
+class PromptLostError extends Error {
+  constructor() {
+    super(
+      'ComfyUI no longer has this job; it was cleared or the server restarted.'
+    );
+  }
+}
+
+function abortableDelay(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    signal?.throwIfAborted();
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      },
+      { once: true }
+    );
+  });
+}
+
+export function historyEntryError(entry: ComfyHistoryEntry): string | null {
+  if (entry.status?.status_str !== 'error') return null;
+  const failure = entry.status.messages.find(
+    ([type]) => type === 'execution_error'
+  )?.[1];
+  return typeof failure?.exception_message === 'string'
+    ? failure.exception_message
+    : 'Execution failed in ComfyUI.';
+}
+
+export function firstOutputImage(
+  outputs: Record<string, ComfyHistoryOutput> | undefined,
+  nodeId?: string
+) {
+  const candidates = nodeId
+    ? [outputs?.[nodeId]]
+    : Object.values(outputs ?? {});
+  return candidates.find((output) => output?.images?.length)?.images?.[0];
+}
 
 export interface AutocompleteItem {
   label: string;
@@ -86,6 +131,46 @@ export const ComfyApi = {
     return await http.get<Record<string, ComfyHistoryEntry>>(url);
   },
 
+  async fetchQueuedPromptIds(serverUrl: string): Promise<Set<string>> {
+    const queue = await http.get<ComfyQueueResponse>(
+      `${this.cleanUrl(serverUrl)}/queue`
+    );
+    return new Set(
+      [...queue.queue_running, ...queue.queue_pending].map((item) => item[1])
+    );
+  },
+
+  async waitForHistory(
+    serverUrl: string,
+    promptId: string,
+    signal?: AbortSignal
+  ): Promise<ComfyHistoryEntry> {
+    let failures = 0;
+    for (let poll = 1; ; poll++) {
+      await abortableDelay(500, signal);
+      try {
+        const entry = (await this.fetchHistory(serverUrl, promptId))[promptId];
+        if (entry) return entry;
+        if (
+          poll % 10 === 0 &&
+          !(await this.fetchQueuedPromptIds(serverUrl)).has(promptId)
+        ) {
+          const late = (await this.fetchHistory(serverUrl, promptId))[promptId];
+          if (late) return late;
+          throw new PromptLostError();
+        }
+        failures = 0;
+      } catch (error) {
+        if (error instanceof PromptLostError) throw error;
+        if (++failures >= 60)
+          throw new Error(
+            'Lost connection to ComfyUI while waiting for the result.',
+            { cause: error }
+          );
+      }
+    }
+  },
+
   async interrupt(serverUrl: string): Promise<void> {
     const url = `${this.cleanUrl(serverUrl)}/interrupt`;
     await http.post(url);
@@ -164,32 +249,18 @@ export const ComfyApi = {
     };
     const clientId = `koharu-tagger-${crypto.randomUUID()}`;
     const queued = await this.queuePrompt(serverUrl, prompt, clientId);
-    for (let attempt = 0; attempt < 240; attempt++) {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 500);
-      });
-      const entry = (await this.fetchHistory(serverUrl, queued.prompt_id))[
-        queued.prompt_id
-      ];
-      const output = entry?.outputs?.['4']?.text;
-      if (output) {
-        const text = (
-          Array.isArray(output) ? output.join(', ') : output
-        ).trim();
-        try {
-          const parsed = JSON.parse(text) as unknown;
-          if (Array.isArray(parsed)) return parsed.join(', ');
-        } catch {
-          // The tagger may already return a plain prompt string.
-        }
-        return text;
-      }
-      if (entry?.status?.status_str === 'error') {
-        throw new Error('WD Tagger execution failed.');
-      }
-      if (entry?.status?.completed) break;
+    const entry = await this.waitForHistory(serverUrl, queued.prompt_id);
+    const failure = historyEntryError(entry);
+    if (failure) throw new Error(`WD Tagger failed: ${failure}`);
+    const output = entry.outputs?.['4']?.text;
+    if (!output) throw new Error('WD Tagger did not return tags.');
+    const text = (Array.isArray(output) ? output.join(', ') : output).trim();
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      return Array.isArray(parsed) ? parsed.join(', ') : text;
+    } catch {
+      return text;
     }
-    throw new Error('WD Tagger did not return tags.');
   },
 
   async fetchBridgeModels(

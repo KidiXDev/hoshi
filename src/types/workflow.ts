@@ -17,16 +17,6 @@ export interface LoraPreset {
   createdAt?: number;
 }
 
-export interface PromptPreset {
-  id: string;
-  name: string;
-  type: 'both' | 'positive' | 'negative';
-  positive?: string;
-  negative?: string;
-  description?: string;
-  createdAt?: number;
-}
-
 export interface SamplerSettings {
   steps: number;
   cfg: number;

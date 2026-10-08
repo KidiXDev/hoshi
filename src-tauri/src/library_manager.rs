@@ -95,7 +95,7 @@ fn item_path(app_handle: &AppHandle, category: &str, id: &str) -> Result<PathBuf
 
 /// Items are small local JSON files, so the full `data` payload is returned;
 /// callers filter/preview client-side without a second round-trip per item.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_list_items(
     app_handle: AppHandle,
     category: String,
@@ -106,7 +106,7 @@ pub fn library_list_items(
     if let Ok(dir_entries) = fs::read_dir(&dir) {
         for entry in dir_entries.flatten() {
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |e| e == "json") {
+            if path.is_file() && path.extension().is_some_and(|e| e == "json") {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(item) = serde_json::from_str::<LibraryItem>(&content) {
                         entries.push(item);
@@ -117,11 +117,11 @@ pub fn library_list_items(
     }
 
     clean_orphaned_thumbnails(&app_handle);
-    entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    entries.sort_by_key(|entry| std::cmp::Reverse(entry.updated_at));
     Ok(entries)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_get_item(
     app_handle: AppHandle,
     id: String,
@@ -132,7 +132,7 @@ pub fn library_get_item(
     serde_json::from_str::<LibraryItem>(&content).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_save_item(
     app_handle: AppHandle,
     mut item: LibraryItem,
@@ -166,7 +166,7 @@ pub fn library_save_item(
     Ok(item)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_delete_item(
     app_handle: AppHandle,
     id: String,
@@ -211,7 +211,7 @@ pub fn clean_orphaned_thumbnails(app_handle: &AppHandle) {
             if let Ok(entries) = fs::read_dir(dir) {
                 for entry in entries.flatten() {
                     let p = entry.path();
-                    if p.extension().map_or(false, |ext| ext == "json") {
+                    if p.extension().is_some_and(|ext| ext == "json") {
                         if let Ok(content) = fs::read_to_string(&p) {
                             if let Ok(item) = serde_json::from_str::<LibraryItem>(&content) {
                                 if let Some(tid) = item.thumbnail_id {
@@ -229,16 +229,16 @@ pub fn clean_orphaned_thumbnails(app_handle: &AppHandle) {
         let now = SystemTime::now();
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "jpg") {
+            if path.extension().is_some_and(|ext| ext == "jpg") {
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                     if !referenced_ids.contains(stem) {
                         let is_recent = entry
                             .metadata()
                             .ok()
                             .and_then(|m| m.modified().ok())
-                            .map_or(false, |mod_time| {
+                            .is_some_and(|mod_time| {
                                 now.duration_since(mod_time)
-                                    .map_or(false, |d| d.as_secs() < 60)
+                                    .is_ok_and(|d| d.as_secs() < 60)
                             });
                         if !is_recent {
                             let _ = fs::remove_file(&path);
@@ -254,7 +254,7 @@ pub fn clean_orphaned_thumbnails(app_handle: &AppHandle) {
 
 /// Copy an image file from any path on disk into the library thumbnails dir,
 /// converting it to JPEG. Returns the thumbnail_id (filename stem).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_save_thumbnail_from_path(
     app_handle: AppHandle,
     item_id: String,
@@ -268,15 +268,13 @@ pub fn library_save_thumbnail_from_path(
 
 /// Decode a base64 data-URL image and save it as JPEG in the thumbnails dir.
 /// Returns the thumbnail_id.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_save_thumbnail_from_data_url(
     app_handle: AppHandle,
     item_id: String,
     data_url: String,
 ) -> Result<String, String> {
-    let base64_data = data_url
-        .splitn(2, ',')
-        .nth(1)
+    let base64_data = data_url.split_once(',').map(|x| x.1)
         .ok_or("Invalid data URL")?;
     let bytes = base64_decode(base64_data)?;
     save_thumbnail_bytes(&app_handle, &item_id, &bytes)
@@ -390,7 +388,7 @@ fn save_thumbnail_bytes(
     Ok(thumb_id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_read_thumbnail(
     app_handle: AppHandle,
     thumbnail_id: String,
@@ -403,7 +401,7 @@ pub fn library_read_thumbnail(
 
 // Tauri commands — Folder access
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_open_folder(
     app_handle: AppHandle,
     category: Option<String>,

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { randomSeed } from '@/utils/seed';
 
 const seed = defineModel<number>({ required: true });
 const props = withDefaults(
@@ -21,7 +22,7 @@ const randomizeSeed = computed({
 });
 
 function rollSeed() {
-  seed.value = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+  seed.value = randomSeed();
 }
 
 function setSeedValue(value: string | number) {

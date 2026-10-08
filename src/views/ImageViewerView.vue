@@ -16,7 +16,6 @@ import { useVirtualizer } from '@tanstack/vue-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { formatFileSize } from '@/utils/formatters';
-import { getComfyOutputDir } from '@/utils/pathTools';
 import {
   ArrowUpDown,
   Columns2,
@@ -302,7 +301,10 @@ async function loadImages() {
   indexTotal.value = 0;
   errorMessage.value = '';
   try {
-    const result = await prepareOutputGallery(workingDir);
+    const result = await prepareOutputGallery(
+      workingDir,
+      launcherStore.launchArgs
+    );
     if (workingDir !== launcherStore.config.workingDir) return;
     images.value = result;
     scrollViewport.value?.scrollTo({ top: 0 });
@@ -331,15 +333,6 @@ async function openLocalPath(path?: string) {
   } catch (error) {
     console.error('Failed to open path in explorer:', error);
   }
-}
-
-function outputDirectory() {
-  const path = images.value[0]?.path;
-  const marker = path?.toLowerCase().lastIndexOf('\\output\\') ?? -1;
-  if (path && marker >= 0) return path.slice(0, marker + 7);
-  const markerFwd = path?.toLowerCase().lastIndexOf('/output/') ?? -1;
-  if (path && markerFwd >= 0) return path.slice(0, markerFwd + 7);
-  return getComfyOutputDir(launcherStore.config.workingDir);
 }
 
 watch([query, selectedSubfolder, sortBy], () => {
@@ -379,10 +372,10 @@ async function restoreImages() {
   if (!launcherStore.hasComfyDirectory) return;
   const workingDir = launcherStore.config.workingDir;
   try {
-    const cached = await listOutputImages(workingDir);
+    const cached = await listOutputImages(workingDir, launcherStore.launchArgs);
     if (workingDir !== launcherStore.config.workingDir) return;
     images.value = cached;
-    void refreshOutputImages(workingDir)
+    void refreshOutputImages(workingDir, launcherStore.launchArgs)
       .then((latestImages) => {
         if (workingDir === launcherStore.config.workingDir)
           images.value = latestImages;
@@ -394,7 +387,7 @@ async function restoreImages() {
 }
 
 watch(
-  () => launcherStore.config.workingDir,
+  () => [launcherStore.config.workingDir, launcherStore.config.args],
   () => {
     images.value = [];
 
@@ -591,7 +584,7 @@ onUnmounted(() => {
               variant="outline"
               size="iconSm"
               class="border-border/80 bg-secondary/70 hover:bg-secondary h-8 w-8"
-              @click="openLocalPath(outputDirectory())"
+              @click="launcherStore.openOutputFolder()"
             >
               <FolderOpen
                 class="text-muted-foreground hover:text-foreground h-3.5 w-3.5"

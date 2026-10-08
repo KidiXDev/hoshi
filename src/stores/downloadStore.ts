@@ -103,7 +103,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     const settings = await loadAppData<{ apiKey?: string }>('civitai_settings');
     const record = await queueCivitaiDownload({
       ...options,
-      apiKey: (settings?.apiKey ?? options.apiKey).trim()
+      apiKey: (settings?.apiKey?.trim() || options.apiKey).trim()
     });
     const index = items.value.findIndex((item) => item.gid === record.gid);
     if (index === -1) items.value.unshift(record);

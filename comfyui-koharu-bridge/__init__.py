@@ -5,6 +5,7 @@ import os
 import logging
 import hashlib
 from pathlib import Path
+from urllib.parse import urlparse
 from PIL import Image, ImageOps
 import torch
 from aiohttp import web
@@ -188,6 +189,37 @@ def get_or_create_thumbnail(orig_path: str, size: int = 300) -> str:
 
 routes = PromptServer.instance.routes
 
+
+def allowed_app_origin():
+    try:
+        from comfy.cli_args import args
+        origin = args.enable_cors_header
+    except Exception:
+        return None
+    return origin if origin and origin != "*" else None
+
+
+APP_ORIGIN = allowed_app_origin()
+
+
+@web.middleware
+async def koharu_origin_guard(request, handler):
+    origin = request.headers.get("Origin")
+    if (
+        APP_ORIGIN
+        and origin
+        and origin != APP_ORIGIN
+        and urlparse(origin).netloc != request.host
+    ):
+        return web.Response(status=403, text="Origin not allowed")
+    return await handler(request)
+
+
+try:
+    PromptServer.instance.app.middlewares.append(koharu_origin_guard)
+except Exception as error:
+    logger.warning(f"Could not install origin guard: {error}")
+
 @routes.options("/koharu/{tail:.*}")
 async def options_handler(request):
     return web.Response(headers=CORS_HEADERS)
@@ -278,10 +310,8 @@ async def models_handler(request):
 
 @routes.post("/koharu/refresh")
 async def refresh_handler(request):
-    """
-    Refreshes model folders cache so newly added files show up immediately.
-    """
     try:
+        getattr(folder_paths, "filename_list_cache", {}).clear()
         return json_response({
             "success": True,
             "message": "Model lists refreshed",

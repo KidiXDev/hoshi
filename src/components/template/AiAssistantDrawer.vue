@@ -3,8 +3,21 @@ import AssistantMessage from '@/components/ai/AssistantMessage.vue';
 import AiMentionChip from '@/components/ai/AiMentionChip.vue';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import { formatRelativeTime } from '@/utils/formatters';
+import {
+  downscaledDataUrl,
+  fileFromUrl,
+  isImageFile
+} from '@/utils/imageFiles';
+import { useImageDropZone } from '@/composables/useImageDropZone';
 import mayaMascot from '@/assets/maya-mascot.png';
-import { computed, nextTick, ref, shallowRef, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  ref,
+  shallowRef,
+  useTemplateRef,
+  watch
+} from 'vue';
 import { useRouter } from 'vue-router';
 import {
   ArrowUpRight,
@@ -57,7 +70,6 @@ const attachments = ref<ChatMessageAttachment[]>([]);
 const lightboxImage = shallowRef<{ src: string; title?: string } | null>(null);
 const { context: messageScroll } = provideMessageScroller({ autoScroll: true });
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const isDraggingOver = ref(false);
 const visionSupported = computed(() =>
   supportsVision(aiStore.selectedModelInfo)
 );
@@ -185,30 +197,25 @@ function openFilePicker() {
 
 async function handleFileChange(event: Event) {
   const target = event.target as HTMLInputElement;
-  if (!target.files?.length) return;
-  const files = Array.from(target.files);
-  for (const file of files) {
-    if (file.type.startsWith('image/')) {
-      await processImageFile(file);
-    }
-  }
+  const files = Array.from(target.files ?? []).filter((file) =>
+    isImageFile(file)
+  );
   target.value = '';
+  for (const file of files) await attachImage(file, file.name);
 }
 
-function processImageFile(file: File): Promise<void> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      attachments.value.push({
-        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: file.name,
-        type: file.type,
-        dataUrl: reader.result as string
-      });
-      resolve();
-    };
-    reader.readAsDataURL(file);
-  });
+async function attachImage(image: Blob, name: string) {
+  try {
+    const dataUrl = await downscaledDataUrl(image);
+    attachments.value.push({
+      id: `att-${crypto.randomUUID()}`,
+      name,
+      type: dataUrl.slice(5, dataUrl.indexOf(';')),
+      dataUrl
+    });
+  } catch (error) {
+    console.error('Could not attach image:', error);
+  }
 }
 
 function removeAttachment(id: string) {
@@ -230,18 +237,8 @@ async function attachCurrentPreview() {
   if (!previewUrl) return;
 
   try {
-    const res = await fetch(previewUrl);
-    const blob = await res.blob();
-    const reader = new FileReader();
-    reader.onload = () => {
-      attachments.value.push({
-        id: `preview-${Date.now()}`,
-        name: 'comfyui_preview.png',
-        type: blob.type || 'image/png',
-        dataUrl: reader.result as string
-      });
-    };
-    reader.readAsDataURL(blob);
+    const file = await fileFromUrl(previewUrl, 'comfyui_preview');
+    await attachImage(file, file.name);
   } catch (err) {
     console.error('Failed to attach current preview image:', err);
   }
@@ -249,34 +246,22 @@ async function attachCurrentPreview() {
 
 // Clipboard Paste (Ctrl+V) handler
 async function handlePaste(event: ClipboardEvent) {
-  const items = event.clipboardData?.items;
-  if (!items) return;
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (item.type.indexOf('image') !== -1) {
-      const file = item.getAsFile();
-      if (file) {
-        event.preventDefault();
-        await processImageFile(file);
-      }
-    }
-  }
+  const files = Array.from(event.clipboardData?.items ?? [])
+    .filter((item) => item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file));
+  if (files.length === 0) return;
+  event.preventDefault();
+  for (const file of files) await attachImage(file, file.name);
 }
 
 // Drag & Drop
-function handleDrop(event: DragEvent) {
-  isDraggingOver.value = false;
-  const files = event.dataTransfer?.files;
-  if (!files?.length) return;
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    if (file.type.startsWith('image/')) {
-      void processImageFile(file);
-    }
+const isDraggingOver = useImageDropZone(
+  useTemplateRef<HTMLElement>('composer'),
+  async (files) => {
+    for (const file of files) await attachImage(file, file.name);
   }
-}
+);
 
 watch(
   [() => aiStore.activeSessionId, () => aiStore.isDrawerOpen, showSessionsList],
@@ -897,11 +882,9 @@ function navigateToSettings() {
 
         <!-- Bottom Input & Attachment Bar -->
         <div
+          ref="composer"
           class="border-border bg-card/60 relative flex flex-col gap-2 border-t p-3 transition-colors"
           :class="{ 'bg-primary/5 ring-primary/40 ring-2': isDraggingOver }"
-          @dragover.prevent="isDraggingOver = true"
-          @dragleave.prevent="isDraggingOver = false"
-          @drop.prevent="handleDrop"
         >
           <!-- Attached Images Preview Strip -->
           <div

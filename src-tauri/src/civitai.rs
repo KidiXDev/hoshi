@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, State};
 
+use crate::comfy_paths::comfy_root;
 use crate::download_manager::{DownloadManager, DownloadRecord, NewDownload};
 use crate::network_cache;
 
@@ -102,8 +103,9 @@ fn response_json(response: Response) -> Result<Value, String> {
     }
 }
 
-fn models_blocking(
-    app: &AppHandle,
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelSearch {
     query: String,
     model_type: String,
     base_model: String,
@@ -112,7 +114,9 @@ fn models_blocking(
     cursor: Option<String>,
     api_key: String,
     nsfw: Option<bool>,
-) -> Result<Value, String> {
+}
+
+fn models_blocking(app: &AppHandle, search: ModelSearch) -> Result<Value, String> {
     let mut url =
         reqwest::Url::parse(&format!("{API_BASE}/models")).map_err(|error| error.to_string())?;
     {
@@ -120,32 +124,34 @@ fn models_blocking(
         params.append_pair("limit", "24");
         params.append_pair(
             "nsfw",
-            if nsfw.unwrap_or(false) {
+            if search.nsfw.unwrap_or(false) {
                 "true"
             } else {
                 "false"
             },
         );
         params.append_pair("primaryFileOnly", "true");
-        params.append_pair("sort", &sort);
-        params.append_pair("period", &period);
-        if !query.trim().is_empty() {
-            params.append_pair("query", query.trim());
+        params.append_pair("sort", &search.sort);
+        params.append_pair("period", &search.period);
+        if !search.query.trim().is_empty() {
+            params.append_pair("query", search.query.trim());
         }
-        for model_type in model_type
+        for model_type in search
+            .model_type
             .split(',')
             .map(str::trim)
             .filter(|v| !v.is_empty())
         {
             params.append_pair("types", model_type);
         }
-        if !base_model.trim().is_empty() {
-            params.append_pair("baseModels", base_model.trim());
+        if !search.base_model.trim().is_empty() {
+            params.append_pair("baseModels", search.base_model.trim());
         }
-        if let Some(cursor) = cursor.filter(|value| !value.is_empty()) {
+        if let Some(cursor) = search.cursor.filter(|value| !value.is_empty()) {
             params.append_pair("cursor", &cursor);
         }
     }
+    let api_key = search.api_key;
     cached_json(app, &format!("{url}|{api_key}"), LIST_TTL_SECONDS, || {
         response_json(
             authorized(client()?.get(url), &api_key)
@@ -156,32 +162,10 @@ fn models_blocking(
 }
 
 #[tauri::command]
-pub async fn models(
-    app_handle: AppHandle,
-    query: String,
-    model_type: String,
-    base_model: String,
-    sort: String,
-    period: String,
-    cursor: Option<String>,
-    api_key: String,
-    nsfw: Option<bool>,
-) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        models_blocking(
-            &app_handle,
-            query,
-            model_type,
-            base_model,
-            sort,
-            period,
-            cursor,
-            api_key,
-            nsfw,
-        )
-    })
-    .await
-    .map_err(|error| error.to_string())?
+pub async fn models(app_handle: AppHandle, search: ModelSearch) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || models_blocking(&app_handle, search))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -346,20 +330,6 @@ pub(crate) fn download_preview(
     Ok(Some(path))
 }
 
-pub(crate) fn comfy_dir(working_dir: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
-    if path.as_os_str().is_empty() {
-        return Err("Select a ComfyUI directory in Settings first.".into());
-    }
-    if path.join("main.py").is_file() {
-        Ok(path)
-    } else if path.join("ComfyUI").join("main.py").is_file() {
-        Ok(path.join("ComfyUI"))
-    } else {
-        Err("Select a valid ComfyUI directory in Settings first.".into())
-    }
-}
-
 fn is_diffusion_model(base_model: &str, file_type: &str) -> bool {
     let base = base_model.to_ascii_lowercase();
     let file = file_type.to_ascii_lowercase();
@@ -473,7 +443,7 @@ fn download_blocking(
     working_dir: String,
     api_key: String,
 ) -> Result<DownloadRecord, String> {
-    let root = comfy_dir(&working_dir)?;
+    let root = comfy_root(&working_dir)?;
     if version_id == 0 {
         return Err("Select a valid model version before downloading.".into());
     }
@@ -554,6 +524,9 @@ fn download_blocking(
                 .map(str::to_string),
             url: download_url,
             source_url,
+            expected_sha256: primary_file["hashes"]["SHA256"]
+                .as_str()
+                .map(str::to_ascii_lowercase),
         },
     )
 }
@@ -632,12 +605,6 @@ mod tests {
         .unwrap();
         assert_eq!(result, format!("http://localhost:{port}/cdn"));
         server.join().unwrap();
-    }
-
-    #[test]
-    fn rejects_unconfigured_download_directory() {
-        assert!(super::comfy_dir("").is_err());
-        assert!(super::comfy_dir(" \"\" ").is_err());
     }
 
     #[test]

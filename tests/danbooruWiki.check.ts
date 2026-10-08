@@ -27,7 +27,7 @@ const html = renderWikiDtext(
 );
 assert.ok(html.includes('id="dtext-examples"'));
 assert.ok(html.includes('src="https://cdn.donmai.us/test.jpg"'));
-assert.ok(html.includes('Post #999 · preview unavailable'));
+assert.ok(html.includes('<span class="wiki-no-thumb">#999</span>'));
 assert.ok(html.includes('href="/danbooru-wiki/blue_eyes"'));
 assert.ok(html.includes('<details>'));
 assert.ok(html.includes('<b>Bold</b>'));

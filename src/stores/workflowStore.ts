@@ -1,7 +1,13 @@
 import { useDebounceFn } from '@vueuse/core';
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
-import { loadAppData, saveAppData } from '../services/appStorage';
+import {
+  deleteAppData,
+  loadAppData,
+  saveAppData
+} from '../services/appStorage';
+import { LibraryService } from '../services/libraryService';
+import type { LoraData } from '../types/library';
 import type {
   AdvancedSettings,
   FaceDetailerSettings,
@@ -15,6 +21,7 @@ import type {
   UltimateUpscaleSettings,
   WorkflowState
 } from '../types/workflow';
+import { randomSeed } from '../utils/seed';
 
 const DEFAULT_POSITIVE_PROMPT =
   'beautiful scenery nature glass bottle landscape, purple galaxy bottle';
@@ -155,115 +162,116 @@ export const DEFAULT_FACE_DETAILER: FaceDetailerSettings = {
 };
 
 const SESSION_STORAGE_KEY = 'workflow_session_state';
-const PRESETS_STORAGE_KEY = 'lora_presets';
+const LEGACY_PRESETS_STORAGE_KEY = 'lora_presets';
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export function normalizeLoras(loras: unknown): LoraItem[] {
+  if (!Array.isArray(loras)) return [];
+  return loras.map((lora: Partial<LoraItem>, index) => ({
+    id: lora.id || `lora-${index}-${Date.now()}`,
+    name: lora.name ?? '',
+    strength: typeof lora.strength === 'number' ? lora.strength : 1.0,
+    enabled: typeof lora.enabled === 'boolean' ? lora.enabled : true
+  }));
+}
+
+export function normalizeWorkflowState(
+  saved: Partial<WorkflowState>
+): WorkflowState {
+  const state = clone(saved);
+  return {
+    positivePrompt:
+      typeof state.positivePrompt === 'string'
+        ? state.positivePrompt
+        : DEFAULT_POSITIVE_PROMPT,
+    negativePrompt:
+      typeof state.negativePrompt === 'string'
+        ? state.negativePrompt
+        : DEFAULT_NEGATIVE_PROMPT,
+    models: { ...DEFAULT_MODELS, ...state.models },
+    advanced: {
+      ...DEFAULT_ADVANCED,
+      ...state.advanced,
+      cacheDiT: { ...DEFAULT_ADVANCED.cacheDiT, ...state.advanced?.cacheDiT },
+      renormCfg: { ...DEFAULT_ADVANCED.renormCfg, ...state.advanced?.renormCfg }
+    },
+    loras: normalizeLoras(state.loras),
+    sampler: { ...DEFAULT_SAMPLER, ...state.sampler },
+    imageInput: { ...DEFAULT_IMAGE_INPUT, ...state.imageInput },
+    resolution: { ...DEFAULT_RESOLUTION, ...state.resolution },
+    postfx: {
+      ...DEFAULT_POSTFX,
+      ...state.postfx,
+      styleStage: { ...DEFAULT_POSTFX.styleStage, ...state.postfx?.styleStage },
+      adjustStage: {
+        ...DEFAULT_POSTFX.adjustStage,
+        ...state.postfx?.adjustStage
+      },
+      upscale: {
+        ...DEFAULT_POSTFX.upscale,
+        ...state.postfx?.upscale,
+        ultimate: {
+          ...DEFAULT_ULTIMATE_UPSCALE,
+          ...state.postfx?.upscale?.ultimate
+        }
+      }
+    },
+    faceDetailer: { ...DEFAULT_FACE_DETAILER, ...state.faceDetailer },
+    promptTemplates: state.promptTemplates
+  };
+}
+
+async function migrateLegacyLoraPresets() {
+  const legacy = await loadAppData<LoraPreset[]>(LEGACY_PRESETS_STORAGE_KEY);
+  if (!Array.isArray(legacy)) return;
+  for (const preset of legacy) {
+    await LibraryService.saveItem<LoraData>({
+      category: 'loras',
+      name: preset.name,
+      description: preset.description,
+      data: { loras: preset.loras },
+      createdAt: preset.createdAt
+    });
+  }
+  await deleteAppData(LEGACY_PRESETS_STORAGE_KEY);
+}
 
 export const useWorkflowStore = defineStore('workflow', () => {
   const isLoaded = ref(false);
+  const initial = normalizeWorkflowState({});
 
-  const positivePrompt = ref(DEFAULT_POSITIVE_PROMPT);
-  const negativePrompt = ref(DEFAULT_NEGATIVE_PROMPT);
-  const models = ref<ModelSettings>({ ...DEFAULT_MODELS });
-  const advanced = ref<AdvancedSettings>(
-    JSON.parse(JSON.stringify(DEFAULT_ADVANCED))
-  );
-  const loras = ref<LoraItem[]>([]);
-  const sampler = ref<SamplerSettings>({ ...DEFAULT_SAMPLER });
-  const imageInput = ref<ImageInputSettings>({ ...DEFAULT_IMAGE_INPUT });
-  const resolution = ref<ResolutionSettings>({ ...DEFAULT_RESOLUTION });
-  const postfx = ref<PostFxSettings>(
-    JSON.parse(JSON.stringify(DEFAULT_POSTFX))
-  );
-  const faceDetailer = ref<FaceDetailerSettings>({ ...DEFAULT_FACE_DETAILER });
+  const positivePrompt = ref(initial.positivePrompt);
+  const negativePrompt = ref(initial.negativePrompt);
+  const models = ref<ModelSettings>(initial.models);
+  const advanced = ref<AdvancedSettings>(initial.advanced);
+  const loras = ref<LoraItem[]>(initial.loras);
+  const sampler = ref<SamplerSettings>(initial.sampler);
+  const imageInput = ref<ImageInputSettings>(initial.imageInput);
+  const resolution = ref<ResolutionSettings>(initial.resolution);
+  const postfx = ref<PostFxSettings>(initial.postfx);
+  const faceDetailer = ref<FaceDetailerSettings>(initial.faceDetailer);
 
-  const customPresets = ref<LoraPreset[]>([]);
-
-  async function loadPresets() {
-    try {
-      const saved = await loadAppData<LoraPreset[]>(PRESETS_STORAGE_KEY);
-      if (saved && Array.isArray(saved)) {
-        customPresets.value = saved;
-      }
-    } catch {}
-  }
-
-  async function savePresets() {
-    await saveAppData(PRESETS_STORAGE_KEY, customPresets.value);
+  function assignState(state: WorkflowState) {
+    positivePrompt.value = state.positivePrompt;
+    negativePrompt.value = state.negativePrompt;
+    models.value = state.models;
+    advanced.value = state.advanced;
+    loras.value = state.loras;
+    sampler.value = state.sampler;
+    imageInput.value = state.imageInput;
+    resolution.value = state.resolution;
+    postfx.value = state.postfx;
+    faceDetailer.value = state.faceDetailer;
   }
 
   async function loadSession() {
     try {
       const saved =
         await loadAppData<Partial<WorkflowState>>(SESSION_STORAGE_KEY);
-      if (saved) {
-        if (typeof saved.positivePrompt === 'string') {
-          positivePrompt.value = saved.positivePrompt;
-        }
-        if (typeof saved.negativePrompt === 'string') {
-          negativePrompt.value = saved.negativePrompt;
-        }
-        if (saved.models && typeof saved.models === 'object') {
-          models.value = { ...DEFAULT_MODELS, ...saved.models };
-        }
-        if (saved.advanced && typeof saved.advanced === 'object') {
-          advanced.value = {
-            ...DEFAULT_ADVANCED,
-            ...saved.advanced,
-            cacheDiT: {
-              ...DEFAULT_ADVANCED.cacheDiT,
-              ...saved.advanced.cacheDiT
-            },
-            renormCfg: {
-              ...DEFAULT_ADVANCED.renormCfg,
-              ...saved.advanced.renormCfg
-            }
-          };
-        }
-        if (Array.isArray(saved.loras)) {
-          loras.value = saved.loras.map((l, index) => ({
-            id: l.id || `lora-${index}-${Date.now()}`,
-            name: l.name ?? '',
-            strength: typeof l.strength === 'number' ? l.strength : 1.0,
-            enabled: typeof l.enabled === 'boolean' ? l.enabled : true
-          }));
-        }
-        if (saved.sampler && typeof saved.sampler === 'object') {
-          sampler.value = { ...DEFAULT_SAMPLER, ...saved.sampler };
-        }
-        if (saved.resolution && typeof saved.resolution === 'object') {
-          resolution.value = { ...DEFAULT_RESOLUTION, ...saved.resolution };
-        }
-        if (saved.imageInput && typeof saved.imageInput === 'object') {
-          imageInput.value = { ...DEFAULT_IMAGE_INPUT, ...saved.imageInput };
-        }
-        if (saved.postfx && typeof saved.postfx === 'object') {
-          postfx.value = {
-            ...DEFAULT_POSTFX,
-            ...saved.postfx,
-            styleStage: {
-              ...DEFAULT_POSTFX.styleStage,
-              ...saved.postfx.styleStage
-            },
-            adjustStage: {
-              ...DEFAULT_POSTFX.adjustStage,
-              ...saved.postfx.adjustStage
-            },
-            upscale: {
-              ...DEFAULT_POSTFX.upscale,
-              ...saved.postfx.upscale,
-              ultimate: {
-                ...DEFAULT_ULTIMATE_UPSCALE,
-                ...saved.postfx.upscale?.ultimate
-              }
-            }
-          };
-        }
-        if (saved.faceDetailer && typeof saved.faceDetailer === 'object') {
-          faceDetailer.value = {
-            ...DEFAULT_FACE_DETAILER,
-            ...saved.faceDetailer
-          };
-        }
-      }
+      if (saved) assignState(normalizeWorkflowState(saved));
     } catch (err) {
       console.warn('Failed to load workflow session state:', err);
     } finally {
@@ -273,9 +281,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   async function saveSession() {
     if (!isLoaded.value) return;
-    const state = getFullWorkflowState();
     try {
-      await saveAppData(SESSION_STORAGE_KEY, state);
+      await saveAppData(SESSION_STORAGE_KEY, getFullWorkflowState());
     } catch (err) {
       console.error('Failed to save workflow session state:', err);
     }
@@ -306,7 +313,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
     { deep: true }
   );
 
-  // Ensure synchronous or immediate flush on window unload / exit
   if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', () => {
       void saveSession();
@@ -344,106 +350,53 @@ export const useWorkflowStore = defineStore('workflow', () => {
     }
   }
 
-  function saveCustomPreset(name: string) {
-    if (!name.trim()) return;
-    const newPreset: LoraPreset = {
-      id: `preset-${Date.now()}`,
-      name: name.trim(),
-      loras: loras.value.map((l) => ({
-        name: l.name,
-        strength: l.strength,
-        enabled: l.enabled
-      }))
-    };
-    customPresets.value.push(newPreset);
-    void savePresets();
-  }
-
-  function loadCustomPreset(presetId: string, stack = loras.value) {
-    const preset = customPresets.value.find((p) => p.id === presetId);
-    if (!preset) return;
-    stack.splice(
-      0,
-      stack.length,
-      ...preset.loras.map((l, index) => ({
-        id: `lora-${index}-${Date.now()}`,
-        name: l.name,
-        strength: l.strength,
-        enabled: l.enabled
-      }))
-    );
-  }
-
-  function deleteCustomPreset(presetId: string) {
-    customPresets.value = customPresets.value.filter((p) => p.id !== presetId);
-    void savePresets();
-  }
-
   function randomizeSeedValue() {
-    sampler.value.seed = Math.floor(Math.random() * 9007199254740991);
+    sampler.value.seed = randomSeed();
     sampler.value.randomizeSeed = false;
   }
 
   function getFullWorkflowState(): WorkflowState {
-    return {
+    return clone({
       positivePrompt: positivePrompt.value,
       negativePrompt: negativePrompt.value,
-      models: JSON.parse(JSON.stringify(models.value)),
-      advanced: JSON.parse(JSON.stringify(advanced.value)),
-      loras: JSON.parse(JSON.stringify(loras.value)),
-      sampler: JSON.parse(JSON.stringify(sampler.value)),
-      imageInput: JSON.parse(JSON.stringify(imageInput.value)),
-      resolution: JSON.parse(JSON.stringify(resolution.value)),
-      postfx: JSON.parse(JSON.stringify(postfx.value)),
-      faceDetailer: JSON.parse(JSON.stringify(faceDetailer.value))
-    };
+      models: models.value,
+      advanced: advanced.value,
+      loras: loras.value,
+      sampler: sampler.value,
+      imageInput: imageInput.value,
+      resolution: resolution.value,
+      postfx: postfx.value,
+      faceDetailer: faceDetailer.value
+    });
   }
 
   function applyWorkflowState(state: WorkflowState) {
-    // Prefer the `{a|b}` template over the resolved text from a queued state.
-    positivePrompt.value =
-      state.promptTemplates?.positivePrompt ?? state.positivePrompt;
-    negativePrompt.value =
-      state.promptTemplates?.negativePrompt ?? state.negativePrompt;
-    models.value = JSON.parse(JSON.stringify(state.models));
-    advanced.value = {
-      ...DEFAULT_ADVANCED,
-      ...JSON.parse(JSON.stringify(state.advanced || {})),
-      cacheDiT: {
-        ...DEFAULT_ADVANCED.cacheDiT,
-        ...JSON.parse(JSON.stringify(state.advanced?.cacheDiT || {}))
-      },
-      renormCfg: {
-        ...DEFAULT_ADVANCED.renormCfg,
-        ...JSON.parse(JSON.stringify(state.advanced?.renormCfg || {}))
-      }
-    };
-    loras.value = JSON.parse(JSON.stringify(state.loras));
-    sampler.value = {
-      ...DEFAULT_SAMPLER,
-      ...JSON.parse(JSON.stringify(state.sampler))
-    };
-    imageInput.value = {
-      ...DEFAULT_IMAGE_INPUT,
-      ...JSON.parse(JSON.stringify(state.imageInput || {}))
-    };
-    resolution.value = JSON.parse(JSON.stringify(state.resolution));
-    postfx.value = JSON.parse(JSON.stringify(state.postfx));
-    faceDetailer.value = {
-      ...DEFAULT_FACE_DETAILER,
-      ...JSON.parse(JSON.stringify(state.faceDetailer || {}))
-    };
-    if (state.promptTemplates) {
-      faceDetailer.value.positivePrompt =
-        state.promptTemplates.faceDetailerPositivePrompt;
-      faceDetailer.value.negativePrompt =
-        state.promptTemplates.faceDetailerNegativePrompt;
+    const next = normalizeWorkflowState(state);
+    const templates = next.promptTemplates;
+    if (templates) {
+      next.positivePrompt = templates.positivePrompt;
+      next.negativePrompt = templates.negativePrompt;
+      next.faceDetailer.positivePrompt = templates.faceDetailerPositivePrompt;
+      next.faceDetailer.negativePrompt = templates.faceDetailerNegativePrompt;
     }
+    next.sampler.randomizeSeed = next.sampler.seed < 0;
+    assignState(next);
     void saveSession();
   }
 
-  async function init() {
-    await Promise.all([loadPresets(), loadSession()]);
+  async function initialize() {
+    await Promise.all([
+      loadSession(),
+      migrateLegacyLoraPresets().catch((error) =>
+        console.warn('Could not migrate legacy LoRA presets:', error)
+      )
+    ]);
+  }
+
+  let initialization: Promise<void> | undefined;
+  function init() {
+    initialization ??= initialize();
+    return initialization;
   }
 
   void init();
@@ -460,16 +413,12 @@ export const useWorkflowStore = defineStore('workflow', () => {
     resolution,
     postfx,
     faceDetailer,
-    customPresets,
     init,
     loadSession,
     saveSession,
     addLora,
     removeLora,
     moveLora,
-    saveCustomPreset,
-    loadCustomPreset,
-    deleteCustomPreset,
     randomizeSeedValue,
     getFullWorkflowState,
     applyWorkflowState

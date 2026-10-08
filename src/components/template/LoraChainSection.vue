@@ -9,7 +9,6 @@ import {
   LayoutGrid,
   Plus,
   Trash2,
-  X,
   Zap
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
@@ -169,36 +168,6 @@ function showPreview(name: string, event: PointerEvent) {
           <Plus class="h-3 w-3" />
           <span>Add LoRA</span>
         </Button>
-      </div>
-    </div>
-
-    <!-- Custom Presets Bar if available -->
-    <div
-      v-if="workflowStore.customPresets.length > 0"
-      class="flex flex-wrap items-center gap-1.5"
-    >
-      <span class="text-muted-foreground text-xs font-medium">Presets:</span>
-      <div
-        v-for="preset in workflowStore.customPresets"
-        :key="preset.id"
-        class="border-border bg-muted text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs"
-      >
-        <button
-          type="button"
-          :disabled="!comfyStore.isConnected"
-          class="hover:text-primary cursor-pointer font-medium hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-          @click="workflowStore.loadCustomPreset(preset.id, loras)"
-        >
-          {{ preset.name }}
-        </button>
-        <button
-          type="button"
-          :disabled="!comfyStore.isConnected"
-          class="text-muted-foreground hover:text-destructive ml-0.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-          @click="workflowStore.deleteCustomPreset(preset.id)"
-        >
-          <X class="h-2.5 w-2.5" />
-        </button>
       </div>
     </div>
 

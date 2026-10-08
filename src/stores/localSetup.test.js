@@ -15,7 +15,6 @@ test('unconfigured local features stop before native calls', async () => {
   expect(launcher.hasComfyDirectory).toBe(false);
   await launcher.startServer();
   expect(launcher.processStatus).toBe('stopped');
-  expect(launcher.isSettingsOpen).toBe(true);
   expect(launcher.errorMessage).toContain('ComfyUI folder');
   const civitai = useCivitaiStore();
   await civitai.refreshLocalModels();

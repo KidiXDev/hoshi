@@ -2,8 +2,8 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -11,8 +11,41 @@ use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Emitter, State};
 
+use crate::comfy_paths::{base_directory, clean_path, directory_argument, output_directory};
+
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif"];
 const MAX_PNG_CHUNK_SIZE: u32 = 32 * 1024 * 1024;
+const THUMBNAIL_PREFIX: &str = "v4-";
+
+fn stable_id(path: &Path, modified_ms: u64) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(path.to_string_lossy().as_bytes());
+    hasher.update(modified_ms.to_le_bytes());
+    format!("{:x}", hasher.finalize())[..20].to_owned()
+}
+
+fn modified_ms(metadata: &fs::Metadata) -> u64 {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+fn remove_legacy_cache_files(directory: &Path) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if (name.starts_with("v3-") && name.ends_with(".jpg"))
+            || (name.starts_with("index-") && name.ends_with(".json"))
+        {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,11 +61,13 @@ pub struct OutputImage {
     model: String,
 }
 
+type CachedIndex = (PathBuf, Vec<OutputImage>);
+
 #[derive(Clone)]
 pub struct GalleryFiles {
     files: Arc<RwLock<HashMap<String, PathBuf>>>,
     history_files: Arc<RwLock<HashMap<String, PathBuf>>>,
-    index: Arc<RwLock<Option<(PathBuf, Vec<OutputImage>)>>>,
+    index: Arc<RwLock<Option<CachedIndex>>>,
     thumbnails_in_flight: Arc<(Mutex<HashSet<String>>, Condvar)>,
     thumbnail_dir: Arc<RwLock<PathBuf>>,
 }
@@ -54,6 +89,9 @@ impl Default for GalleryFiles {
 impl GalleryFiles {
     pub fn set_cache_dir(&self, path: PathBuf) -> Result<(), String> {
         fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+        if let Some(legacy) = path.parent().map(Path::to_path_buf) {
+            std::thread::spawn(move || remove_legacy_cache_files(&legacy));
+        }
         *self
             .thumbnail_dir
             .write()
@@ -65,18 +103,35 @@ impl GalleryFiles {
         self.thumbnail_dir.read().ok().map(|path| path.clone())
     }
 
-    pub fn read(&self, id: &str, thumbnail: bool) -> Option<(Vec<u8>, &'static str)> {
-        let path = self
-            .files
+    fn thumbnail_path(&self, id: &str) -> Option<PathBuf> {
+        Some(self.cache_dir()?.join(format!("{THUMBNAIL_PREFIX}{id}.jpg")))
+    }
+
+    fn path_for(&self, id: &str) -> Option<PathBuf> {
+        self.files
             .read()
             .ok()?
             .get(id)
             .cloned()
-            .or_else(|| self.history_files.read().ok()?.get(id).cloned())?;
+            .or_else(|| self.history_files.read().ok()?.get(id).cloned())
+    }
+
+    pub fn local_image_path(&self, url: &str) -> Option<PathBuf> {
+        let parsed = reqwest::Url::parse(url).ok()?;
+        if parsed.scheme() != "koharu-image"
+            && parsed.host_str() != Some("koharu-image.localhost")
+        {
+            return None;
+        }
+        let id = parsed.path_segments()?.nth(1)?.to_owned();
+        self.path_for(&id)
+    }
+
+    pub fn read(&self, id: &str, thumbnail: bool) -> Option<(Vec<u8>, &'static str)> {
+        let path = self.path_for(id)?;
         if thumbnail {
-            let cache_dir = self.cache_dir()?;
-            fs::create_dir_all(&cache_dir).ok()?;
-            let cached = cache_dir.join(format!("v3-{id}.jpg"));
+            let cached = self.thumbnail_path(id)?;
+            fs::create_dir_all(cached.parent()?).ok()?;
             if let Ok(bytes) = fs::read(&cached) {
                 return Some((bytes, "image/jpeg"));
             }
@@ -121,8 +176,46 @@ impl GalleryFiles {
     }
 
     fn thumbnail_exists(&self, id: &str) -> bool {
-        self.cache_dir()
-            .is_some_and(|path| path.join(format!("v3-{id}.jpg")).is_file())
+        self.thumbnail_path(id).is_some_and(|path| path.is_file())
+    }
+
+    fn prune_cache(&self, current_index: &Path, output_root: &Path, images: &[OutputImage]) {
+        let Some(cache_dir) = self.cache_dir() else {
+            return;
+        };
+        let Ok(entries) = fs::read_dir(&cache_dir) else {
+            return;
+        };
+        let paths: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).collect();
+        let mut referenced: HashSet<String> =
+            images.iter().map(|image| image.local_id.clone()).collect();
+        for path in &paths {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            if !name.starts_with("index-") || !name.ends_with(".json") || path == current_index {
+                continue;
+            }
+            match fs::read(path)
+                .ok()
+                .and_then(|raw| serde_json::from_slice::<GalleryIndex>(&raw).ok())
+            {
+                Some(index) if Path::new(&index.output_root) != output_root => {
+                    referenced.extend(index.images.into_iter().map(|image| image.local_id));
+                }
+                _ => {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+        for path in paths {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let keep = name
+                .strip_prefix(THUMBNAIL_PREFIX)
+                .and_then(|rest| rest.strip_suffix(".jpg"))
+                .is_some_and(|id| referenced.contains(id));
+            if name.ends_with(".jpg") && !keep {
+                let _ = fs::remove_file(path);
+            }
+        }
     }
 
     fn clear(&self) -> Result<(), String> {
@@ -177,20 +270,6 @@ pub struct ImageMetadata {
     raw_workflow: String,
 }
 
-fn comfy_dir(working_dir: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
-    if path.as_os_str().is_empty() {
-        return Err("Choose your ComfyUI folder in Settings first.".into());
-    }
-    if path.join("main.py").is_file() {
-        Ok(path)
-    } else if path.join("ComfyUI").join("main.py").is_file() {
-        Ok(path.join("ComfyUI"))
-    } else {
-        Err("Select a valid ComfyUI directory in Settings first.".into())
-    }
-}
-
 #[derive(Deserialize)]
 pub struct HistoryImage {
     id: String,
@@ -209,12 +288,12 @@ pub async fn resolve_history_images(
 ) -> Result<HashMap<String, String>, String> {
     let gallery_files = gallery_files.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let work = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
-        if working_dir.trim().is_empty() {
+        let work = PathBuf::from(clean_path(&working_dir));
+        if work.as_os_str().is_empty() {
             return Ok(HashMap::new());
         }
-        let root = comfy_dir(&working_dir)?;
-        let base = directory_argument(&args, "--base-directory", &work).unwrap_or(root);
+        let base = base_directory(&working_dir, &args)?;
+        let output = output_directory(&working_dir, &args)?;
         let mut resolved = HashMap::new();
         let mut files = gallery_files
             .history_files
@@ -222,10 +301,9 @@ pub async fn resolve_history_images(
             .map_err(|_| "Image history lock is unavailable")?;
         for image in images {
             let root = match image.image_type.as_str() {
-                "output" | "input" => {
-                    directory_argument(&args, &format!("--{}-directory", image.image_type), &work)
-                        .unwrap_or_else(|| base.join(&image.image_type))
-                }
+                "output" => output.clone(),
+                "input" => directory_argument(&args, "--input-directory", &work)
+                    .unwrap_or_else(|| base.join("input")),
                 "temp" => directory_argument(&args, "--temp-directory", &work)
                     .map(|path| path.join("temp"))
                     .unwrap_or_else(|| base.join("temp")),
@@ -234,13 +312,10 @@ pub async fn resolve_history_images(
             let Some(path) = history_image_path(&root, &image.subfolder, &image.filename) else {
                 continue;
             };
-            let mut hasher = DefaultHasher::new();
-            path.hash(&mut hasher);
-            fs::metadata(&path)
-                .ok()
-                .and_then(|meta| meta.modified().ok())
-                .hash(&mut hasher);
-            let local_id = format!("history-{:x}", hasher.finish());
+            let modified = fs::metadata(&path)
+                .map(|meta| modified_ms(&meta))
+                .unwrap_or_default();
+            let local_id = format!("history-{}", stable_id(&path, modified));
             files.insert(local_id.clone(), path);
             resolved.insert(image.id, local_id);
         }
@@ -269,17 +344,6 @@ pub(crate) fn encode_jpeg_thumbnail(path: &Path, max: u32, quality: u8) -> Optio
     Some(bytes)
 }
 
-pub(crate) fn directory_argument(args: &[String], flag: &str, work: &Path) -> Option<PathBuf> {
-    let value = args.iter().enumerate().rev().find_map(|(index, arg)| {
-        arg.strip_prefix(&format!("{flag}=")).or_else(|| {
-            (arg == flag)
-                .then(|| args.get(index + 1).map(String::as_str))
-                .flatten()
-        })
-    })?;
-    Some(work.join(value))
-}
-
 fn history_image_path(root: &Path, subfolder: &str, filename: &str) -> Option<PathBuf> {
     if filename.contains(['/', '\\', ':']) || filename.is_empty() {
         return None;
@@ -292,12 +356,10 @@ fn history_image_path(root: &Path, subfolder: &str, filename: &str) -> Option<Pa
 }
 
 fn index_path(output_root: &Path, gallery_files: &GalleryFiles) -> Option<PathBuf> {
-    let mut hasher = DefaultHasher::new();
-    output_root.hash(&mut hasher);
     Some(
         gallery_files
             .cache_dir()?
-            .join(format!("index-{:x}.json", hasher.finish())),
+            .join(format!("index-{}.json", stable_id(output_root, 0))),
     )
 }
 
@@ -367,21 +429,13 @@ fn collect_images(
         let Ok(metadata) = entry.metadata() else {
             continue;
         };
-        let modified_ms = metadata
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map(|duration| duration.as_millis() as u64)
-            .unwrap_or_default();
+        let modified_ms = modified_ms(&metadata);
         let subfolder = path
             .parent()
             .and_then(|parent| parent.strip_prefix(output_root).ok())
             .map(|relative| relative.to_string_lossy().replace('\\', "/"))
             .unwrap_or_default();
-        let mut hasher = DefaultHasher::new();
-        path.hash(&mut hasher);
-        modified_ms.hash(&mut hasher);
-        let local_id = format!("{:x}", hasher.finish());
+        let local_id = stable_id(&path, modified_ms);
         allowed_files.insert(local_id.clone(), path.clone());
         images.push(OutputImage {
             local_id,
@@ -397,12 +451,10 @@ fn collect_images(
     }
 }
 
-#[tauri::command]
-pub fn list_output_images(
-    working_dir: String,
-    gallery_files: State<'_, GalleryFiles>,
+fn list_output_images_blocking(
+    output_root: PathBuf,
+    gallery_files: &GalleryFiles,
 ) -> Result<Vec<OutputImage>, String> {
-    let output_root = comfy_dir(&working_dir)?.join("output");
     if !output_root.is_dir() {
         return Ok(Vec::new());
     }
@@ -416,10 +468,35 @@ pub fn list_output_images(
             return Ok(images);
         }
     }
-    if let Some(images) = load_disk_index(&output_root, &gallery_files) {
+    if let Some(images) = load_disk_index(&output_root, gallery_files) {
         return Ok(images);
     }
-    scan_output_images(output_root, &gallery_files)
+    scan_output_images(output_root, gallery_files)
+}
+
+async fn with_output_root<T: Send + 'static>(
+    working_dir: String,
+    args: Vec<String>,
+    gallery_files: GalleryFiles,
+    task: impl FnOnce(PathBuf, GalleryFiles) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        task(output_directory(&working_dir, &args)?, gallery_files)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn list_output_images(
+    working_dir: String,
+    args: Vec<String>,
+    gallery_files: State<'_, GalleryFiles>,
+) -> Result<Vec<OutputImage>, String> {
+    with_output_root(working_dir, args, gallery_files.inner().clone(), |root, files| {
+        list_output_images_blocking(root, &files)
+    })
+    .await
 }
 
 fn scan_output_images(
@@ -463,20 +540,21 @@ fn scan_output_images(
         output_root: output_root.to_string_lossy().into_owned(),
         images: images.clone(),
     };
-    fs::write(
-        index_path(&output_root, gallery_files).ok_or("Image gallery cache lock is unavailable")?,
-        serde_json::to_vec(&disk_index).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| error.to_string())?;
+    let index_file =
+        index_path(&output_root, gallery_files).ok_or("Image gallery cache lock is unavailable")?;
+    crate::app_data::write_atomic(
+        &index_file,
+        &serde_json::to_vec(&disk_index).map_err(|error| error.to_string())?,
+    )?;
+    gallery_files.prune_cache(&index_file, &output_root, &images);
     Ok(images)
 }
 
 fn prepare_output_gallery_blocking(
     app_handle: AppHandle,
-    working_dir: String,
+    output_root: PathBuf,
     gallery_files: GalleryFiles,
 ) -> Result<Vec<OutputImage>, String> {
-    let output_root = comfy_dir(&working_dir)?.join("output");
     if !output_root.is_dir() {
         return Ok(Vec::new());
     }
@@ -523,7 +601,7 @@ fn prepare_output_gallery_blocking(
     let files = gallery_files.clone();
     pool.install(|| {
         missing.par_iter().for_each(|id| {
-            let _ = files.read(&id, true);
+            let _ = files.read(id, true);
             let processed = completed.fetch_add(1, Ordering::Relaxed) + 1;
             let now_ms = std::time::SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -582,26 +660,84 @@ pub fn gallery_cache_directory(gallery_files: State<'_, GalleryFiles>) -> Result
 pub async fn prepare_output_gallery(
     app_handle: AppHandle,
     working_dir: String,
+    args: Vec<String>,
     gallery_files: State<'_, GalleryFiles>,
 ) -> Result<Vec<OutputImage>, String> {
+    with_output_root(working_dir, args, gallery_files.inner().clone(), |root, files| {
+        prepare_output_gallery_blocking(app_handle, root, files)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn refresh_output_images(
+    working_dir: String,
+    args: Vec<String>,
+    gallery_files: State<'_, GalleryFiles>,
+) -> Result<Vec<OutputImage>, String> {
+    with_output_root(working_dir, args, gallery_files.inner().clone(), |root, files| {
+        if root.is_dir() {
+            scan_output_images(root, &files)
+        } else {
+            Ok(Vec::new())
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn open_comfy_output_folder(working_dir: String, args: Vec<String>) -> Result<(), String> {
+    let output = output_directory(&working_dir, &args)?;
+    fs::create_dir_all(&output).map_err(|error| error.to_string())?;
+    crate::show_in_folder(output.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub async fn save_image_as(
+    url: String,
+    filename: String,
+    gallery_files: State<'_, GalleryFiles>,
+) -> Result<Option<String>, String> {
+    let Some(target) = rfd::AsyncFileDialog::new()
+        .set_file_name(crate::civitai::safe_filename(&filename))
+        .save_file()
+        .await
+    else {
+        return Ok(None);
+    };
+    let target = target.path().to_path_buf();
     let gallery_files = gallery_files.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        prepare_output_gallery_blocking(app_handle, working_dir, gallery_files)
+        let bytes = match gallery_files.local_image_path(&url) {
+            Some(path) => fs::read(path).map_err(|error| error.to_string())?,
+            None => download_image(&url)?,
+        };
+        fs::write(&target, bytes).map_err(|error| error.to_string())?;
+        Ok(Some(target.to_string_lossy().into_owned()))
     })
     .await
     .map_err(|error| error.to_string())?
 }
 
-#[tauri::command]
-pub fn refresh_output_images(
-    working_dir: String,
-    gallery_files: State<'_, GalleryFiles>,
-) -> Result<Vec<OutputImage>, String> {
-    let output_root = comfy_dir(&working_dir)?.join("output");
-    if !output_root.is_dir() {
-        return Ok(Vec::new());
+fn download_image(url: &str) -> Result<Vec<u8>, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|error| error.to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Only http(s) images can be saved.".into());
     }
-    scan_output_images(output_root, &gallery_files)
+    let response = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|error| error.to_string())?
+        .get(parsed)
+        .send()
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("Image download failed with {}", response.status()));
+    }
+    response
+        .bytes()
+        .map(|bytes| bytes.to_vec())
+        .map_err(|error| error.to_string())
 }
 
 fn read_png_text(path: &Path, metadata: &mut ImageMetadata) -> Result<(), String> {
@@ -785,13 +921,13 @@ fn extract_comfy_metadata(raw: &str, metadata: &mut ImageMetadata) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_output_image_metadata(
     working_dir: String,
+    args: Vec<String>,
     path: String,
 ) -> Result<ImageMetadata, String> {
-    let output_root = comfy_dir(&working_dir)?
-        .join("output")
+    let output_root = output_directory(&working_dir, &args)?
         .canonicalize()
         .map_err(|error| error.to_string())?;
     let image_path = PathBuf::from(path)
@@ -817,13 +953,8 @@ mod tests {
 
     #[test]
     fn serves_history_locally_and_rejects_paths_outside_root() {
-        assert!(comfy_dir("").is_err());
-        assert!(comfy_dir(" \"\" ").is_err());
         let root = std::env::temp_dir().join(format!("history-test-{}", std::process::id()));
         fs::create_dir_all(root.join("output/nested")).unwrap();
-        assert!(comfy_dir(root.to_str().unwrap()).is_err());
-        fs::write(root.join("main.py"), b"").unwrap();
-        assert_eq!(comfy_dir(root.to_str().unwrap()).unwrap(), root);
         fs::write(root.join("output/nested/image.png"), b"local image").unwrap();
         fs::write(root.join("outside.png"), b"outside").unwrap();
         let output = root.join("output");
@@ -842,22 +973,38 @@ mod tests {
             files.read("history-test", false).unwrap(),
             (b"local image".to_vec(), "image/png")
         );
-        assert_eq!(
-            directory_argument(
-                &["--output-directory".into(), "custom".into()],
-                "--output-directory",
-                &root
-            ),
-            Some(root.join("custom"))
-        );
-        assert_eq!(
-            directory_argument(
-                &["--output-directory=custom".into()],
-                "--output-directory",
-                &root
-            ),
-            Some(root.join("custom"))
-        );
+        assert!(files
+            .local_image_path("http://koharu-image.localhost/full/history-test?filename=a.png")
+            .is_some());
+        assert!(files
+            .local_image_path("koharu-image://localhost/full/history-test")
+            .is_some());
+        assert!(files
+            .local_image_path("http://127.0.0.1:8188/view?filename=a.png")
+            .is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn keeps_stable_ids_and_prunes_orphaned_thumbnails() {
+        let root = std::env::temp_dir().join(format!("gallery-prune-{}", std::process::id()));
+        let output = root.join("output");
+        let cache = root.join("cache");
+        fs::create_dir_all(&output).unwrap();
+        image::RgbImage::new(8, 8).save(output.join("a.png")).unwrap();
+        let files = GalleryFiles::default();
+        files.set_cache_dir(cache.clone()).unwrap();
+        let first = scan_output_images(output.clone(), &files).unwrap();
+        let id = first[0].local_id.clone();
+        fs::write(files.thumbnail_path(&id).unwrap(), b"kept").unwrap();
+        fs::write(files.thumbnail_path("orphan").unwrap(), b"stale").unwrap();
+        fs::write(cache.join("v3-old.jpg"), b"legacy").unwrap();
+        let second = scan_output_images(output.clone(), &files).unwrap();
+        assert_eq!(second[0].local_id, id);
+        assert!(files.thumbnail_path(&id).unwrap().is_file());
+        assert!(!files.thumbnail_path("orphan").unwrap().exists());
+        assert!(!cache.join("v3-old.jpg").exists());
+        assert!(index_path(&output, &files).unwrap().is_file());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -890,6 +1037,6 @@ mod tests {
         assert!(thumbnail.width() <= 400 && thumbnail.height() <= 400);
 
         let _ = fs::remove_file(source);
-        let _ = fs::remove_file(files.cache_dir().unwrap().join(format!("v3-{id}.jpg")));
+        let _ = fs::remove_file(files.thumbnail_path(&id).unwrap());
     }
 }

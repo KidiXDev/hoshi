@@ -4,12 +4,15 @@ import { useImageClipboard } from '@/composables/useImageClipboard';
 import ImageComparisonModes from '@/components/common/ImageComparisonModes.vue';
 import StudioLayout from '@/components/layout/StudioLayout.vue';
 import { resolveDynamicPromptWithSeed } from '@/utils/dynamicPrompt';
-import { getComfyOutputDir } from '@/utils/pathTools';
 import ImageBatchQueue from '@/components/common/ImageBatchQueue.vue';
 import ImageComparison from '@/components/common/ImageComparison.vue';
+import { useBatchRunner } from '@/composables/useBatchRunner';
 import { useImageBatch } from '@/composables/useImageBatch';
-import type { ImageBatchItem, ImageComparisonMode } from '@/types/imageBatch';
-import { computed, onActivated, onMounted, onUnmounted, ref } from 'vue';
+import { useImageDropZone } from '@/composables/useImageDropZone';
+import { saveImage } from '@/composables/useSaveImage';
+import type { ImageComparisonMode } from '@/types/imageBatch';
+import { resolveSeed } from '@/utils/seed';
+import { computed, ref, useTemplateRef } from 'vue';
 import {
   AlertCircle,
   Check,
@@ -22,7 +25,6 @@ import {
   ScanFace,
   WandSparkles
 } from '@lucide/vue';
-import { invoke } from '@tauri-apps/api/core';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import ImageDropOverlay from '@/components/common/ImageDropOverlay.vue';
 import ImageDropzone from '@/components/common/ImageDropzone.vue';
@@ -31,7 +33,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import StatusDot from '@/components/layout/StatusDot.vue';
-import { useImageTransferStore } from '@/stores/imageTransferStore';
 import { Progress } from '@/components/ui/progress';
 import {
   Tooltip,
@@ -39,27 +40,20 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import FaceDetailerSection from '@/components/template/FaceDetailerSection.vue';
-import { ComfyApi } from '../services/comfyApi';
 import { buildFaceDetailerPrompt } from '../services/faceDetailerWorkflow';
 import { useComfyStore } from '../stores/comfyStore';
 import { useLauncherStore } from '../stores/launcherStore';
 import { useFaceDetailerStore } from '../stores/faceDetailerStore';
 import FaceDetailerModels from '@/components/template/FaceDetailerModels.vue';
-import type { ComfyHistoryEntry } from '../types/comfy';
-import type {
-  FaceDetailerSettings,
-  ModelSettings,
-  LoraItem
-} from '../types/workflow';
+import type { FaceDetailerSettings } from '../types/workflow';
 
 const { copySuccess, copyImageToClipboard } = useImageClipboard();
 
+const batch = useImageBatch();
 const {
   fileInput,
   items,
   selectedItemId,
-  isDragging,
-  isDraggingQueue,
   activeItem,
   readyItems,
   processingItems,
@@ -67,23 +61,59 @@ const {
   overallProgress,
   addFiles,
   handleFileInput,
-  handleDrop,
-  handleDragEnterViewport,
-  handleDragLeaveViewport,
   removeItem,
   clearItems
-} = useImageBatch();
+} = batch;
+const isDragging = useImageDropZone(
+  useTemplateRef<HTMLElement>('viewport'),
+  addFiles
+);
 const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
-defineOptions({ name: 'FaceDetailerView' });
 const detailerStore = useFaceDetailerStore();
-const isSubmitting = ref(false);
 
-// Viewport / Comparison controls
 const viewMode = ref<ImageComparisonMode>('split');
 const isLightboxOpen = ref(false);
 
-let disposed = false;
+const { isSubmitting, queueBatch, retryItem } = useBatchRunner(batch, {
+  target: 'face-detailer',
+  uploadPrefix: 'koharu-face-detailer',
+  outputNode: '20',
+  createBuilder: () => {
+    const state = JSON.parse(
+      JSON.stringify(detailerStore.state)
+    ) as typeof detailerStore.state;
+    const seed = resolveSeed(state.seed);
+    const settings: FaceDetailerSettings = {
+      ...state.settings,
+      positivePrompt: resolveDynamicPromptWithSeed(
+        state.settings.positivePrompt ?? '',
+        seed,
+        'fd-positive'
+      ),
+      negativePrompt: resolveDynamicPromptWithSeed(
+        state.settings.negativePrompt ?? '',
+        seed,
+        'fd-negative'
+      )
+    };
+    return (imageName) =>
+      buildFaceDetailerPrompt(
+        imageName,
+        settings,
+        state.models,
+        state.loras,
+        seed
+      );
+  }
+});
+
+function downloadResult() {
+  void saveImage(
+    activeItem.value?.resultUrl,
+    activeItem.value?.savedFilename || 'face_detailed.png'
+  );
+}
 
 const canRun = computed(
   () =>
@@ -99,162 +129,6 @@ const canRun = computed(
     readyItems.value.length > 0 &&
     !isSubmitting.value
 );
-
-function retryItem(item: ImageBatchItem) {
-  item.status = 'ready';
-  item.error = undefined;
-  const state = JSON.parse(
-    JSON.stringify(detailerStore.state)
-  ) as typeof detailerStore.state;
-  const seed =
-    state.seed < 0 ? Math.floor(Math.random() * 10_000_000_000) : state.seed;
-  void queueItem(item, state.settings, state.models, state.loras, seed);
-}
-
-async function monitorResult(
-  item: ImageBatchItem,
-  promptId: string,
-  startTime: number
-) {
-  for (let attempt = 0; attempt < 600; attempt++) {
-    if (disposed) return;
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 500);
-    });
-    let entry: ComfyHistoryEntry | undefined;
-    try {
-      entry = (
-        await ComfyApi.fetchHistory(launcherStore.config.serverUrl, promptId)
-      )[promptId];
-    } catch {
-      continue;
-    }
-    const image = entry?.outputs['20']?.images?.[0];
-    if (image) {
-      item.resultUrl = ComfyApi.getViewImageUrl(
-        launcherStore.config.serverUrl,
-        image.filename,
-        image.subfolder,
-        image.type
-      );
-      item.savedFilename = image.filename;
-      item.status = 'done';
-      item.durationMs = Date.now() - startTime;
-      return;
-    }
-    if (entry?.status?.status_str === 'error') {
-      item.status = 'error';
-      item.error = 'Face Detailer execution failed in ComfyUI.';
-      return;
-    }
-  }
-  if (!disposed) {
-    item.status = 'error';
-    item.error = 'Timed out waiting for the Face Detailer result.';
-  }
-}
-
-async function queueItem(
-  item: ImageBatchItem,
-  settings: FaceDetailerSettings,
-  models: ModelSettings,
-  loras: LoraItem[],
-  seed: number
-) {
-  item.status = 'uploading';
-  item.error = undefined;
-  const startTime = Date.now();
-  try {
-    const extension = item.file.name.match(/\.[^.]+$/u)?.[0] || '.png';
-    const uploaded = await ComfyApi.uploadImage(
-      launcherStore.config.serverUrl,
-      item.file,
-      `koharu-face-detailer-${item.id}${extension}`
-    );
-    const resolvedSettings: FaceDetailerSettings = {
-      ...settings,
-      positivePrompt: resolveDynamicPromptWithSeed(
-        settings.positivePrompt ?? '',
-        seed,
-        'fd-positive'
-      ),
-      negativePrompt: resolveDynamicPromptWithSeed(
-        settings.negativePrompt ?? '',
-        seed,
-        'fd-negative'
-      )
-    };
-    const queued = await ComfyApi.queuePrompt(
-      launcherStore.config.serverUrl,
-      buildFaceDetailerPrompt(
-        uploaded.name,
-        resolvedSettings,
-        models,
-        loras,
-        seed
-      ),
-      `koharu-face-detailer-${crypto.randomUUID()}`
-    );
-    item.status = 'queued';
-    void monitorResult(item, queued.prompt_id, startTime);
-  } catch (error) {
-    item.status = 'error';
-    item.error = error instanceof Error ? error.message : String(error);
-  }
-}
-
-async function queueBatch() {
-  if (!canRun.value) return;
-  isSubmitting.value = true;
-  const state = JSON.parse(
-    JSON.stringify(detailerStore.state)
-  ) as typeof detailerStore.state;
-  const settings = state.settings;
-  const models = state.models;
-  const loras = state.loras;
-  const seed =
-    state.seed < 0 ? Math.floor(Math.random() * 10_000_000_000) : state.seed;
-  for (const item of readyItems.value) {
-    await queueItem(item, settings, models, loras, seed);
-  }
-  isSubmitting.value = false;
-}
-
-async function openOutputFolder() {
-  const path = getComfyOutputDir(launcherStore.config.workingDir);
-  if (!path) return;
-  try {
-    await invoke('show_in_folder', { path });
-  } catch (error) {
-    console.error('Failed to open output folder:', error);
-  }
-}
-
-const transferStore = useImageTransferStore();
-
-function checkPendingTransfers() {
-  const pending = transferStore.consumeFaceDetailer();
-  if (pending.length > 0) {
-    const files = pending
-      .map((p) => p.file)
-      .filter((f): f is File => Boolean(f));
-    if (files.length > 0) {
-      addFiles(files);
-    }
-  }
-}
-
-onMounted(() => {
-  checkPendingTransfers();
-});
-
-onActivated(() => {
-  checkPendingTransfers();
-});
-
-onUnmounted(() => {
-  disposed = true;
-});
 </script>
 
 <template>
@@ -289,7 +163,7 @@ onUnmounted(() => {
           size="sm"
           class="text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2 text-xs"
           title="Open ComfyUI Output Directory"
-          @click="openOutputFolder"
+          @click="launcherStore.openOutputFolder()"
         >
           <Folder class="h-3.5 w-3.5" />
           <span>Outputs</span>
@@ -354,13 +228,11 @@ onUnmounted(() => {
           <ImageBatchQueue
             :items="items"
             :selected-id="selectedItemId"
-            :dragging="isDraggingQueue"
             @select="selectedItemId = $event"
             @select-files="fileInput?.click()"
             @retry="retryItem"
             @remove="removeItem"
-            @drop="handleDrop"
-            @dragging="isDraggingQueue = $event"
+            @files="addFiles"
           />
           <input
             ref="fileInput"
@@ -427,15 +299,14 @@ onUnmounted(() => {
 
               <Tooltip v-if="activeItem.resultUrl">
                 <TooltipTrigger as-child>
-                  <a
-                    :href="activeItem.resultUrl"
-                    :download="activeItem.savedFilename || 'face_detailed.png'"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="text-muted-foreground hover:text-foreground hover:bg-secondary inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors"
+                  <Button
+                    variant="ghost"
+                    size="iconSm"
+                    class="h-7 w-7"
+                    @click="downloadResult"
                   >
                     <Download class="h-3.5 w-3.5" />
-                  </a>
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>Download Detailed PNG</TooltipContent>
               </Tooltip>
@@ -459,12 +330,9 @@ onUnmounted(() => {
 
         <!-- Viewport Stage Area -->
         <div
+          ref="viewport"
           class="relative flex h-full min-h-0 w-full flex-1 items-center justify-center overflow-hidden p-3"
           :class="!activeItem ? 'bg-card/20' : 'bg-muted/40'"
-          @dragenter="handleDragEnterViewport"
-          @dragover.prevent="isDragging = true"
-          @dragleave="handleDragLeaveViewport"
-          @drop.prevent="handleDrop"
         >
           <ImageDropOverlay v-if="isDragging && activeItem" />
 
@@ -590,17 +458,16 @@ onUnmounted(() => {
           <Check v-if="copySuccess" class="h-4 w-4 text-emerald-400" />
           <Copy v-else class="h-4 w-4" />
         </Button>
-        <a
+        <Button
           v-if="activeItem?.resultUrl"
-          :href="activeItem.resultUrl"
-          :download="activeItem.savedFilename || 'face_detailed.png'"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex h-8 w-8 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          size="iconSm"
+          variant="ghost"
+          class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
           title="Download PNG"
+          @click="downloadResult"
         >
           <Download class="h-4 w-4" />
-        </a>
+        </Button>
       </template>
     </ImageLightboxModal>
   </div>

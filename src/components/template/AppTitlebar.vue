@@ -13,12 +13,11 @@ import {
   Terminal,
   X
 } from '@lucide/vue';
-import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { toast } from 'vue-sonner';
 import ServerStatusBadge from '../common/ServerStatusBadge.vue';
 import { useAiStore } from '../../stores/aiStore';
 import { useLauncherStore } from '../../stores/launcherStore';
-import { getComfyOutputDir } from '@/utils/pathTools';
 
 const route = useRoute();
 const launcherStore = useLauncherStore();
@@ -47,13 +46,13 @@ const activeViewTitle = computed(() => {
   return 'Workflow Generator';
 });
 
-async function openOutputFolder() {
-  const path = getComfyOutputDir(launcherStore.config.workingDir);
-  if (!path) return;
+async function toggleServer() {
   try {
-    await invoke('show_in_folder', { path });
+    if (launcherStore.processStatus === 'running')
+      await launcherStore.stopServer();
+    else await launcherStore.startServer();
   } catch (error) {
-    console.error('Failed to open output folder:', error);
+    toast.error('Failed to stop ComfyUI', { description: String(error) });
   }
 }
 
@@ -162,11 +161,7 @@ onUnmounted(() => {
             launcherStore.processStatus !== 'starting' &&
             launcherStore.processStatus !== 'stopping'
         }"
-        @click="
-          launcherStore.processStatus === 'running'
-            ? launcherStore.stopServer()
-            : launcherStore.startServer()
-        "
+        @click="toggleServer"
       >
         <Loader2
           v-if="
@@ -198,7 +193,7 @@ onUnmounted(() => {
         type="button"
         title="Open Output Folder"
         class="border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
-        @click="openOutputFolder"
+        @click="launcherStore.openOutputFolder()"
       >
         <Folder class="h-3 w-3" />
         <span class="hidden sm:inline">Output</span>

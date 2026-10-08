@@ -1,23 +1,21 @@
 import { invoke } from '@tauri-apps/api/core';
+import { customSchemeUrl } from '../lib/customScheme';
 import type { HistoryItem } from '../types/workflow';
+import { withFileName } from '../utils/imageFiles';
 
 export function dragHistoryImage(event: DragEvent, item: HistoryItem) {
   if (!event.dataTransfer || !item.imageUrl) return;
+  const url = withFileName(item.imageUrl, item.filename);
   event.dataTransfer.effectAllowed = 'copy';
-  event.dataTransfer.setData('text/uri-list', item.imageUrl);
-  event.dataTransfer.setData('text/plain', item.imageUrl);
+  event.dataTransfer.setData('text/uri-list', url);
+  event.dataTransfer.setData('text/plain', url);
 }
 
-/** Custom MIME type carrying a gallery image's `localId` during HTML5 drag. */
 export const GALLERY_IMAGE_MIME = 'application/x-koharu-gallery-image';
 
-/**
- * Starts dragging a gallery card. Sets `text/uri-list` (so Upscaler/RMBG/Face
- * Detailer dropzones can fetch the image) plus our own type for A/B compare.
- */
 export function dragOutputImage(event: DragEvent, image: OutputImage) {
   if (!event.dataTransfer) return;
-  const url = localImageUrl(image.localId, false);
+  const url = withFileName(localImageUrl(image.localId), image.filename);
   event.dataTransfer.effectAllowed = 'copyLink';
   event.dataTransfer.setData(GALLERY_IMAGE_MIME, image.localId);
   event.dataTransfer.setData('text/uri-list', url);
@@ -25,10 +23,10 @@ export function dragOutputImage(event: DragEvent, image: OutputImage) {
 }
 
 export function localImageUrl(localId: string, thumbnail = false): string {
-  const kind = thumbnail ? 'thumb' : 'full';
-  return navigator.userAgent.includes('Windows')
-    ? `http://koharu-image.localhost/${kind}/${localId}`
-    : `koharu-image://localhost/${kind}/${localId}`;
+  return customSchemeUrl(
+    'koharu-image',
+    `${thumbnail ? 'thumb' : 'full'}/${localId}`
+  );
 }
 
 export function resolveHistoryImages(
@@ -75,14 +73,25 @@ export interface OutputImageMetadata {
   rawWorkflow: string;
 }
 
-export function listOutputImages(workingDir: string): Promise<OutputImage[]> {
-  return invoke('list_output_images', { workingDir });
+export function listOutputImages(
+  workingDir: string,
+  args: string[]
+): Promise<OutputImage[]> {
+  return invoke('list_output_images', { workingDir, args });
 }
 
 export function prepareOutputGallery(
-  workingDir: string
+  workingDir: string,
+  args: string[]
 ): Promise<OutputImage[]> {
-  return invoke('prepare_output_gallery', { workingDir });
+  return invoke('prepare_output_gallery', { workingDir, args });
+}
+
+export function refreshOutputImages(
+  workingDir: string,
+  args: string[]
+): Promise<OutputImage[]> {
+  return invoke('refresh_output_images', { workingDir, args });
 }
 
 export function clearGalleryCache(): Promise<void> {
@@ -93,15 +102,24 @@ export function getGalleryCacheDirectory(): Promise<string> {
   return invoke('gallery_cache_directory');
 }
 
-export function refreshOutputImages(
-  workingDir: string
-): Promise<OutputImage[]> {
-  return invoke('refresh_output_images', { workingDir });
-}
-
 export function readOutputImageMetadata(
   workingDir: string,
+  args: string[],
   path: string
 ): Promise<OutputImageMetadata> {
-  return invoke('read_output_image_metadata', { workingDir, path });
+  return invoke('read_output_image_metadata', { workingDir, args, path });
+}
+
+export function openComfyOutputFolder(
+  workingDir: string,
+  args: string[]
+): Promise<void> {
+  return invoke('open_comfy_output_folder', { workingDir, args });
+}
+
+export function saveImageAs(
+  url: string,
+  filename: string
+): Promise<string | null> {
+  return invoke('save_image_as', { url, filename });
 }

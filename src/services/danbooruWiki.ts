@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { customSchemeUrl } from '../lib/customScheme';
 import { http } from './httpClient';
 
 export const DANBOORU_URL = 'https://danbooru.donmai.us';
@@ -38,9 +39,7 @@ export function danbooruMediaUrl(rawUrl?: string): string {
     cleanPath = cleanPath.slice(cdnHttp.length);
   }
 
-  return navigator.userAgent.includes('Windows')
-    ? `http://danbooru-image.localhost/${cleanPath}`
-    : `danbooru-image://localhost/${cleanPath}`;
+  return customSchemeUrl('danbooru-image', cleanPath);
 }
 export function wikiPostIds(body: string) {
   return [

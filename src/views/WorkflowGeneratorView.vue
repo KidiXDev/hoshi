@@ -19,8 +19,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup
 } from '@/components/ui/resizable';
-import { invoke } from '@tauri-apps/api/core';
-import { getComfyOutputDir } from '@/utils/pathTools';
 import { useHistoryStore } from '../stores/historyStore';
 import { useLauncherStore } from '../stores/launcherStore';
 import { useWorkflowStore } from '../stores/workflowStore';
@@ -44,16 +42,6 @@ async function viewWorkflow() {
   } catch (error) {
     if (requestId) finishSnapshot(requestId);
     toast.error(error instanceof Error ? error.message : String(error));
-  }
-}
-
-async function openOutputFolder() {
-  const path = getComfyOutputDir(launcherStore.config.workingDir);
-  if (!path) return;
-  try {
-    await invoke('show_in_folder', { path });
-  } catch (error) {
-    console.error('Failed to open output folder:', error);
   }
 }
 </script>
@@ -115,7 +103,7 @@ async function openOutputFolder() {
           type="button"
           title="Open Output Folder"
           class="border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground inline-flex h-6.5 cursor-pointer items-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-colors"
-          @click="openOutputFolder"
+          @click="launcherStore.openOutputFolder()"
         >
           <Folder class="h-3 w-3" />
           <span>Outputs</span>

@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, watch } from 'vue';
-import { queryKeys } from '../composables/queryKeys';
-import { queryClient } from '../lib/queryClient';
-import { ComfyApi } from '../services/comfyApi';
+import {
+  ComfyApi,
+  firstOutputImage,
+  historyEntryError
+} from '../services/comfyApi';
 import { ComfyWsClient } from '../services/comfyWs';
 import {
   buildWorkflowPrompt,
@@ -11,7 +13,6 @@ import {
 import type {
   BridgeModelsResponse,
   BridgeSystemResponse,
-  ComfyHistoryOutput,
   ComfyObjectInfo,
   ComfyWsExecutedMessage,
   ComfyWsExecutingMessage,
@@ -47,14 +48,20 @@ interface GenerationResult {
   durationMs: number;
 }
 
-function extractImageFromOutputs(outputs?: Record<string, ComfyHistoryOutput>) {
-  if (!outputs) return null;
-  for (const output of Object.values(outputs)) {
-    if (output.images && output.images.length > 0) {
-      return output.images[0];
+type ModelListKey = Exclude<keyof BridgeModelsResponse, 'success' | 'error'>;
+
+function nodeChoices(
+  info: ComfyObjectInfo | null,
+  nodes: string[],
+  inputs: string[]
+): string[] {
+  for (const node of nodes) {
+    for (const input of inputs) {
+      const choices = info?.[node]?.input?.required?.[input]?.[0];
+      if (Array.isArray(choices)) return choices;
     }
   }
-  return null;
+  return [];
 }
 
 function getFriendlyStageName(
@@ -186,101 +193,51 @@ export const useComfyStore = defineStore('comfy', () => {
     }
   >();
 
-  // Extracted Available Options from Bridge or ObjectInfo
-  const availableCheckpoints = computed<string[]>(() => {
-    if (bridgeModels.value?.checkpoints?.length) {
-      return bridgeModels.value.checkpoints;
-    }
-    if (!objectInfo.value) return [];
-    const ckptLoader = objectInfo.value['CheckpointLoaderSimple'];
-    const ckptInput = ckptLoader?.input?.required?.['ckpt_name'];
-    return Array.isArray(ckptInput?.[0]) ? (ckptInput[0] as string[]) : [];
-  });
+  function modelChoices(
+    bridgeKey: ModelListKey,
+    nodes: string[],
+    inputs: string[]
+  ) {
+    return computed<string[]>(() => {
+      const bridged = bridgeModels.value?.[bridgeKey];
+      return bridged?.length
+        ? bridged
+        : nodeChoices(objectInfo.value, nodes, inputs);
+    });
+  }
 
-  const availableUnets = computed<string[]>(() => {
-    if (bridgeModels.value?.unets?.length) {
-      return bridgeModels.value.unets;
-    }
-    if (!objectInfo.value) return [];
-    const unetLoader =
-      objectInfo.value['UNETLoader'] ||
-      objectInfo.value['CheckpointLoaderSimple'];
-    const unetInput =
-      unetLoader?.input?.required?.['unet_name'] ||
-      unetLoader?.input?.required?.['ckpt_name'];
-    return Array.isArray(unetInput?.[0]) ? (unetInput[0] as string[]) : [];
-  });
-
-  const availableClips = computed<string[]>(() => {
-    if (bridgeModels.value?.clips?.length) {
-      return bridgeModels.value.clips;
-    }
-    if (!objectInfo.value) return [];
-    const clipLoader = objectInfo.value['CLIPLoader'];
-    const clipInput = clipLoader?.input?.required?.['clip_name'];
-    return Array.isArray(clipInput?.[0]) ? (clipInput[0] as string[]) : [];
-  });
-
-  const availableVaes = computed<string[]>(() => {
-    if (bridgeModels.value?.vaes?.length) {
-      return bridgeModels.value.vaes;
-    }
-    if (!objectInfo.value) return [];
-    const vaeLoader = objectInfo.value['VAELoader'];
-    const vaeInput = vaeLoader?.input?.required?.['vae_name'];
-    return Array.isArray(vaeInput?.[0]) ? (vaeInput[0] as string[]) : [];
-  });
-
-  const availableLoras = computed<string[]>(() => {
-    if (bridgeModels.value?.loras?.length) {
-      return bridgeModels.value.loras;
-    }
-    if (!objectInfo.value) return [];
-    const loraLoader =
-      objectInfo.value['YELoadLoraModel'] || objectInfo.value['LoraLoader'];
-    const loraInput = loraLoader?.input?.required?.['lora_name'];
-    return Array.isArray(loraInput?.[0]) ? (loraInput[0] as string[]) : [];
-  });
-
-  const availableUpscaleModels = computed<string[]>(() => {
-    if (bridgeModels.value?.upscale_models?.length) {
-      return bridgeModels.value.upscale_models;
-    }
-    if (!objectInfo.value) return [];
-    const upscaleLoader =
-      objectInfo.value['YEImageUpscale'] ||
-      objectInfo.value['UpscaleModelLoader'];
-    const upscaleInput =
-      upscaleLoader?.input?.required?.['upscale_model'] ||
-      upscaleLoader?.input?.required?.['model_name'];
-    return Array.isArray(upscaleInput?.[0])
-      ? (upscaleInput[0] as string[])
-      : [];
-  });
-
-  const availableSamplers = computed<string[]>(() => {
-    if (bridgeModels.value?.samplers?.length) {
-      return bridgeModels.value.samplers;
-    }
-    if (!objectInfo.value) return [];
-    const ksampler = objectInfo.value['KSampler'];
-    const samplerInput = ksampler?.input?.required?.['sampler_name'];
-    return Array.isArray(samplerInput?.[0])
-      ? (samplerInput[0] as string[])
-      : [];
-  });
-
-  const availableSchedulers = computed<string[]>(() => {
-    if (bridgeModels.value?.schedulers?.length) {
-      return bridgeModels.value.schedulers;
-    }
-    if (!objectInfo.value) return [];
-    const ksampler = objectInfo.value['KSampler'];
-    const schedulerInput = ksampler?.input?.required?.['scheduler'];
-    return Array.isArray(schedulerInput?.[0])
-      ? (schedulerInput[0] as string[])
-      : [];
-  });
+  const availableCheckpoints = modelChoices(
+    'checkpoints',
+    ['CheckpointLoaderSimple'],
+    ['ckpt_name']
+  );
+  const availableUnets = modelChoices(
+    'unets',
+    ['UNETLoader', 'CheckpointLoaderSimple'],
+    ['unet_name', 'ckpt_name']
+  );
+  const availableClips = modelChoices('clips', ['CLIPLoader'], ['clip_name']);
+  const availableVaes = modelChoices('vaes', ['VAELoader'], ['vae_name']);
+  const availableLoras = modelChoices(
+    'loras',
+    ['YELoadLoraModel', 'LoraLoader'],
+    ['lora_name']
+  );
+  const availableUpscaleModels = modelChoices(
+    'upscale_models',
+    ['YEImageUpscale', 'UpscaleModelLoader'],
+    ['upscale_model', 'model_name']
+  );
+  const availableSamplers = modelChoices(
+    'samplers',
+    ['KSampler'],
+    ['sampler_name']
+  );
+  const availableSchedulers = modelChoices(
+    'schedulers',
+    ['KSampler'],
+    ['scheduler']
+  );
 
   function activateGeneration(entry: PendingGeneration) {
     currentPromptId.value = entry.id;
@@ -338,8 +295,7 @@ export const useComfyStore = defineStore('comfy', () => {
           launcherStore.config.serverUrl,
           entry.id
         );
-        entry.image =
-          extractImageFromOutputs(history[entry.id]?.outputs) ?? undefined;
+        entry.image = firstOutputImage(history[entry.id]?.outputs);
       } catch {
         // Executed output remains the fallback.
       }
@@ -479,30 +435,61 @@ export const useComfyStore = defineStore('comfy', () => {
     }
   }
 
+  function resetCapabilities() {
+    isYetEssentialAvailable.value = false;
+    isFaceDetailerAvailable.value = false;
+    isCacheDiTAvailable.value = false;
+    isUltimateUpscaleAvailable.value = false;
+  }
+
+  function setConnected(connected: boolean) {
+    const reconnected = connected && !isConnected.value;
+    isConnected.value = connected;
+    if (reconnected || (connected && !objectInfo.value && !bridgeModels.value))
+      void fetchDiscovery();
+  }
+
+  async function reconcilePendingGenerations() {
+    if (pendingGenerations.size === 0) return;
+    const serverUrl = launcherStore.config.serverUrl;
+    try {
+      const queued = await ComfyApi.fetchQueuedPromptIds(serverUrl);
+      for (const entry of pendingGenerations.values()) {
+        const history = (await ComfyApi.fetchHistory(serverUrl, entry.id))[
+          entry.id
+        ];
+        if (history) {
+          entry.image ??= firstOutputImage(history.outputs);
+          const failure = historyEntryError(history);
+          if (failure) executionError.value = failure;
+          await finishGeneration(entry.id, failure ? 'error' : 'completed');
+        } else if (!queued.has(entry.id)) {
+          await finishGeneration(entry.id, 'error');
+        }
+      }
+    } catch (error) {
+      console.warn('Could not reconcile queued generations', error);
+    }
+  }
+
   async function checkServerHealth() {
     if (healthCheck) return healthCheck;
     healthCheck = (async () => {
-      const wasConnected = isConnected.value;
       const ok = await ComfyApi.checkHealth(launcherStore.config.serverUrl);
       if (launcherStore.processStatus !== 'running') return false;
-      isConnected.value = ok;
       if (!ok) {
-        isYetEssentialAvailable.value = false;
-        isFaceDetailerAvailable.value = false;
-        isCacheDiTAvailable.value = false;
-        isUltimateUpscaleAvailable.value = false;
-      } else if (!wasConnected || !isYetEssentialAvailable.value) {
-        if (!wasConnected) {
-          wsClient?.connect(launcherStore.config.serverUrl, clientId.value);
-        }
+        isConnected.value = false;
+        resetCapabilities();
+        return false;
+      }
+      if (!isConnected.value)
+        wsClient?.connect(launcherStore.config.serverUrl, clientId.value);
+      setConnected(true);
+      if (!isYetEssentialAvailable.value)
         isYetEssentialAvailable.value = await ComfyApi.checkTagAutocomplete(
           launcherStore.config.serverUrl
         );
-      }
-      if (ok && !objectInfo.value && !bridgeModels.value) {
-        void fetchDiscovery();
-      }
-      return ok;
+      return true;
     })().finally(() => {
       healthCheck = null;
     });
@@ -514,10 +501,8 @@ export const useComfyStore = defineStore('comfy', () => {
 
     wsClient = new ComfyWsClient({
       onStatusChange: (status) => {
-        isConnected.value = status;
-        if (status && !objectInfo.value && !bridgeModels.value) {
-          fetchDiscovery();
-        }
+        setConnected(status);
+        if (status) void reconcilePendingGenerations();
       },
       onMessage: handleWsMessage,
       onPreview: (blobUrl) => {
@@ -549,10 +534,7 @@ export const useComfyStore = defineStore('comfy', () => {
       } else {
         wsClient?.disconnect();
         isConnected.value = false;
-        isYetEssentialAvailable.value = false;
-        isFaceDetailerAvailable.value = false;
-        isCacheDiTAvailable.value = false;
-        isUltimateUpscaleAvailable.value = false;
+        resetCapabilities();
         pendingGenerations.clear();
         for (const waiter of generationWaiters.values())
           waiter.reject(new Error('ComfyUI stopped'));
@@ -624,12 +606,6 @@ export const useComfyStore = defineStore('comfy', () => {
 
   async function refreshModels() {
     await ComfyApi.refreshBridgeModels(launcherStore.config.serverUrl);
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.comfy.models(launcherStore.config.serverUrl)
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ['comfy', 'objectInfo', launcherStore.config.serverUrl]
-    });
     await fetchDiscovery();
   }
 
@@ -670,12 +646,6 @@ export const useComfyStore = defineStore('comfy', () => {
 
   async function generateImage(workflowState: WorkflowState) {
     return (await queueGeneration(workflowState)) !== null;
-  }
-
-  function onExecutionFinished() {
-    if (currentPromptId.value) {
-      void finishGeneration(currentPromptId.value, 'completed');
-    }
   }
 
   async function interrupt() {
@@ -729,7 +699,6 @@ export const useComfyStore = defineStore('comfy', () => {
     generateImage,
     queueGeneration,
     waitForGeneration,
-    interrupt,
-    onExecutionFinished
+    interrupt
   };
 });

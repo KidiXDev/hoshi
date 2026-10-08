@@ -45,7 +45,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-import { useImageTransferStore } from '@/stores/imageTransferStore';
+import { useImageTransfer } from '@/composables/useImageTransfer';
+import type { TransferTarget } from '@/stores/imageTransferStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -178,6 +179,7 @@ async function openImage(image: OutputImage) {
   try {
     metadata.value = await readOutputImageMetadata(
       launcherStore.config.workingDir,
+      launcherStore.launchArgs,
       image.path
     );
   } catch {
@@ -301,34 +303,18 @@ function applyToWorkflowGenerator() {
     appliedToWorkflow.value = false;
   }, 2500);
 }
-const transferStore = useImageTransferStore();
+const { sendImageTo } = useImageTransfer();
 function sendAndGoToWorkflow() {
   applyToWorkflowGenerator();
   void router.push('/workflow');
 }
-async function handleSendToUpscaler() {
+function sendSelectedTo(target: TransferTarget) {
   if (!selectedImage.value) return;
-  await transferStore.sendToUpscaler(
+  void sendImageTo(
+    target,
     imageUrl(selectedImage.value, false),
     selectedImage.value.filename
   );
-  void router.push('/upscaler');
-}
-async function handleSendToRmbg() {
-  if (!selectedImage.value) return;
-  await transferStore.sendToRmbg(
-    imageUrl(selectedImage.value, false),
-    selectedImage.value.filename
-  );
-  void router.push('/remove-bg');
-}
-async function handleSendToFaceDetailer() {
-  if (!selectedImage.value) return;
-  await transferStore.sendToFaceDetailer(
-    imageUrl(selectedImage.value, false),
-    selectedImage.value.filename
-  );
-  void router.push('/face-detailer');
 }
 function imageUrl(image: OutputImage, thumbnail = true) {
   return localImageUrl(image.localId, thumbnail);
@@ -549,21 +535,21 @@ defineExpose({ open: openImage, openCompare });
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     class="cursor-pointer gap-2 text-xs"
-                    @click="handleSendToUpscaler"
+                    @click="sendSelectedTo('upscaler')"
                   >
                     <Scaling class="h-3.5 w-3.5 text-blue-400" />
                     <span>Send to Upscaler</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     class="cursor-pointer gap-2 text-xs"
-                    @click="handleSendToRmbg"
+                    @click="sendSelectedTo('remove-background')"
                   >
                     <WandSparkles class="h-3.5 w-3.5 text-pink-400" />
                     <span>Send to RMBG</span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     class="cursor-pointer gap-2 text-xs"
-                    @click="handleSendToFaceDetailer"
+                    @click="sendSelectedTo('face-detailer')"
                   >
                     <ScanFace class="h-3.5 w-3.5 text-emerald-400" />
                     <span>Send to Face Detailer</span>

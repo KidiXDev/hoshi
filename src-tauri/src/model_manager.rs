@@ -18,7 +18,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::civitai;
-use crate::image_gallery::{directory_argument, encode_jpeg_thumbnail};
+use crate::comfy_paths::{clean_path, comfy_root, directory_argument};
+use crate::image_gallery::encode_jpeg_thumbnail;
 
 /// v1 → v2 added `CivitaiSummary.verified` (migrated in `load_disk_index`).
 const INDEX_VERSION: u32 = 2;
@@ -410,7 +411,7 @@ impl ModelIndex {
         working_dir: &str,
         args: &[String],
     ) -> Result<(), String> {
-        let comfy_root = civitai::comfy_dir(working_dir)?;
+        let comfy_root = comfy_root(working_dir)?;
         if self.is_loaded_for(&comfy_root)? {
             return Ok(());
         }
@@ -477,8 +478,8 @@ impl ModelIndex {
         working_dir: &str,
         args: &[String],
     ) -> Result<LocalModelsIndex, String> {
-        let comfy_root = civitai::comfy_dir(working_dir)?;
-        let work = PathBuf::from(working_dir.trim().trim_matches(['"', '\'']));
+        let comfy_root = comfy_root(working_dir)?;
+        let work = PathBuf::from(clean_path(working_dir));
         let (roots, mut warnings) = resolve_category_roots(&comfy_root, &work, args);
 
         let previous: HashMap<String, LocalModel> = self
@@ -1415,7 +1416,7 @@ pub(crate) fn resolve_api_key(app: &AppHandle, api_key: &str) -> String {
     if !api_key.trim().is_empty() {
         return api_key.trim().to_string();
     }
-    crate::load_app_data_entry(app, "config", "civitai_settings")
+    crate::app_data::load_app_data_entry(app, "config", "civitai_settings")
         .ok()
         .flatten()
         .and_then(|settings| {
@@ -1469,7 +1470,6 @@ fn sync_blocking(
         {
             Ok(Some(preview)) => {
                 model.preview_modified_ms = file_modified_ms(&preview);
-                model.preview_modified_ms = file_modified_ms(&preview);
                 model.preview_path = Some(preview.to_string_lossy().into_owned());
             }
             Ok(None) => {}
@@ -1497,14 +1497,12 @@ fn sync_blocking(
 
 // ─── commands ─────────────────────────────────────────────────────────────────
 
-fn run_blocking<T: Send + 'static>(
+async fn run_blocking<T: Send + 'static>(
     task: impl FnOnce() -> Result<T, String> + Send + 'static,
-) -> impl std::future::Future<Output = Result<T, String>> {
-    async move {
-        tauri::async_runtime::spawn_blocking(task)
-            .await
-            .map_err(|error| error.to_string())?
-    }
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -1826,8 +1824,9 @@ pub async fn set_model_preview(
                     .map_err(|error| error.to_string())?
                     .to_vec()
             }
-            PreviewSource::LocalPath { path } => fs::read(path.trim().trim_matches(['"', '\'']))
-                .map_err(|error| error.to_string())?,
+            PreviewSource::LocalPath { path } => {
+                fs::read(clean_path(&path)).map_err(|error| error.to_string())?
+            }
         };
         let extension = image_extension(&bytes)?;
         image::load_from_memory(&bytes)

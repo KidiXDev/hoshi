@@ -1,10 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
+import { customSchemeUrl } from '../lib/customScheme';
 import type {
   LibraryCategory,
   LibraryItem,
   LibraryListEntry,
   SaveLibraryItemPayload
 } from '../types/library';
+import { blobToDataUrl } from '../utils/imageFiles';
 
 // Internal raw shape returned by Rust (camelCase from serde rename_all)
 
@@ -22,11 +24,10 @@ interface RawItem<T = unknown> {
 // Thumbnail URL builder
 
 function thumbnailUrl(thumbnailId: string): string {
-  const id = encodeURIComponent(thumbnailId);
-  return typeof navigator !== 'undefined' &&
-    navigator.userAgent.includes('Windows')
-    ? `http://koharu-library.localhost/thumb/${id}`
-    : `koharu-library://localhost/thumb/${id}`;
+  return customSchemeUrl(
+    'koharu-library',
+    `thumb/${encodeURIComponent(thumbnailId)}`
+  );
 }
 
 function hydrateThumbnail(entry: {
@@ -154,14 +155,10 @@ export const LibraryService = {
       const response = await fetch(url);
       if (!response.ok)
         throw new Error(`Server returned HTTP ${response.status}`);
-      const blob = await response.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-      return this.saveThumbnailFromDataUrl(itemId, dataUrl);
+      return this.saveThumbnailFromDataUrl(
+        itemId,
+        await blobToDataUrl(await response.blob())
+      );
     }
     return await invoke<string>('library_save_thumbnail_from_url', {
       itemId,

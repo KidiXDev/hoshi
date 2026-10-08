@@ -5,20 +5,17 @@ import { useImageClipboard } from '@/composables/useImageClipboard';
 import ImageComparisonModes from '@/components/common/ImageComparisonModes.vue';
 import StudioLayout from '@/components/layout/StudioLayout.vue';
 import { resolveDynamicPromptWithSeed } from '@/utils/dynamicPrompt';
-import { getComfyOutputDir } from '@/utils/pathTools';
 import ImageBatchQueue from '@/components/common/ImageBatchQueue.vue';
 import ImageComparison from '@/components/common/ImageComparison.vue';
-import { useImageBatch, extractDimensions } from '@/composables/useImageBatch';
-import type { ImageBatchItem, ImageComparisonMode } from '@/types/imageBatch';
-import {
-  computed,
-  onActivated,
-  onDeactivated,
-  onMounted,
-  onUnmounted,
-  ref,
-  watch
-} from 'vue';
+import { useBatchRunner } from '@/composables/useBatchRunner';
+import { useImageBatch } from '@/composables/useImageBatch';
+import { useImageDropZone } from '@/composables/useImageDropZone';
+import { usePersistedState } from '@/composables/usePersistedState';
+import { saveImage } from '@/composables/useSaveImage';
+import type { ImageComparisonMode } from '@/types/imageBatch';
+import { resolveSeed } from '@/utils/seed';
+import { toRefs } from '@vueuse/core';
+import { computed, ref, useTemplateRef, watch } from 'vue';
 import {
   AlertCircle,
   ArrowRight,
@@ -33,7 +30,6 @@ import {
   SlidersHorizontal,
   Sparkles
 } from '@lucide/vue';
-import { invoke } from '@tauri-apps/api/core';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import ImageDropOverlay from '@/components/common/ImageDropOverlay.vue';
 import ImageDropzone from '@/components/common/ImageDropzone.vue';
@@ -42,7 +38,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import StatusDot from '@/components/layout/StatusDot.vue';
-import { useImageTransferStore } from '@/stores/imageTransferStore';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -64,11 +59,8 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
-import { ComfyApi } from '../services/comfyApi';
-import { loadAppData, saveAppData } from '../services/appStorage';
 import { useComfyStore } from '../stores/comfyStore';
 import { useLauncherStore } from '../stores/launcherStore';
-import type { ComfyHistoryEntry } from '../types/comfy';
 import { BRAND_NAME } from '@/lib/brand';
 
 const { copySuccess, copyImageToClipboard } = useImageClipboard();
@@ -81,13 +73,13 @@ interface UpscalerPreferences {
   mode: UpscaleMode;
 }
 const QUICK_SCALES = [1.5, 2.0, 3.0, 4.0, 8.0];
+const DEFAULT_FILENAME_PREFIX = `${BRAND_NAME}_Upscale`;
 
+const batch = useImageBatch();
 const {
   fileInput,
   items,
   selectedItemId,
-  isDragging,
-  isDraggingQueue,
   activeItem,
   readyItems,
   processingItems,
@@ -95,66 +87,52 @@ const {
   overallProgress,
   addFiles,
   handleFileInput,
-  handleDrop,
-  handleDragEnterViewport,
-  handleDragLeaveViewport,
   removeItem,
   clearItems
-} = useImageBatch();
+} = batch;
+const isDragging = useImageDropZone(
+  useTemplateRef<HTMLElement>('viewport'),
+  addFiles
+);
 const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
 const ultimateStore = useUltimateUpscaleStore();
-const upscaleMode = ref<UpscaleMode>('normal');
+
+const { state: preferences } = usePersistedState<UpscalerPreferences>(
+  'upscaler_preferences',
+  () => ({
+    model: '',
+    scale: 2,
+    filenamePrefix: DEFAULT_FILENAME_PREFIX,
+    mode: 'normal'
+  }),
+  (saved, defaults) => ({
+    model: typeof saved.model === 'string' ? saved.model : defaults.model,
+    scale:
+      typeof saved.scale === 'number'
+        ? Math.min(10, Math.max(0.1, saved.scale))
+        : defaults.scale,
+    filenamePrefix:
+      typeof saved.filenamePrefix === 'string'
+        ? saved.filenamePrefix
+        : defaults.filenamePrefix,
+    mode: saved.mode === 'ultimate' ? 'ultimate' : 'normal'
+  })
+);
+const {
+  model: upscaleModel,
+  scale: upscaleBy,
+  filenamePrefix,
+  mode: upscaleMode
+} = toRefs(preferences);
+
 const isUltimate = computed(() => upscaleMode.value === 'ultimate');
 const maxScale = computed(() =>
   isUltimate.value ? ULTIMATE_UPSCALE_MAX_SCALE : 10
 );
-const upscaleModel = ref('');
-const upscaleBy = ref(2);
-const DEFAULT_FILENAME_PREFIX = `${BRAND_NAME}_Upscale`;
-const filenamePrefix = ref(DEFAULT_FILENAME_PREFIX);
-const isSubmitting = ref(false);
 
-// Viewport and Inspector controls
 const viewMode = ref<ImageComparisonMode>('split');
 const isLightboxOpen = ref(false);
-
-let disposed = false;
-let preferencesLoaded = false;
-let savePreferencesTimer: ReturnType<typeof setTimeout> | undefined;
-
-async function loadPreferences() {
-  const saved = await loadAppData<Partial<UpscalerPreferences>>(
-    'upscaler_preferences'
-  );
-  if (typeof saved?.model === 'string') upscaleModel.value = saved.model;
-  if (typeof saved?.scale === 'number') {
-    upscaleBy.value = Math.min(10, Math.max(0.1, saved.scale));
-  }
-  if (typeof saved?.filenamePrefix === 'string') {
-    filenamePrefix.value = saved.filenamePrefix;
-  }
-  if (saved?.mode === 'normal' || saved?.mode === 'ultimate') {
-    upscaleMode.value = saved.mode;
-  }
-  preferencesLoaded = true;
-}
-
-function persistPreferences() {
-  if (!preferencesLoaded) return;
-  void saveAppData('upscaler_preferences', {
-    model: upscaleModel.value,
-    scale: upscaleBy.value,
-    filenamePrefix: filenamePrefix.value,
-    mode: upscaleMode.value
-  } satisfies UpscalerPreferences);
-}
-
-function schedulePreferencesSave() {
-  if (!preferencesLoaded) return;
-  clearTimeout(savePreferencesTimer);
-  savePreferencesTimer = setTimeout(persistPreferences, 300);
-}
 
 watch(
   () => comfyStore.availableUpscaleModels,
@@ -166,12 +144,69 @@ watch(
   { immediate: true }
 );
 
-watch(
-  [upscaleModel, upscaleBy, filenamePrefix, upscaleMode],
-  schedulePreferencesSave
-);
 watch(maxScale, (max) => {
   if (upscaleBy.value > max) upscaleBy.value = max;
+});
+
+function buildPrompt(imageName: string, scale: number) {
+  const prefix = filenamePrefix.value.trim() || DEFAULT_FILENAME_PREFIX;
+  if (isUltimate.value) {
+    const state = JSON.parse(
+      JSON.stringify(ultimateStore.state)
+    ) as typeof ultimateStore.state;
+    const seed = resolveSeed(state.seed);
+    return buildUltimateUpscalePrompt({
+      imageName,
+      settings: state.settings,
+      models: state.models,
+      loras: state.loras,
+      positivePrompt: resolveDynamicPromptWithSeed(
+        state.positivePrompt,
+        seed,
+        'positive'
+      ),
+      negativePrompt: resolveDynamicPromptWithSeed(
+        state.negativePrompt,
+        seed,
+        'negative'
+      ),
+      upscaleModel: upscaleModel.value,
+      upscaleBy: scale,
+      seed,
+      filenamePrefix: prefix
+    });
+  }
+  return {
+    '1': {
+      inputs: { image: imageName },
+      class_type: 'LoadImage'
+    },
+    '2': {
+      inputs: {
+        image: ['1', 0],
+        upscale_model: upscaleModel.value,
+        upscale_by: scale
+      },
+      class_type: 'YEImageUpscale'
+    },
+    '3': {
+      inputs: { images: ['2', 0], filename_prefix: prefix },
+      class_type: 'SaveImage'
+    }
+  };
+}
+
+const { isSubmitting, queueBatch, retryItem } = useBatchRunner(batch, {
+  target: 'upscaler',
+  uploadPrefix: 'koharu-upscale',
+  createBuilder: () => {
+    upscaleBy.value = Math.min(
+      maxScale.value,
+      Math.max(0.1, Number(upscaleBy.value) || 2)
+    );
+    const scale = upscaleBy.value;
+    return (imageName) => buildPrompt(imageName, scale);
+  }
 });
 
 const ultimateReady = computed(
@@ -221,197 +256,29 @@ const targetDimensions = computed(() => {
   };
 });
 
-function retryItem(item: ImageBatchItem) {
-  item.status = 'ready';
-  item.error = undefined;
-  void queueSingleItem(item);
-}
-
-async function monitorResult(
-  item: ImageBatchItem,
-  promptId: string,
-  startTime: number
-) {
-  for (let attempt = 0; attempt < 240; attempt++) {
-    if (disposed) return;
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 500);
-    });
-    let entry: ComfyHistoryEntry | undefined;
-    try {
-      entry = (
-        await ComfyApi.fetchHistory(launcherStore.config.serverUrl, promptId)
-      )[promptId];
-    } catch {
-      continue;
-    }
-    const image = Object.values(entry?.outputs ?? {}).find(
-      (output) => output.images?.length
-    )?.images?.[0];
-    if (image) {
-      item.savedFilename = image.filename;
-      item.subfolder = image.subfolder;
-      item.type = image.type;
-      item.resultUrl = ComfyApi.getViewImageUrl(
-        launcherStore.config.serverUrl,
-        image.filename,
-        image.subfolder,
-        image.type
-      );
-      item.status = 'done';
-      item.durationMs = Date.now() - startTime;
-
-      void extractDimensions(item.resultUrl).then(({ width, height }) => {
-        if (width > 0 && height > 0) {
-          item.resultWidth = width;
-          item.resultHeight = height;
-        }
-      });
-      return;
-    }
-    if (entry?.status?.status_str === 'error') {
-      item.status = 'error';
-      item.error = 'Upscale execution failed.';
-      return;
-    }
-  }
-  if (!disposed) {
-    item.status = 'error';
-    item.error = 'Timed out waiting for the upscale result.';
-  }
-}
-
-function buildPrompt(imageName: string, seed: number) {
-  const prefix = filenamePrefix.value.trim() || DEFAULT_FILENAME_PREFIX;
-  if (isUltimate.value) {
-    const state = structuredClone(ultimateStore.state);
-    return buildUltimateUpscalePrompt({
-      imageName,
-      settings: state.settings,
-      models: state.models,
-      loras: state.loras,
-      positivePrompt: resolveDynamicPromptWithSeed(
-        state.positivePrompt,
-        seed,
-        'positive'
-      ),
-      negativePrompt: resolveDynamicPromptWithSeed(
-        state.negativePrompt,
-        seed,
-        'negative'
-      ),
-      upscaleModel: upscaleModel.value,
-      upscaleBy: upscaleBy.value,
-      seed,
-      filenamePrefix: prefix
-    });
-  }
+const resultSize = computed(() => {
+  const item = activeItem.value;
+  const estimate = (size?: number) =>
+    size ? Math.round(size * upscaleBy.value) : '?';
   return {
-    '1': {
-      inputs: { image: imageName },
-      class_type: 'LoadImage'
-    },
-    '2': {
-      inputs: {
-        image: ['1', 0],
-        upscale_model: upscaleModel.value,
-        upscale_by: upscaleBy.value
-      },
-      class_type: 'YEImageUpscale'
-    },
-    '3': {
-      inputs: { images: ['2', 0], filename_prefix: prefix },
-      class_type: 'SaveImage'
-    }
+    width: item?.resultWidth || estimate(item?.width),
+    height: item?.resultHeight || estimate(item?.height)
   };
-}
+});
 
-async function queueSingleItem(item: ImageBatchItem) {
-  if (!comfyStore.isConnected || !upscaleModel.value) return;
-  const seed =
-    ultimateStore.state.seed < 0
-      ? Math.floor(Math.random() * 10_000_000_000)
-      : ultimateStore.state.seed;
-  item.status = 'uploading';
-  item.error = undefined;
-  const startTime = Date.now();
-  try {
-    const extension = item.file.name.match(/\.[^.]+$/u)?.[0] || '.png';
-    const uploaded = await ComfyApi.uploadImage(
-      launcherStore.config.serverUrl,
-      item.file,
-      `koharu-upscale-${item.id}${extension}`
-    );
-    const queued = await ComfyApi.queuePrompt(
-      launcherStore.config.serverUrl,
-      buildPrompt(uploaded.name, seed),
-      `koharu-upscale-${crypto.randomUUID()}`
-    );
-    item.status = 'queued';
-    void monitorResult(item, queued.prompt_id, startTime);
-  } catch (error) {
-    item.status = 'error';
-    item.error = error instanceof Error ? error.message : String(error);
-  }
-}
+const completedScale = computed(() => {
+  const item = activeItem.value;
+  return item?.resultWidth && item.width
+    ? (item.resultWidth / item.width).toFixed(1)
+    : upscaleBy.value.toFixed(1);
+});
 
-async function queueBatch() {
-  if (!canQueue.value) return;
-  isSubmitting.value = true;
-  upscaleBy.value = Math.min(
-    maxScale.value,
-    Math.max(0.1, Number(upscaleBy.value) || 2)
+function downloadResult() {
+  void saveImage(
+    activeItem.value?.resultUrl,
+    activeItem.value?.savedFilename || 'upscaled_image.png'
   );
-
-  for (const item of readyItems.value) {
-    await queueSingleItem(item);
-  }
-  isSubmitting.value = false;
 }
-
-async function openOutputFolder() {
-  const path = getComfyOutputDir(launcherStore.config.workingDir);
-  if (!path) return;
-  try {
-    await invoke('show_in_folder', { path });
-  } catch (error) {
-    console.error('Failed to open output folder:', error);
-  }
-}
-
-const transferStore = useImageTransferStore();
-
-function checkPendingTransfers() {
-  const pending = transferStore.consumeUpscaler();
-  if (pending.length > 0) {
-    const files = pending
-      .map((p) => p.file)
-      .filter((f): f is File => Boolean(f));
-    if (files.length > 0) {
-      addFiles(files);
-    }
-  }
-}
-
-onMounted(() => {
-  void loadPreferences();
-  checkPendingTransfers();
-});
-
-onActivated(() => {
-  checkPendingTransfers();
-});
-
-onDeactivated(() => {
-  clearTimeout(savePreferencesTimer);
-  persistPreferences();
-});
-
-onUnmounted(() => {
-  disposed = true;
-  clearTimeout(savePreferencesTimer);
-  persistPreferences();
-});
 </script>
 
 <template>
@@ -445,7 +312,7 @@ onUnmounted(() => {
           size="sm"
           class="text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2 text-xs"
           title="Open ComfyUI Output Directory"
-          @click="openOutputFolder"
+          @click="launcherStore.openOutputFolder()"
         >
           <Folder class="h-3.5 w-3.5" />
           <span>Outputs</span>
@@ -702,13 +569,11 @@ onUnmounted(() => {
             :fill="!isUltimate"
             :items="items"
             :selected-id="selectedItemId"
-            :dragging="isDraggingQueue"
             @select="selectedItemId = $event"
             @select-files="fileInput?.click()"
             @retry="retryItem"
             @remove="removeItem"
-            @drop="handleDrop"
-            @dragging="isDraggingQueue = $event"
+            @files="addFiles"
           />
           <input
             ref="fileInput"
@@ -737,7 +602,7 @@ onUnmounted(() => {
                 variant="outline"
                 class="border-emerald-500/30 bg-emerald-500/10 font-mono text-xs text-emerald-400"
               >
-                {{ upscaleBy }}× Completed
+                {{ completedScale }}× Completed
               </Badge>
             </div>
 
@@ -773,15 +638,14 @@ onUnmounted(() => {
 
               <Tooltip v-if="activeItem.resultUrl">
                 <TooltipTrigger as-child>
-                  <a
-                    :href="activeItem.resultUrl"
-                    :download="activeItem.savedFilename || 'upscaled_image.png'"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="text-muted-foreground hover:text-foreground hover:bg-secondary inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors"
+                  <Button
+                    variant="ghost"
+                    size="iconSm"
+                    class="h-7 w-7"
+                    @click="downloadResult"
                   >
                     <Download class="h-3.5 w-3.5" />
-                  </a>
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>Download Upscaled Image</TooltipContent>
               </Tooltip>
@@ -805,11 +669,8 @@ onUnmounted(() => {
 
         <!-- Viewport Stage Area -->
         <div
+          ref="viewport"
           class="bg-muted/10 relative flex h-full min-h-0 w-full flex-1 items-center justify-center overflow-hidden p-3"
-          @dragenter="handleDragEnterViewport"
-          @dragover.prevent="isDragging = true"
-          @dragleave="handleDragLeaveViewport"
-          @drop.prevent="handleDrop"
         >
           <ImageDropOverlay v-if="isDragging && activeItem" />
 
@@ -832,17 +693,7 @@ onUnmounted(() => {
                 Original ({{ activeItem.width }}×{{ activeItem.height }})
               </template>
               <template #result-label>
-                Upscaled ({{
-                  activeItem.resultWidth ||
-                  (activeItem.width
-                    ? Math.round(activeItem.width * upscaleBy)
-                    : '?')
-                }}×{{
-                  activeItem.resultHeight ||
-                  (activeItem.height
-                    ? Math.round(activeItem.height * upscaleBy)
-                    : '?')
-                }})
+                Upscaled ({{ resultSize.width }}×{{ resultSize.height }})
               </template>
               <!-- Processing Overlay Animation -->
               <div
@@ -906,17 +757,7 @@ onUnmounted(() => {
             <template v-if="activeItem.resultUrl">
               <ArrowRight class="text-primary mx-1 inline-block h-3 w-3" />
               <strong class="text-primary font-bold">
-                {{
-                  activeItem.resultWidth ||
-                  (activeItem.width
-                    ? Math.round(activeItem.width * upscaleBy)
-                    : '?')
-                }}×{{
-                  activeItem.resultHeight ||
-                  (activeItem.height
-                    ? Math.round(activeItem.height * upscaleBy)
-                    : '?')
-                }}
+                {{ resultSize.width }}×{{ resultSize.height }}
               </strong>
             </template>
           </template>
@@ -961,17 +802,16 @@ onUnmounted(() => {
           <Check v-if="copySuccess" class="h-4 w-4 text-emerald-400" />
           <Copy v-else class="h-4 w-4" />
         </Button>
-        <a
+        <Button
           v-if="activeItem?.resultUrl"
-          :href="activeItem.resultUrl"
-          :download="activeItem.savedFilename || 'upscaled_image.png'"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex h-8 w-8 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          size="iconSm"
+          variant="ghost"
+          class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
           title="Download PNG"
+          @click="downloadResult"
         >
           <Download class="h-4 w-4" />
-        </a>
+        </Button>
       </template>
     </ImageLightboxModal>
   </div>

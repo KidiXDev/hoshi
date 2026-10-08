@@ -310,7 +310,7 @@ fn ensure_default_files(dir: &Path) -> Result<(), String> {
     let mut has_json = false;
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
-            if entry.path().extension().map_or(false, |ext| ext == "json") {
+            if entry.path().extension().is_some_and(|ext| ext == "json") {
                 has_json = true;
                 break;
             }
@@ -349,7 +349,7 @@ fn slugify(text: &str) -> String {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn load_prompt_suggestions(app_handle: AppHandle) -> Result<Vec<PromptCategory>, String> {
     let dir = suggestions_dir(&app_handle)?;
     ensure_default_files(&dir)?;
@@ -358,7 +358,7 @@ pub fn load_prompt_suggestions(app_handle: AppHandle) -> Result<Vec<PromptCatego
     if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
                 entries_paths.push(path);
             }
         }
@@ -366,8 +366,8 @@ pub fn load_prompt_suggestions(app_handle: AppHandle) -> Result<Vec<PromptCatego
 
     // Sort alphabetically so default.json comes first, followed by others
     entries_paths.sort_by(|a, b| {
-        let a_is_default = a.file_stem().map_or(false, |s| s == "default");
-        let b_is_default = b.file_stem().map_or(false, |s| s == "default");
+        let a_is_default = a.file_stem().is_some_and(|s| s == "default");
+        let b_is_default = b.file_stem().is_some_and(|s| s == "default");
         match (a_is_default, b_is_default) {
             (true, false) => std::cmp::Ordering::Less,
             (false, true) => std::cmp::Ordering::Greater,
@@ -441,7 +441,7 @@ pub fn load_prompt_suggestions(app_handle: AppHandle) -> Result<Vec<PromptCatego
     Ok(categories)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_prompt_suggestions_folder(app_handle: AppHandle) -> Result<(), String> {
     let dir = suggestions_dir(&app_handle)?;
     crate::show_in_folder(dir.to_string_lossy().to_string())

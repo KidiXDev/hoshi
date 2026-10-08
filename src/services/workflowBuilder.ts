@@ -3,6 +3,7 @@ import {
   hasDynamicPrompt,
   resolveDynamicPromptWithSeed
 } from '../utils/dynamicPrompt';
+import { randomSeed } from '../utils/seed';
 import {
   appendFaceDetailerStage,
   type WorkflowNodeRef
@@ -23,7 +24,7 @@ function variationInputs(state: WorkflowState) {
 export function prepareWorkflowForQueue(state: WorkflowState): WorkflowState {
   const queuedState = structuredClone(state);
   if (queuedState.sampler.randomizeSeed || queuedState.sampler.seed < 0) {
-    queuedState.sampler.seed = Math.floor(Math.random() * 10_000_000_000);
+    queuedState.sampler.seed = randomSeed();
   }
   resolveDynamicPrompts(queuedState);
   return queuedState;

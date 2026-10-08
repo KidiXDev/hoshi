@@ -1,9 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { defineStore } from 'pinia';
-import { computed, onUnmounted, ref } from 'vue';
+import { computed, ref } from 'vue';
+import { toast } from 'vue-sonner';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import { ComfyApi } from '../services/comfyApi';
+import { openComfyOutputFolder } from '../services/imageGallery';
 import type {
   LauncherConfig,
   LogEntry,
@@ -49,11 +51,11 @@ export const useLauncherStore = defineStore('launcher', () => {
   const processStatus = ref<ProcessStatus>('stopped');
   const logs = ref<LogEntry[]>([]);
   const isTerminalOpen = ref(false);
-  const isSettingsOpen = ref(false);
   const errorMessage = ref('');
   const hasComfyDirectory = computed(
     () => cleanPath(config.value.workingDir).length > 0
   );
+  const launchArgs = computed(() => parseLauncherArgs(config.value.args));
   const localSetupMessage = computed(() => {
     if (!hasComfyDirectory.value)
       return 'Choose your ComfyUI folder in Settings to use local images, model discovery, and downloads.';
@@ -217,7 +219,9 @@ export const useLauncherStore = defineStore('launcher', () => {
   async function startServer() {
     if (localSetupMessage.value) {
       errorMessage.value = localSetupMessage.value;
-      isSettingsOpen.value = true;
+      toast.error('ComfyUI cannot start yet', {
+        description: localSetupMessage.value
+      });
       return;
     }
     if (
@@ -233,18 +237,17 @@ export const useLauncherStore = defineStore('launcher', () => {
     addLog('system', `Starting ComfyUI from ${config.value.workingDir}...`);
 
     try {
-      const argsArray = parseLauncherArgs(config.value.args);
-
       await invoke('start_comfyui', {
         workingDir: config.value.workingDir,
         pythonPath: config.value.pythonPath,
-        args: argsArray
+        args: launchArgs.value
       });
       processStatus.value = 'running';
     } catch (err) {
       processStatus.value = 'error';
       errorMessage.value = String(err);
       addLog('stderr', `Failed to start ComfyUI: ${err}`);
+      toast.error('Failed to start ComfyUI', { description: String(err) });
     }
   }
 
@@ -287,19 +290,24 @@ export const useLauncherStore = defineStore('launcher', () => {
     }
   }
 
-  onUnmounted(() => {
-    if (unlistenLog) unlistenLog();
-    if (unlistenStatus) unlistenStatus();
-  });
+  async function openOutputFolder() {
+    try {
+      await openComfyOutputFolder(config.value.workingDir, launchArgs.value);
+    } catch (error) {
+      toast.error('Could not open the output folder', {
+        description: String(error)
+      });
+    }
+  }
 
   return {
     config,
     processStatus,
     logs,
     isTerminalOpen,
-    isSettingsOpen,
     errorMessage,
     hasComfyDirectory,
+    launchArgs,
     localSetupMessage,
     loadConfig,
     saveConfig,
@@ -312,6 +320,7 @@ export const useLauncherStore = defineStore('launcher', () => {
     startServer,
     stopServer,
     restartServer,
-    injectBridge
+    injectBridge,
+    openOutputFolder
   };
 });

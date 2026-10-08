@@ -12,13 +12,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import ImageDropOverlay from './ImageDropOverlay.vue';
 import ImageDropzone from './ImageDropzone.vue';
+import { useImageDropZone } from '@/composables/useImageDropZone';
 import { formatFileSize } from '@/utils/formatters';
 import type { ImageBatchItem } from '@/types/imageBatch';
+import { useTemplateRef } from 'vue';
 
 defineProps<{
   items: ImageBatchItem[];
   selectedId: string | null;
-  dragging: boolean;
   fill?: boolean;
   checkered?: boolean;
 }>();
@@ -27,26 +28,21 @@ const emit = defineEmits<{
   selectFiles: [];
   retry: [item: ImageBatchItem];
   remove: [item: ImageBatchItem];
-  drop: [event: DragEvent];
-  dragging: [value: boolean];
+  files: [files: File[]];
 }>();
-function handleDragLeave(event: DragEvent) {
-  const target = event.currentTarget as HTMLElement;
-  if (!event.relatedTarget || !target.contains(event.relatedTarget as Node))
-    emit('dragging', false);
-}
+const dragging = useImageDropZone(
+  useTemplateRef<HTMLElement>('queue'),
+  (files) => emit('files', files)
+);
 </script>
 <template>
   <section
+    ref="queue"
     class="border-border bg-card relative flex flex-col gap-3 rounded-xl border p-4 shadow-2xs transition-colors"
     :class="[
       dragging ? 'border-primary ring-primary/40 bg-primary/5 ring-1' : '',
       fill ? 'min-h-0 flex-1' : 'shrink-0'
     ]"
-    @dragenter.prevent="emit('dragging', true)"
-    @dragover.prevent="emit('dragging', true)"
-    @dragleave="handleDragLeave"
-    @drop.prevent="emit('drop', $event)"
   >
     <div class="flex shrink-0 items-center justify-between">
       <div class="flex items-center gap-2">

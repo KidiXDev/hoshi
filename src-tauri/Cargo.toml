@@ -29,7 +29,12 @@ sha2 = "0.10"
 serde_yaml = "0.9"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = ["Win32_Graphics_Dwm"] }
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_Security",
+  "Win32_Security_Cryptography",
+] }
 
 # Hot codec/hash crates are unusably slow unoptimized (SHA-256 ~65 MiB/s vs
 # ~1.7 GiB/s), which made `tauri dev` model hashing and thumbnailing crawl.

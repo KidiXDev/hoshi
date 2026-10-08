@@ -29,6 +29,13 @@ export interface ComfyHistoryEntry {
   };
 }
 
+type ComfyQueueItem = [number, string, ...unknown[]];
+
+export interface ComfyQueueResponse {
+  queue_running: ComfyQueueItem[];
+  queue_pending: ComfyQueueItem[];
+}
+
 export interface ComfyObjectInfoNode {
   input: {
     required: Record<string, [string | string[], Record<string, unknown>?]>;

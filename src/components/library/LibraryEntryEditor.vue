@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, useTemplateRef } from 'vue';
+import { useImageDropZone } from '@/composables/useImageDropZone';
+import { blobToDataUrl } from '@/utils/imageFiles';
 import {
   Image as ImageIcon,
   Layers,
@@ -239,27 +241,20 @@ async function pickThumbnail() {
     console.warn('Thumbnail pick failed:', err);
   }
 }
-function handleThumbnailDrop(event: DragEvent) {
-  const file = event.dataTransfer?.files?.[0];
-  if (!file || !file.type.startsWith('image/')) return;
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const dataUrl = e.target?.result as string;
-    if (!dataUrl) return;
+const isDraggingThumbnail = useImageDropZone(
+  useTemplateRef<HTMLElement>('thumbnailDropZone'),
+  async (files) => {
+    if (!files[0]) return;
     const tempId = editorId.value || `tmp-${Date.now()}`;
-    try {
-      const thumbId = await LibraryService.saveThumbnailFromDataUrl(
-        tempId,
-        dataUrl
-      );
-      editorThumbnailId.value = thumbId;
-      editorThumbnailPreview.value = LibraryService.getThumbnailUrl(thumbId);
-    } catch (err) {
-      console.warn('Thumbnail drag-drop failed:', err);
-    }
-  };
-  reader.readAsDataURL(file);
-}
+    const thumbId = await LibraryService.saveThumbnailFromDataUrl(
+      tempId,
+      await blobToDataUrl(files[0])
+    );
+    editorThumbnailId.value = thumbId;
+    editorThumbnailPreview.value = LibraryService.getThumbnailUrl(thumbId);
+  },
+  (err) => console.warn('Thumbnail drag-drop failed:', err)
+);
 function requestDeleteFromEditor() {
   if (!editorId.value) return;
   const current = libraryStore
@@ -583,10 +578,10 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
           <div class="flex flex-col gap-2 md:col-span-1">
             <Label class="text-foreground text-xs font-bold">Thumbnail</Label>
             <div
+              ref="thumbnailDropZone"
               class="border-border hover:border-primary/50 bg-muted/20 relative flex aspect-3/4 w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed transition-colors"
+              :class="isDraggingThumbnail && 'border-primary bg-primary/10'"
               @click="pickThumbnail"
-              @dragover.prevent
-              @drop.prevent="handleThumbnailDrop"
             >
               <img
                 v-if="editorThumbnailPreview"

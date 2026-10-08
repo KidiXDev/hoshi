@@ -6,18 +6,14 @@ import ImageComparisonModes from '@/components/common/ImageComparisonModes.vue';
 import StudioLayout from '@/components/layout/StudioLayout.vue';
 import ImageBatchQueue from '@/components/common/ImageBatchQueue.vue';
 import ImageComparison from '@/components/common/ImageComparison.vue';
+import { useBatchRunner } from '@/composables/useBatchRunner';
 import { useImageBatch } from '@/composables/useImageBatch';
-import { getComfyOutputDir } from '@/utils/pathTools';
-import type { ImageBatchItem, ImageComparisonMode } from '@/types/imageBatch';
-import {
-  computed,
-  onActivated,
-  onDeactivated,
-  onMounted,
-  onUnmounted,
-  ref,
-  watch
-} from 'vue';
+import { useImageDropZone } from '@/composables/useImageDropZone';
+import { usePersistedState } from '@/composables/usePersistedState';
+import { saveImage } from '@/composables/useSaveImage';
+import type { ImageComparisonMode } from '@/types/imageBatch';
+import { toRefs } from '@vueuse/core';
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue';
 import {
   AlertCircle,
   Check,
@@ -25,13 +21,13 @@ import {
   Download,
   Eraser,
   Folder,
+  Layers,
   Loader2,
   Maximize2,
   RefreshCw,
   Sparkles,
   WandSparkles
 } from '@lucide/vue';
-import { invoke } from '@tauri-apps/api/core';
 import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import ImageDropOverlay from '@/components/common/ImageDropOverlay.vue';
 import ImageDropzone from '@/components/common/ImageDropzone.vue';
@@ -40,7 +36,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import StatusDot from '@/components/layout/StatusDot.vue';
-import { useImageTransferStore } from '@/stores/imageTransferStore';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Progress } from '@/components/ui/progress';
 import { BRAND_NAME } from '@/lib/brand';
@@ -58,10 +53,9 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import { ComfyApi } from '../services/comfyApi';
-import { loadAppData, saveAppData } from '../services/appStorage';
 import { useComfyStore } from '../stores/comfyStore';
 import { useLauncherStore } from '../stores/launcherStore';
-import type { ComfyHistoryEntry, ComfyObjectInfoNode } from '../types/comfy';
+import type { ComfyObjectInfoNode } from '../types/comfy';
 
 const { copySuccess, copyImageToClipboard } = useImageClipboard();
 
@@ -93,12 +87,17 @@ const modeDetails: Record<RemoveMode, { title: string; description: string }> =
     }
   };
 
+function clamp(value: unknown, min: number, max: number, fallback: number) {
+  return typeof value === 'number'
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
+}
+
+const batch = useImageBatch();
 const {
   fileInput,
   items,
   selectedItemId,
-  isDragging,
-  isDraggingQueue,
   activeItem,
   readyItems,
   processingItems,
@@ -106,22 +105,75 @@ const {
   overallProgress,
   addFiles,
   handleFileInput,
-  handleDrop,
-  handleDragEnterViewport,
-  handleDragLeaveViewport,
   removeItem,
   clearItems
-} = useImageBatch();
+} = batch;
+const isDragging = useImageDropZone(
+  useTemplateRef<HTMLElement>('viewport'),
+  addFiles
+);
 const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
 
 const workspaceElement = ref<HTMLElement>();
-const isSubmitting = ref(false);
 const isLoadingNodes = ref(false);
 
-// Engine & Parameters Configuration
-const mode = ref<RemoveMode>('RMBG');
-const selectedModel = ref('');
+const { state: preferences, ready: preferencesReady } =
+  usePersistedState<RemoveBackgroundPreferences>(
+    'remove_background_preferences',
+    () => ({
+      mode: 'RMBG',
+      model: '',
+      sensitivity: 1,
+      processResolution: 1024,
+      maskBlur: 0,
+      maskOffset: 0,
+      invertOutput: false,
+      refineForeground: false,
+      background: 'Alpha',
+      backgroundColor: '#222222'
+    }),
+    (saved, defaults) => ({
+      mode: saved.mode === 'BiRefNetRMBG' ? 'BiRefNetRMBG' : defaults.mode,
+      model: typeof saved.model === 'string' ? saved.model : defaults.model,
+      sensitivity: clamp(saved.sensitivity, 0, 1, defaults.sensitivity),
+      processResolution: clamp(
+        saved.processResolution,
+        256,
+        2048,
+        defaults.processResolution
+      ),
+      maskBlur: clamp(saved.maskBlur, 0, 64, defaults.maskBlur),
+      maskOffset: clamp(saved.maskOffset, -64, 64, defaults.maskOffset),
+      invertOutput:
+        typeof saved.invertOutput === 'boolean'
+          ? saved.invertOutput
+          : defaults.invertOutput,
+      refineForeground:
+        typeof saved.refineForeground === 'boolean'
+          ? saved.refineForeground
+          : defaults.refineForeground,
+      background: saved.background === 'Color' ? 'Color' : defaults.background,
+      backgroundColor:
+        typeof saved.backgroundColor === 'string' &&
+        /^#[\da-f]{6}$/iu.test(saved.backgroundColor)
+          ? saved.backgroundColor
+          : defaults.backgroundColor
+    })
+  );
+const {
+  mode,
+  model: selectedModel,
+  sensitivity,
+  processResolution,
+  maskBlur,
+  maskOffset,
+  invertOutput,
+  refineForeground,
+  background,
+  backgroundColor
+} = toRefs(preferences);
+
 const modelOptions = ref<Record<RemoveMode, string[]>>({
   RMBG: [],
   BiRefNetRMBG: []
@@ -130,85 +182,9 @@ const nodeAvailable = ref<Record<RemoveMode, boolean>>({
   RMBG: false,
   BiRefNetRMBG: false
 });
-const sensitivity = ref(1);
-const processResolution = ref(1024);
-const maskBlur = ref(0);
-const maskOffset = ref(0);
-const invertOutput = ref(false);
-const refineForeground = ref(false);
-const background = ref<'Alpha' | 'Color'>('Alpha');
-const backgroundColor = ref('#222222');
 
-// Viewport / Inspector Controls
 const viewMode = ref<ImageComparisonMode>('split');
 const isLightboxOpen = ref(false);
-
-let disposed = false;
-let preferencesLoaded = false;
-let savePreferencesTimer: ReturnType<typeof setTimeout> | undefined;
-
-async function loadPreferences() {
-  const saved = await loadAppData<Partial<RemoveBackgroundPreferences>>(
-    'remove_background_preferences'
-  );
-  if (saved?.mode === 'RMBG' || saved?.mode === 'BiRefNetRMBG') {
-    mode.value = saved.mode;
-  }
-  if (typeof saved?.model === 'string') selectedModel.value = saved.model;
-  if (typeof saved?.sensitivity === 'number') {
-    sensitivity.value = Math.min(1, Math.max(0, saved.sensitivity));
-  }
-  if (typeof saved?.processResolution === 'number') {
-    processResolution.value = Math.min(
-      2048,
-      Math.max(256, saved.processResolution)
-    );
-  }
-  if (typeof saved?.maskBlur === 'number') {
-    maskBlur.value = Math.min(64, Math.max(0, saved.maskBlur));
-  }
-  if (typeof saved?.maskOffset === 'number') {
-    maskOffset.value = Math.min(64, Math.max(-64, saved.maskOffset));
-  }
-  if (typeof saved?.invertOutput === 'boolean') {
-    invertOutput.value = saved.invertOutput;
-  }
-  if (typeof saved?.refineForeground === 'boolean') {
-    refineForeground.value = saved.refineForeground;
-  }
-  if (saved?.background === 'Alpha' || saved?.background === 'Color') {
-    background.value = saved.background;
-  }
-  if (
-    typeof saved?.backgroundColor === 'string' &&
-    /^#[\da-f]{6}$/iu.test(saved.backgroundColor)
-  ) {
-    backgroundColor.value = saved.backgroundColor;
-  }
-  preferencesLoaded = true;
-}
-
-function persistPreferences() {
-  if (!preferencesLoaded) return;
-  void saveAppData('remove_background_preferences', {
-    mode: mode.value,
-    model: selectedModel.value,
-    sensitivity: sensitivity.value,
-    processResolution: processResolution.value,
-    maskBlur: maskBlur.value,
-    maskOffset: maskOffset.value,
-    invertOutput: invertOutput.value,
-    refineForeground: refineForeground.value,
-    background: background.value,
-    backgroundColor: backgroundColor.value
-  } satisfies RemoveBackgroundPreferences);
-}
-
-function schedulePreferencesSave() {
-  if (!preferencesLoaded) return;
-  clearTimeout(savePreferencesTimer);
-  savePreferencesTimer = setTimeout(persistPreferences, 300);
-}
 
 function commitBackgroundColor(event: Event) {
   backgroundColor.value = (event.target as HTMLInputElement).value;
@@ -220,15 +196,6 @@ function previewBackgroundColor(event: Event) {
     (event.target as HTMLInputElement).value
   );
 }
-
-const canRun = computed(
-  () =>
-    comfyStore.isConnected &&
-    nodeAvailable.value[mode.value] &&
-    Boolean(selectedModel.value) &&
-    readyItems.value.length > 0 &&
-    !isSubmitting.value
-);
 
 function modelsFromNode(node: ComfyObjectInfoNode | null): string[] {
   const modelType = node?.input.required.model?.[0];
@@ -261,145 +228,64 @@ async function loadNodeInfo() {
   selectAvailableModel();
 }
 
-function retryItem(item: ImageBatchItem) {
-  item.status = 'ready';
-  item.error = undefined;
-  void queueSingleItem(item);
-}
-
-function buildWorkflow(uploadedName: string): Record<string, unknown> {
+function buildWorkflow(
+  uploadedName: string,
+  settings: RemoveBackgroundPreferences
+): Record<string, unknown> {
   const nodeInputs: Record<string, unknown> = {
     image: ['1', 0],
-    model: selectedModel.value,
-    sensitivity: sensitivity.value,
-    mask_blur: maskBlur.value,
-    mask_offset: maskOffset.value,
-    invert_output: invertOutput.value,
-    refine_foreground: refineForeground.value,
-    background: background.value,
-    background_color: backgroundColor.value
+    model: settings.model,
+    sensitivity: settings.sensitivity,
+    mask_blur: settings.maskBlur,
+    mask_offset: settings.maskOffset,
+    invert_output: settings.invertOutput,
+    refine_foreground: settings.refineForeground,
+    background: settings.background,
+    background_color: settings.backgroundColor
   };
-  if (mode.value === 'RMBG') nodeInputs.process_res = processResolution.value;
+  if (settings.mode === 'RMBG')
+    nodeInputs.process_res = settings.processResolution;
 
   return {
     '1': { inputs: { image: uploadedName }, class_type: 'LoadImage' },
-    '2': { inputs: nodeInputs, class_type: mode.value },
+    '2': { inputs: nodeInputs, class_type: settings.mode },
     '3': {
       inputs: {
         images: ['2', 0],
-        filename_prefix: `${BRAND_NAME}_${mode.value}`
+        filename_prefix: `${BRAND_NAME}_${settings.mode}`
       },
       class_type: 'SaveImage'
     }
   };
 }
 
-async function monitorResult(
-  item: ImageBatchItem,
-  promptId: string,
-  startTime: number
-) {
-  for (let attempt = 0; attempt < 600; attempt++) {
-    if (disposed) return;
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 500);
-    });
-    let entry: ComfyHistoryEntry | undefined;
-    try {
-      entry = (
-        await ComfyApi.fetchHistory(launcherStore.config.serverUrl, promptId)
-      )[promptId];
-    } catch {
-      continue;
-    }
-    const image = entry?.outputs['3']?.images?.[0];
-    if (image) {
-      item.savedFilename = image.filename;
-      item.subfolder = image.subfolder;
-      item.type = image.type;
-      item.resultUrl = ComfyApi.getViewImageUrl(
-        launcherStore.config.serverUrl,
-        image.filename,
-        image.subfolder,
-        image.type
-      );
-      item.status = 'done';
-      item.durationMs = Date.now() - startTime;
-      return;
-    }
-    if (entry?.status?.status_str === 'error') {
-      item.status = 'error';
-      item.error = 'Background removal failed in ComfyUI.';
-      return;
-    }
+const { isSubmitting, queueBatch, retryItem } = useBatchRunner(batch, {
+  target: 'remove-background',
+  uploadPrefix: 'koharu-rmbg',
+  outputNode: '3',
+  createBuilder: () => {
+    const settings = { ...preferences.value };
+    return (imageName) => buildWorkflow(imageName, settings);
   }
-  if (!disposed) {
-    item.status = 'error';
-    item.error = 'Timed out waiting for the background removal result.';
-  }
-}
+});
 
-async function queueSingleItem(item: ImageBatchItem) {
-  if (!comfyStore.isConnected || !selectedModel.value) return;
-  item.status = 'uploading';
-  item.error = undefined;
-  const startTime = Date.now();
-  try {
-    const extension = item.file.name.match(/\.[^.]+$/u)?.[0] || '.png';
-    const uploaded = await ComfyApi.uploadImage(
-      launcherStore.config.serverUrl,
-      item.file,
-      `koharu-rmbg-${item.id}${extension}`
-    );
-    const queued = await ComfyApi.queuePrompt(
-      launcherStore.config.serverUrl,
-      buildWorkflow(uploaded.name),
-      `koharu-rmbg-${crypto.randomUUID()}`
-    );
-    item.status = 'queued';
-    void monitorResult(item, queued.prompt_id, startTime);
-  } catch (error) {
-    item.status = 'error';
-    item.error = error instanceof Error ? error.message : String(error);
-  }
-}
+const canRun = computed(
+  () =>
+    comfyStore.isConnected &&
+    nodeAvailable.value[mode.value] &&
+    Boolean(selectedModel.value) &&
+    readyItems.value.length > 0 &&
+    !isSubmitting.value
+);
 
-async function queueBatch() {
-  if (!canRun.value) return;
-  isSubmitting.value = true;
-  for (const item of readyItems.value) {
-    await queueSingleItem(item);
-  }
-  isSubmitting.value = false;
-}
-
-async function openOutputFolder() {
-  const path = getComfyOutputDir(launcherStore.config.workingDir);
-  if (!path) return;
-  try {
-    await invoke('show_in_folder', { path });
-  } catch (error) {
-    console.error('Failed to open output folder:', error);
-  }
+function downloadResult() {
+  void saveImage(
+    activeItem.value?.resultUrl,
+    activeItem.value?.savedFilename || 'background_removed.png'
+  );
 }
 
 watch(mode, selectAvailableModel);
-
-watch(
-  [
-    mode,
-    selectedModel,
-    sensitivity,
-    processResolution,
-    maskBlur,
-    maskOffset,
-    invertOutput,
-    refineForeground,
-    background,
-    backgroundColor
-  ],
-  schedulePreferencesSave
-);
 
 watch(
   () => comfyStore.isConnected,
@@ -408,39 +294,9 @@ watch(
   }
 );
 
-const transferStore = useImageTransferStore();
-
-function checkPendingTransfers() {
-  const pending = transferStore.consumeRmbg();
-  if (pending.length > 0) {
-    const files = pending
-      .map((p) => p.file)
-      .filter((f): f is File => Boolean(f));
-    if (files.length > 0) {
-      addFiles(files);
-    }
-  }
-}
-
 onMounted(async () => {
-  await loadPreferences();
+  await preferencesReady;
   await loadNodeInfo();
-  checkPendingTransfers();
-});
-
-onActivated(() => {
-  checkPendingTransfers();
-});
-
-onDeactivated(() => {
-  clearTimeout(savePreferencesTimer);
-  persistPreferences();
-});
-
-onUnmounted(() => {
-  disposed = true;
-  clearTimeout(savePreferencesTimer);
-  persistPreferences();
 });
 </script>
 
@@ -477,7 +333,7 @@ onUnmounted(() => {
           size="sm"
           class="text-muted-foreground hover:text-foreground h-7 gap-1.5 px-2 text-xs"
           title="Open ComfyUI Output Directory"
-          @click="openOutputFolder"
+          @click="launcherStore.openOutputFolder()"
         >
           <Folder class="h-3.5 w-3.5" />
           <span>Outputs</span>
@@ -680,13 +536,11 @@ onUnmounted(() => {
             checkered
             :items="items"
             :selected-id="selectedItemId"
-            :dragging="isDraggingQueue"
             @select="selectedItemId = $event"
             @select-files="fileInput?.click()"
             @retry="retryItem"
             @remove="removeItem"
-            @drop="handleDrop"
-            @dragging="isDraggingQueue = $event"
+            @files="addFiles"
           />
           <input
             ref="fileInput"
@@ -749,17 +603,14 @@ onUnmounted(() => {
 
               <Tooltip v-if="activeItem.resultUrl">
                 <TooltipTrigger as-child>
-                  <a
-                    :href="activeItem.resultUrl"
-                    :download="
-                      activeItem.savedFilename || 'background_removed.png'
-                    "
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="text-muted-foreground hover:text-foreground hover:bg-secondary inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors"
+                  <Button
+                    variant="ghost"
+                    size="iconSm"
+                    class="h-7 w-7"
+                    @click="downloadResult"
                   >
                     <Download class="h-3.5 w-3.5" />
-                  </a>
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>Download Transparent PNG</TooltipContent>
               </Tooltip>
@@ -782,6 +633,7 @@ onUnmounted(() => {
         </div>
 
         <div
+          ref="viewport"
           class="relative flex h-full min-h-0 w-full flex-1 items-center justify-center overflow-hidden p-3"
           :class="!activeItem ? 'bg-card/20' : ''"
           :style="
@@ -800,10 +652,6 @@ onUnmounted(() => {
                 }
               : {}
           "
-          @dragenter="handleDragEnterViewport"
-          @dragover.prevent="isDragging = true"
-          @dragleave="handleDragLeaveViewport"
-          @drop.prevent="handleDrop"
         >
           <ImageDropOverlay v-if="isDragging && activeItem" />
 
@@ -924,17 +772,16 @@ onUnmounted(() => {
           <Check v-if="copySuccess" class="h-4 w-4 text-emerald-400" />
           <Copy v-else class="h-4 w-4" />
         </Button>
-        <a
+        <Button
           v-if="activeItem?.resultUrl"
-          :href="activeItem.resultUrl"
-          :download="activeItem.savedFilename || 'background_removed.png'"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex h-8 w-8 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+          size="iconSm"
+          variant="ghost"
+          class="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
           title="Download PNG"
+          @click="downloadResult"
         >
           <Download class="h-4 w-4" />
-        </a>
+        </Button>
       </template>
     </ImageLightboxModal>
   </div>

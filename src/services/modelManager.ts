@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { customSchemeUrl } from '../lib/customScheme';
 
 /** Mirrors `model_manager::CivitaiSummary` (Rust). */
 export interface CivitaiSummary {
@@ -187,10 +188,10 @@ export function modelPreviewUrl(
   model: Pick<LocalModel, 'id' | 'previewModifiedMs'>,
   thumbnail = true
 ): string {
-  const kind = thumbnail ? 'thumb' : 'full';
-  const base = navigator.userAgent.includes('Windows')
-    ? `http://koharu-model.localhost/${kind}/${model.id}`
-    : `koharu-model://localhost/${kind}/${model.id}`;
+  const base = customSchemeUrl(
+    'koharu-model',
+    `${thumbnail ? 'thumb' : 'full'}/${model.id}`
+  );
   return model.previewModifiedMs
     ? `${base}?v=${model.previewModifiedMs}`
     : base;

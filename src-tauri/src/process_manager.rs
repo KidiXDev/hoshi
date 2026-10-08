@@ -5,7 +5,9 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
+
+use crate::comfy_paths::{clean_path, comfy_root};
 
 const BRIDGE_NODE_INIT: &str = include_str!("../../comfyui-koharu-bridge/__init__.py");
 const BRIDGE_WORKSPACE_JS: &str = include_str!("../../comfyui-koharu-bridge/web/workspace.js");
@@ -35,8 +37,8 @@ fn emit_sys_log(app_handle: &AppHandle, message: String) {
     );
 }
 
-fn auto_inject_bridge_node(exec_work_dir: &Path, app_handle: &AppHandle) {
-    let custom_nodes_dir = exec_work_dir.join("custom_nodes");
+fn auto_inject_bridge_node(comfy_dir: &Path, app_handle: &AppHandle) {
+    let custom_nodes_dir = comfy_dir.join("custom_nodes");
     if !custom_nodes_dir.exists() {
         if let Err(err) = fs::create_dir_all(&custom_nodes_dir) {
             emit_sys_log(
@@ -108,26 +110,44 @@ fn auto_inject_bridge_node(exec_work_dir: &Path, app_handle: &AppHandle) {
 }
 
 pub fn inject_bridge(working_dir: &str, app_handle: &AppHandle) -> Result<String, String> {
-    let work_dir_clean = clean_path_str(working_dir);
-    let work_path = PathBuf::from(work_dir_clean);
-    if !work_path.exists() {
-        return Err(format!(
-            "Directory does not exist: '{}'",
-            work_path.display()
-        ));
-    }
-
-    let exec_work_dir = if work_path.join("main.py").is_file() {
-        work_path
-    } else if work_path.join("ComfyUI").join("main.py").is_file() {
-        work_path.join("ComfyUI")
-    } else {
-        work_path
-    };
-
-    auto_inject_bridge_node(&exec_work_dir, app_handle);
-    let target_bridge_dir = exec_work_dir.join("custom_nodes").join(BRIDGE_DIR_NAME);
+    let comfy_dir = comfy_root(working_dir)?;
+    auto_inject_bridge_node(&comfy_dir, app_handle);
+    let target_bridge_dir = comfy_dir.join("custom_nodes").join(BRIDGE_DIR_NAME);
     Ok(target_bridge_dir.to_string_lossy().to_string())
+}
+
+const CORS_FLAG: &str = "--enable-cors-header";
+
+fn app_origin(app_handle: &AppHandle) -> Option<String> {
+    let url = app_handle.get_webview_window("main")?.url().ok()?;
+    let host = url.host_str()?;
+    Some(match url.port() {
+        Some(port) => format!("{}://{host}:{port}", url.scheme()),
+        None => format!("{}://{host}", url.scheme()),
+    })
+}
+
+fn with_cors_origin(mut args: Vec<String>, origin: Option<&str>) -> Vec<String> {
+    let flag = match origin {
+        Some(origin) => format!("{CORS_FLAG}={origin}"),
+        None => CORS_FLAG.to_string(),
+    };
+    let position = args
+        .iter()
+        .position(|arg| arg == CORS_FLAG || arg.starts_with(&format!("{CORS_FLAG}=")));
+    match position {
+        None => args.push(flag),
+        Some(index)
+            if args[index] == CORS_FLAG
+                && args
+                    .get(index + 1)
+                    .is_none_or(|next| next.starts_with("--")) =>
+        {
+            args[index] = flag
+        }
+        Some(_) => {}
+    }
+    args
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -139,10 +159,6 @@ pub struct StatusPayload {
 #[derive(Clone)]
 pub struct ProcessManager {
     child: Arc<Mutex<Option<Child>>>,
-}
-
-fn clean_path_str(s: &str) -> &str {
-    s.trim().trim_matches('"').trim_matches('\'').trim()
 }
 
 fn wait_for_exit(
@@ -160,7 +176,7 @@ fn wait_for_exit(
 }
 
 fn resolve_python_executable(py_input: &str, comfy_dir: &Path) -> Result<PathBuf, String> {
-    let py_trimmed = clean_path_str(py_input);
+    let py_trimmed = clean_path(py_input);
     if py_trimmed.is_empty() {
         return Err(
             "Python path is not configured. Please select the Python folder or executable in Settings."
@@ -234,19 +250,10 @@ pub async fn discover_local_models(
     args: Vec<String>,
 ) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let work = PathBuf::from(clean_path_str(&working_dir));
-        if work.as_os_str().is_empty() {
-            return Err("Select a ComfyUI directory in Settings first.".to_string());
-        }
-        let root = if work.join("main.py").is_file() {
-            work.clone()
-        } else {
-            work.join("ComfyUI")
-        };
-        if !root.join("main.py").is_file() {
-            return Err("Select a valid ComfyUI directory in Settings.".to_string());
-        }
-        let root = root.canonicalize().map_err(|error| error.to_string())?;
+        let work = PathBuf::from(clean_path(&working_dir));
+        let root = comfy_root(&working_dir)?
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
         let mut command = Command::new(resolve_python_executable(&python_path, &work)?);
         command
             .current_dir(&work)
@@ -254,11 +261,7 @@ pub async fn discover_local_models(
             .arg(root)
             .arg(serde_json::to_string(&args).map_err(|error| error.to_string())?)
             .env("PYTHONIOENCODING", "utf-8");
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000);
-        }
+        hide_command_window(&mut command);
         let output = command.output().map_err(|error| error.to_string())?;
         if !output.status.success() {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
@@ -302,20 +305,28 @@ fn hide_command_window(command: &mut Command) {
 #[cfg(not(windows))]
 fn hide_command_window(_command: &mut Command) {}
 
+fn kill_process_tree(child: &mut Child) -> std::io::Result<()> {
+    if cfg!(windows) {
+        let mut taskkill = Command::new("taskkill");
+        taskkill
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        hide_command_window(&mut taskkill);
+        if taskkill.status().is_ok_and(|status| status.success()) {
+            return Ok(());
+        }
+    }
+    child.kill()
+}
+
 pub fn install_custom_node(
     repository_url: &str,
     working_dir: &str,
     python_path: &str,
 ) -> Result<String, String> {
     let repo_name = github_repo_name(repository_url)?;
-    let work_path = PathBuf::from(clean_path_str(working_dir));
-    let comfy_dir = if work_path.join("main.py").is_file() {
-        work_path
-    } else if work_path.join("ComfyUI").join("main.py").is_file() {
-        work_path.join("ComfyUI")
-    } else {
-        return Err("Select a valid ComfyUI directory in Settings first.".into());
-    };
+    let comfy_dir = comfy_root(working_dir)?;
     let custom_nodes_dir = comfy_dir.join("custom_nodes");
     fs::create_dir_all(&custom_nodes_dir).map_err(|e| e.to_string())?;
     let target_dir = custom_nodes_dir.join(repo_name);
@@ -410,22 +421,15 @@ impl ProcessManager {
     }
 
     pub fn is_running(&self) -> bool {
-        let mut child_guard = match self.child.lock() {
-            Ok(guard) => guard,
-            Err(_) => return false,
-        };
-
-        if let Some(child) = child_guard.as_mut() {
-            match child.try_wait() {
-                Ok(None) => true,
-                _ => {
-                    *child_guard = None;
-                    false
-                }
-            }
-        } else {
-            false
-        }
+        self.child
+            .lock()
+            .ok()
+            .and_then(|mut guard| {
+                guard
+                    .as_mut()
+                    .map(|child| matches!(child.try_wait(), Ok(None)))
+            })
+            .unwrap_or(false)
     }
 
     pub fn start(
@@ -439,58 +443,29 @@ impl ProcessManager {
             return Err("ComfyUI process is already running".to_string());
         }
 
-        let work_dir_clean = clean_path_str(&working_dir);
-        let work_path = PathBuf::from(work_dir_clean);
-        if !work_path.exists() {
-            return Err(format!(
-                "ComfyUI directory does not exist: '{}'. Please select a valid ComfyUI directory in Settings.",
-                work_path.display()
-            ));
-        }
-
-        let (exec_work_dir, main_py_path) = if work_path.join("main.py").is_file() {
-            // User selected directory directly containing main.py (e.g. ComfyUI)
-            (work_path.clone(), work_path.join("main.py"))
-        } else if work_path.join("ComfyUI").join("main.py").is_file() {
-            // User selected portable root folder containing ComfyUI/main.py
-            (work_path.clone(), work_path.join("ComfyUI").join("main.py"))
-        } else {
-            return Err(format!(
-                "Could not find 'main.py' in '{}' or '{}/ComfyUI'. Please ensure you selected the ComfyUI folder containing 'main.py'.",
-                work_path.display(),
-                work_path.display()
-            ));
-        };
+        let work_path = PathBuf::from(clean_path(&working_dir));
+        let comfy_dir = comfy_root(&working_dir)?;
+        let main_py_path = comfy_dir.join("main.py");
+        let exec_work_dir = work_path.clone();
 
         let resolved_python = resolve_python_executable(&python_path, &work_path)?;
 
-        auto_inject_bridge_node(&exec_work_dir, &app_handle);
+        auto_inject_bridge_node(&comfy_dir, &app_handle);
 
-        let has_main_py = args.iter().any(|a| a.ends_with("main.py"));
-        let mut final_args = Vec::new();
-
-        if !has_main_py {
-            final_args.push("-s".to_string());
-            final_args.push(main_py_path.to_string_lossy().to_string());
-            for arg in args {
-                if arg != "-s" {
-                    final_args.push(arg);
-                }
-            }
+        let launch_args = if args.iter().any(|a| a.ends_with("main.py")) {
+            args
         } else {
-            final_args = args;
-        }
+            ["-s".to_string(), main_py_path.to_string_lossy().to_string()]
+                .into_iter()
+                .chain(args.into_iter().filter(|arg| arg != "-s"))
+                .collect()
+        };
 
-        // Ensure --enable-cors-header is present to allow Tauri WebView requests from localhost/tauri://
-        if !final_args
-            .iter()
-            .any(|a| a == "--enable-cors-header" || a.starts_with("--enable-cors-header"))
-        {
-            final_args.push("--enable-cors-header".to_string());
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        final_args.retain(|a| a != "--windows-standalone-build");
+        let final_args: Vec<String> =
+            with_cors_origin(launch_args, app_origin(&app_handle).as_deref())
+                .into_iter()
+                .filter(|arg| cfg!(windows) || arg != "--windows-standalone-build")
+                .collect();
 
         let mut cmd = Command::new(&resolved_python);
         cmd.current_dir(&exec_work_dir);
@@ -499,13 +474,7 @@ impl ProcessManager {
         cmd.env("PYTHONIOENCODING", "utf-8");
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
-
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-        }
+        hide_command_window(&mut cmd);
 
         let mut child = cmd.spawn().map_err(|e| {
             format!(
@@ -518,11 +487,10 @@ impl ProcessManager {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        let child_arc = Arc::clone(&self.child);
-        {
-            let mut guard = child_arc.lock().unwrap();
-            *guard = Some(child);
-        }
+        *self
+            .child
+            .lock()
+            .map_err(|e| format!("Lock poisoned: {e}"))? = Some(child);
 
         if let Some(stdout) = stdout {
             spawn_stream_reader(stdout, app_handle.clone(), "stdout");
@@ -535,38 +503,27 @@ impl ProcessManager {
         let app_watcher = app_handle.clone();
         let child_watcher = Arc::clone(&self.child);
         thread::spawn(move || loop {
-            thread::sleep(std::time::Duration::from_millis(500));
-            let mut guard = child_watcher.lock().unwrap();
-            if let Some(child) = guard.as_mut() {
-                match child.try_wait() {
-                    Ok(Some(exit_status)) => {
-                        let code = exit_status.code();
-                        *guard = None;
-                        let _ = app_watcher.emit(
-                            "comfyui-status",
-                            StatusPayload {
-                                status: "stopped".to_string(),
-                                code,
-                            },
-                        );
-                        break;
-                    }
-                    Ok(None) => {}
-                    Err(_) => {
-                        *guard = None;
-                        let _ = app_watcher.emit(
-                            "comfyui-status",
-                            StatusPayload {
-                                status: "stopped".to_string(),
-                                code: None,
-                            },
-                        );
-                        break;
-                    }
-                }
-            } else {
+            thread::sleep(Duration::from_millis(500));
+            let Ok(mut guard) = child_watcher.lock() else {
                 break;
-            }
+            };
+            let Some(child) = guard.as_mut() else {
+                break;
+            };
+            let code = match child.try_wait() {
+                Ok(None) => continue,
+                Ok(Some(exit_status)) => exit_status.code(),
+                Err(_) => None,
+            };
+            *guard = None;
+            let _ = app_watcher.emit(
+                "comfyui-status",
+                StatusPayload {
+                    status: "stopped".to_string(),
+                    code,
+                },
+            );
+            break;
         });
 
         let _ = app_handle.emit(
@@ -610,7 +567,7 @@ impl ProcessManager {
                 );
             }
 
-            child.kill().map_err(|e| e.to_string())?;
+            kill_process_tree(&mut child).map_err(|e| e.to_string())?;
             let status = child.wait().map_err(|e| e.to_string())?;
             let _ = app_handle.emit(
                 "comfyui-status",
@@ -644,6 +601,40 @@ mod tests {
             .unwrap()
             .expect("child should exit before the timeout");
         assert!(status.success());
+    }
+
+    #[test]
+    fn restricts_bare_cors_flag_to_the_app_origin() {
+        let args = |values: &[&str]| values.iter().map(|v| v.to_string()).collect::<Vec<_>>();
+        let origin = Some("http://tauri.localhost");
+        assert_eq!(
+            with_cors_origin(args(&["--fast", "--enable-cors-header"]), origin),
+            args(&["--fast", "--enable-cors-header=http://tauri.localhost"])
+        );
+        assert_eq!(
+            with_cors_origin(args(&["--enable-cors-header", "--port", "8189"]), origin),
+            args(&[
+                "--enable-cors-header=http://tauri.localhost",
+                "--port",
+                "8189"
+            ])
+        );
+        assert_eq!(
+            with_cors_origin(args(&["--enable-cors-header", "*"]), origin),
+            args(&["--enable-cors-header", "*"])
+        );
+        assert_eq!(
+            with_cors_origin(args(&["--enable-cors-header=http://x"]), origin),
+            args(&["--enable-cors-header=http://x"])
+        );
+        assert_eq!(
+            with_cors_origin(args(&[]), origin),
+            args(&["--enable-cors-header=http://tauri.localhost"])
+        );
+        assert_eq!(
+            with_cors_origin(args(&[]), None),
+            args(&["--enable-cors-header"])
+        );
     }
 
     #[test]

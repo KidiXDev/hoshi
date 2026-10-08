@@ -26,7 +26,6 @@ export const useHistoryStore = defineStore('history', () => {
   const launcherStore = useLauncherStore();
   const items = ref<HistoryItem[]>([]);
   const isPanelOpen = ref(getInitialPanelOpen());
-  const isDrawerOpen = ref(false);
   const imageSession = Date.now();
 
   async function resolveLocalImages(historyItems = items.value) {
@@ -71,7 +70,7 @@ export const useHistoryStore = defineStore('history', () => {
       if (saved) {
         // Local URLs must be registered again before this process can serve them.
         for (const item of saved) {
-          if (item.imageUrl.includes('koharu-image')) item.imageUrl = '';
+          if (item.imageUrl?.includes('koharu-image')) item.imageUrl = '';
         }
         items.value = saved;
         await resolveLocalImages();
@@ -127,7 +126,6 @@ export const useHistoryStore = defineStore('history', () => {
   return {
     items,
     isPanelOpen,
-    isDrawerOpen,
     loadHistory,
     addHistory,
     removeHistory,

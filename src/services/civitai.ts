@@ -174,7 +174,7 @@ export function fetchCivitaiModels(options: {
   apiKey: string;
   nsfw?: boolean;
 }) {
-  return invoke<CivitaiModelsResponse>('models', options);
+  return invoke<CivitaiModelsResponse>('models', { search: options });
 }
 
 export function fetchCivitaiModelById(id: number | string, apiKey = '') {

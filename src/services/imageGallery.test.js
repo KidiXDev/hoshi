@@ -17,9 +17,10 @@ describe('dragOutputImage', () => {
     };
     const image = { localId: 'abc', path: 'x', filename: 'x.png' };
     dragOutputImage(event, image);
+    const url = `${localImageUrl('abc', false)}?filename=x.png`;
     expect(data.get(GALLERY_IMAGE_MIME)).toBe('abc');
-    expect(data.get('text/uri-list')).toBe(localImageUrl('abc', false));
-    expect(data.get('text/plain')).toBe(localImageUrl('abc', false));
+    expect(data.get('text/uri-list')).toBe(url);
+    expect(data.get('text/plain')).toBe(url);
     expect(event.dataTransfer.effectAllowed).toBe('copyLink');
   });
 

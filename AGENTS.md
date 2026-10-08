@@ -71,12 +71,14 @@ koharu/
 │   ├── App.vue  main.ts  main.css  version.ts
 ├── src-tauri/
 │   ├── src/
-│   │   ├── lib.rs                # Tauri setup, command registration, URI scheme handlers, app data storage
+│   │   ├── lib.rs                # Tauri setup, command registration, URI scheme handlers
 │   │   ├── main.rs
+│   │   ├── app_data.rs           # Key/value app data (DPAPI-encrypted on Windows, atomic writes)
+│   │   ├── comfy_paths.rs        # ComfyUI root / base / output directory resolution (single source)
 │   │   ├── process_manager.rs    # Spawn/stop ComfyUI, bridge injection, model discovery (local_model_discovery.py)
 │   │   ├── image_gallery.rs      # Output index + thumbnail cache
 │   │   ├── model_manager.rs      # Local model index, hashing, Civitai sync, previews
-│   │   ├── library_manager.rs  preset_manager.rs  prompt_suggestions.rs  download_manager.rs
+│   │   ├── library_manager.rs  prompt_suggestions.rs  download_manager.rs
 │   │   ├── civitai.rs  animadex.rs  danbooru_wiki.rs  network_cache.rs
 │   │   └── booru/                # Provider trait (mod.rs) + API engines danbooru/gelbooru/moebooru; sources/ has one file per site
 │   ├── Cargo.toml  tauri.conf.json  capabilities/default.json
@@ -89,9 +91,9 @@ koharu/
 
 ## 5. Key Architecture
 
-1. **Process manager (`src-tauri/src/process_manager.rs`)** — spawns ComfyUI with the configured Python, resolves relative paths against the ComfyUI directory, forces `PYTHONUNBUFFERED=1` / `PYTHONIOENCODING=utf-8` and `--enable-cors-header`, streams `comfyui-log` / `comfyui-status` events, and writes the bridge custom node into `custom_nodes/comfyui-koharu-bridge/` before every launch (removing the pre-rebrand `comfyui-comfygui-bridge/` folder if present).
+1. **Process manager (`src-tauri/src/process_manager.rs`)** — spawns ComfyUI with the configured Python, resolves relative paths against the ComfyUI directory, forces `PYTHONUNBUFFERED=1` / `PYTHONIOENCODING=utf-8` and `--enable-cors-header=<app origin>` (a bare flag is narrowed to the webview origin; an explicit value is kept), streams `comfyui-log` / `comfyui-status` events, and writes the bridge custom node into `custom_nodes/comfyui-koharu-bridge/` before every launch (removing the pre-rebrand `comfyui-comfygui-bridge/` folder if present).
 
-2. **Bridge custom node (`comfyui-koharu-bridge/`)** — `__init__.py` and `web/workspace.js` are embedded with `include_str!`; editing them changes what gets injected. Endpoints: `GET /koharu/models`, `GET /koharu/system`, `GET /koharu/health`, `POST /koharu/refresh`, `POST /koharu/shutdown`, `GET /koharu/model_preview`. `workspace.js` registers the `Koharu.Workspace` extension and bridges `postMessage` (channel `koharu-workspace`, query param `koharuSession`) to `src/composables/useComfyUiWorkspace.ts`.
+2. **Bridge custom node (`comfyui-koharu-bridge/`)** — `__init__.py` and `web/workspace.js` are embedded with `include_str!`; editing them changes what gets injected. Endpoints: `GET /koharu/models`, `GET /koharu/system`, `GET /koharu/health`, `POST /koharu/refresh`, `POST /koharu/shutdown`, `GET /koharu/model_preview`, plus an origin-guard middleware that rejects cross-site requests. `workspace.js` registers the `Koharu.Workspace` extension and bridges `postMessage` (channel `koharu-workspace`, query param `koharuSession`) to `src/composables/useComfyUiWorkspace.ts`.
 
 3. **Frontend ↔ Rust** — every `#[tauri::command]` must be listed in `generate_handler![...]` in `lib.rs`. Components never call `invoke` directly; each Rust module has a client in `src/services/`. Persistent key/value data goes through `src/services/appStorage.ts`. Custom URI schemes `koharu-image`, `koharu-model`, `koharu-library`, `booru-image`, `danbooru-image` serve local/cached media to the webview.
 
@@ -99,9 +101,11 @@ koharu/
 
 5. **Frameless window** — `decorations: false`; `AppTitlebar.vue` provides drag region, breadcrumb, server toggle, and window controls under `capabilities/default.json` permissions.
 
-6. **Gallery** — `image_gallery.rs` persists an output index and thumbnails in the app cache; the viewer restores the cached index first, then rescans in the background.
+6. **Gallery** — `image_gallery.rs` persists an output index and thumbnails in `.cache/gallery` (stable SHA-based ids; orphaned thumbnails are pruned after each scan); the viewer restores the cached index first, then rescans in the background.
 
-7. **Library & presets** — `library_manager.rs` stores prompts, LoRA presets and characters as JSON with JPEG thumbnails; LoRA presets only replace the LoRA stack.
+7. **Library & presets** — `library_manager.rs` stores prompts, LoRA presets and characters as JSON with JPEG thumbnails; LoRA presets only replace the LoRA stack. Legacy `lora_presets` app data is migrated into the Library on startup.
+
+8. **Drag & drop** — `dragDropEnabled: false`, so the webview handles drops; `main.ts` cancels stray file/link drops (they would otherwise navigate the app away). Every drop zone uses `useImageDropZone`, which accepts files and `text/uri-list` (gallery/history drags).
 
 ---
 

@@ -11,6 +11,22 @@ import { isNativeBrowserShortcut } from './utils/browserShortcuts';
 
 const app = createApp(App);
 
+function blockStrayDrop(event: DragEvent) {
+  const types = event.dataTransfer?.types ?? [];
+  if (
+    event.defaultPrevented ||
+    !(types.includes('Files') || types.includes('text/uri-list')) ||
+    (event.target as Element | null)?.closest?.(
+      'input, textarea, [contenteditable]'
+    )
+  )
+    return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+}
+window.addEventListener('dragover', blockStrayDrop);
+window.addEventListener('drop', blockStrayDrop);
+
 if (import.meta.env.PROD) {
   document.addEventListener('contextmenu', (event) => event.preventDefault());
   window.addEventListener(

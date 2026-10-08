@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { useImageDropZone } from '@/composables/useImageDropZone';
+import { imageExtension, isImageFile } from '@/utils/imageFiles';
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue';
 import {
   AlertCircle,
   Check,
@@ -49,7 +51,6 @@ const TAGGER_MODELS = [
   'pixai-tagger-v0.9-timm',
   'OppaiOracle-V1.1-timm'
 ];
-const IMAGE_FILE_NAME = /\.(?:avif|bmp|gif|jpe?g|png|webp)$/iu;
 
 const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
@@ -122,10 +123,7 @@ function triggerFilePicker() {
 }
 
 async function uploadImage(file?: File) {
-  if (
-    !file ||
-    (!file.type.startsWith('image/') && !IMAGE_FILE_NAME.test(file.name))
-  ) {
+  if (!file || !isImageFile(file)) {
     errorMessage.value = 'Please drop an image file.';
     return;
   }
@@ -133,11 +131,10 @@ async function uploadImage(file?: File) {
   errorMessage.value = '';
   output.value = '';
   try {
-    const extension = file.name.match(/\.[^.]+$/u)?.[0] || '.png';
     const uploaded = await ComfyApi.uploadImage(
       launcherStore.config.serverUrl,
       file,
-      `koharu-tagger-${crypto.randomUUID()}${extension}`
+      `koharu-tagger-${crypto.randomUUID()}${imageExtension(file)}`
     );
     imageName.value = uploaded.name;
   } catch (error) {
@@ -147,42 +144,13 @@ async function uploadImage(file?: File) {
   }
 }
 
-function handleDragOver(event: DragEvent) {
-  event.preventDefault();
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-}
-
-async function handleDrop(event: DragEvent) {
-  const transfer = event.dataTransfer;
-  const file =
-    transfer?.files[0] ??
-    Array.from(transfer?.items ?? [])
-      .find((item) => item.kind === 'file')
-      ?.getAsFile();
-
-  if (file) {
-    await uploadImage(file);
-    return;
-  }
-
-  const droppedUrl = transfer
-    ?.getData('text/uri-list')
-    .split(/\r?\n/u)
-    .find((url) => url && !url.startsWith('#'));
-  if (!droppedUrl) return;
-
-  try {
-    const response = await fetch(droppedUrl);
-    if (!response.ok)
-      throw new Error(`Could not read dropped image (${response.status}).`);
-    const image = await response.blob();
-    const filename =
-      droppedUrl.split('/').pop()?.split('?')[0] || 'dropped-image.png';
-    await uploadImage(new File([image], filename, { type: image.type }));
-  } catch (error) {
+const isDragging = useImageDropZone(
+  useTemplateRef<HTMLElement>('dropZone'),
+  (files) => uploadImage(files[0]),
+  (error) => {
     errorMessage.value = error instanceof Error ? error.message : String(error);
   }
-}
+);
 
 function clearImage() {
   imageName.value = '';
@@ -278,15 +246,11 @@ async function copyTags() {
       <AccordionContent class="px-1 pt-2">
         <div class="flex flex-col gap-3">
           <!-- Image Upload Area & Dropzone -->
-          <div
-            class="flex flex-col gap-2"
-            @dragover="handleDragOver"
-            @drop.prevent="handleDrop"
-          >
+          <div ref="dropZone" class="flex flex-col gap-2">
             <input
               ref="fileInputRef"
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/*"
               class="sr-only"
               @change="
                 uploadImage(($event.target as HTMLInputElement).files?.[0])
@@ -297,6 +261,10 @@ async function copyTags() {
             <div
               v-if="imageUrl"
               class="border-border bg-muted/20 relative flex min-h-48 flex-col items-center justify-center overflow-hidden rounded-xl border p-2"
+              :class="
+                isDragging &&
+                'border-primary bg-primary/10 ring-primary/30 ring-2'
+              "
             >
               <img
                 :src="imageUrl"
@@ -345,6 +313,10 @@ async function copyTags() {
             <div
               v-else
               class="border-border hover:border-primary/60 hover:bg-muted/30 bg-muted/10 relative flex h-96 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-6 text-center transition-all"
+              :class="
+                isDragging &&
+                'border-primary bg-primary/10 ring-primary/30 ring-2'
+              "
               @click="triggerFilePicker"
             >
               <div

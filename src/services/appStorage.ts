@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-type AppDataName =
+export type AppDataName =
   | 'ai_config'
   | 'booru_prompt_format_options'
   | 'booru_gallery_state'
