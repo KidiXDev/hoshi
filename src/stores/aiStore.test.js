@@ -87,6 +87,29 @@ mock.module('ai', () => ({
           input: {}
         };
         yield { type: 'tool-result', toolCallId: 'inspect', output: {} };
+        yield {
+          type: 'tool-call',
+          toolName: 'search_animadex',
+          toolCallId: 'failed-search',
+          input: { query: 'raiden' }
+        };
+        yield {
+          type: 'tool-error',
+          toolCallId: 'failed-search',
+          error: new Error('offline')
+        };
+        assert.equal(
+          store.activeMessages
+            .at(-1)
+            .toolInvocations.find((t) => t.id === 'failed-search').state,
+          'rejected'
+        );
+        yield {
+          type: 'tool-call',
+          toolName: 'search_character_library',
+          toolCallId: 'unfinished-search',
+          input: { query: 'raiden' }
+        };
         yield { type: 'reasoning-delta', text: 'Again' };
         assert.equal(store.activeMessages.at(-1).parts[0].isComplete, true);
         assert.equal(
@@ -195,6 +218,12 @@ try {
     assert.equal(store.activeMessages.at(-1).content, 'Hello world');
     assert.equal(store.isGenerating, false);
     assert.equal(store.activeMessages.at(-1).parts.at(-1).isComplete, true);
+    assert.equal(
+      store.activeMessages
+        .at(-1)
+        .toolInvocations.find((t) => t.id === 'unfinished-search').state,
+      'rejected'
+    );
     if (!emptySession)
       assert.equal(
         JSON.stringify(requestMessages).includes('inspect_current_prompt'),

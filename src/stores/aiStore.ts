@@ -875,6 +875,12 @@ export const useAiStore = defineStore('ai', () => {
               : partTool.invocation.state;
           }
           assistantMsg.currentStep = 'tool_completed';
+        } else if (part.type === 'tool-error') {
+          const failed = assistantMsg.toolInvocations?.find(
+            (t) => t.id === part.toolCallId
+          );
+          if (failed) failed.state = 'rejected';
+          assistantMsg.currentStep = 'tool_completed';
         }
       }
     } catch (err: unknown) {
@@ -897,6 +903,13 @@ export const useAiStore = defineStore('ai', () => {
     } finally {
       for (const part of assistantMsg.parts ?? []) {
         if (part.type === 'reasoning') part.isComplete = true;
+      }
+      for (const invocation of assistantMsg.toolInvocations ?? []) {
+        if (
+          READ_ONLY_TOOLS.includes(invocation.name) &&
+          invocation.result === undefined
+        )
+          invocation.state = 'rejected';
       }
       assistantMsg.currentStep = 'done';
       isGenerating.value = false;
