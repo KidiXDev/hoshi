@@ -24,7 +24,7 @@
 
 ## Overview
 
-**Hoshi** (codename _Koharu_) is a desktop frontend for ComfyUI aimed at creators who want to generate images with the **[Anima](https://huggingface.co/circlestone-labs/Anima)** model family without building or maintaining node graphs. It launches and supervises your local ComfyUI, builds the workflow graph for you on every run, and wraps generation, post-processing, model management and reference browsing in one studio-style window.
+**Hoshi** is a desktop frontend for ComfyUI aimed at creators who want to generate images with the **[Anima](https://huggingface.co/circlestone-labs/Anima)** model family without building or maintaining node graphs. It launches and supervises your local ComfyUI, builds the workflow graph for you on every run, and wraps generation, post-processing, model management and reference browsing in one studio-style window.
 
 Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its normal HTTP/WebSocket API plus a small bridge custom node that Hoshi installs automatically.
 
@@ -112,34 +112,6 @@ On first run, open **Settings → ComfyUI** and point Hoshi at your ComfyUI fold
 - [Bun](https://bun.sh)
 - [Rust & Cargo](https://www.rust-lang.org/tools/install) (stable)
 - [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS
-
-### Setup
-
-```bash
-git clone https://github.com/KidiXDev/hoshi.git
-cd hoshi
-bun install
-```
-
-### Commands
-
-```bash
-bun run tauri dev      # full desktop app
-bun run dev            # vite only (Tauri invoke calls fail in a plain browser)
-bun run lint           # oxlint
-bun run typecheck      # vue-tsc --noEmit
-bun test               # bun:test suites under src/
-bun run format         # prettier
-cargo check --manifest-path src-tauri/Cargo.toml
-bun run tauri build    # production bundle
-```
-
-Pushing a `v*` tag runs the release workflow (Windows NSIS + portable zip).
-
-### Naming
-
-- **Hoshi** is the brand — anything a user reads. It lives in `src/lib/brand.ts` (frontend), `productName` in `src-tauri/tauri.conf.json` (Rust reads it through `package_info()`), `.github/workflows/release.yml` and this README.
-- **Koharu** is the codename — package/crate names, the Tauri identifier, URI schemes (`koharu-image://`, …), bridge endpoints (`/koharu/*`), the `comfyui-koharu-bridge` custom node and other machine-facing identifiers. These never change with the brand.
 
 ## License
 

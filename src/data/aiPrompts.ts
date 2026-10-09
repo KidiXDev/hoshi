@@ -112,18 +112,16 @@ You rewrite one Anima prompt, positive or negative, according to the requested o
 
 ${ANIMA_PROMPTING_GUIDE}`;
 
-function withUserPreferences(prompt: string, preferences?: string): string {
-  const trimmed = preferences?.trim();
-  return trimmed
-    ? `${prompt}\n\n## User Preferences\nThe user set these preferences in the app settings:\n${trimmed}`
-    : prompt;
+function withCustomInstruction(prompt: string, customInstruction?: string): string {
+  const trimmed = customInstruction?.trim();
+  return trimmed ? `${prompt}\n\n${trimmed}` : prompt;
 }
 
-export const buildAssistantSystemPrompt = (preferences?: string) =>
-  withUserPreferences(DEFAULT_ASSISTANT_SYSTEM_PROMPT, preferences);
+export const buildAssistantSystemPrompt = (customInstruction?: string) =>
+  withCustomInstruction(DEFAULT_ASSISTANT_SYSTEM_PROMPT, customInstruction);
 
-export const buildEnhancerSystemPrompt = (preferences?: string) =>
-  withUserPreferences(PROMPT_ENHANCER_SYSTEM_PROMPT, preferences);
+export const buildEnhancerSystemPrompt = (customInstruction?: string) =>
+  withCustomInstruction(PROMPT_ENHANCER_SYSTEM_PROMPT, customInstruction);
 
 export const CHAT_TITLE_SYSTEM_PROMPT = `You name chat sessions for an AI image-prompting assistant.
 Given the user's first message, write a short title that captures its intent.

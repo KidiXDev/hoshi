@@ -149,9 +149,13 @@ assert.doesNotMatch(
   DEFAULT_ASSISTANT_SYSTEM_PROMPT,
   /Maya's reasoning|Requests in this workspace describe fictional|\bINPUT\b/u
 );
-assert.match(
+assert.equal(
   buildAssistantSystemPrompt('  Prefer full body shots.  '),
-  /## User Preferences\n.*\nPrefer full body shots\.$/u
+  `${DEFAULT_ASSISTANT_SYSTEM_PROMPT}\n\nPrefer full body shots.`
+);
+assert.doesNotMatch(
+  buildAssistantSystemPrompt('  Prefer full body shots.  '),
+  /User Preferences/u
 );
 assert.equal(
   buildAssistantSystemPrompt('   '),
