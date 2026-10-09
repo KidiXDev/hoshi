@@ -2,8 +2,8 @@ import { isStepCount, streamText, tool } from 'ai';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 import { z } from 'zod';
+import { buildAssistantSystemPrompt } from '../data/aiPrompts';
 import {
-  buildSystemPrompt,
   DEFAULT_AI_CONFIG,
   fetchAvailableModels,
   generateChatTitle,
@@ -483,7 +483,9 @@ export const useAiStore = defineStore('ai', () => {
 
     try {
       const model = getOpenRouterModel(config.value, selectedModelInfo.value);
-      const systemPrompt = buildSystemPrompt(config.value.customSystemPrompt);
+      const systemPrompt = buildAssistantSystemPrompt(
+        config.value.customSystemPrompt
+      );
 
       const getOrCreateInvocation = (
         id: string,

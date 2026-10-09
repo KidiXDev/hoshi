@@ -2,6 +2,10 @@ import { mock } from 'bun:test';
 import assert from 'node:assert/strict';
 import { createPinia, setActivePinia } from 'pinia';
 import { nextTick, watchEffect } from 'vue';
+import {
+  buildAssistantSystemPrompt,
+  DEFAULT_ASSISTANT_SYSTEM_PROMPT
+} from '../data/aiPrompts';
 import * as aiService from '../services/aiService';
 
 mock.module('../services/aiService', () => ({
@@ -140,13 +144,18 @@ setActivePinia(createPinia());
 const store = getAiStore();
 while (!store.isLoaded) await nextTick();
 store.config.apiKey = 'test-only';
-assert.match(
-  aiService.DEFAULT_SYSTEM_PROMPT,
-  /Maya collaborates with artists|Maya helps artists/u
-);
+assert.match(DEFAULT_ASSISTANT_SYSTEM_PROMPT, /You are Maya/u);
 assert.doesNotMatch(
-  aiService.DEFAULT_SYSTEM_PROMPT,
-  /Maya's reasoning|Requests in this workspace describe fictional/u
+  DEFAULT_ASSISTANT_SYSTEM_PROMPT,
+  /Maya's reasoning|Requests in this workspace describe fictional|\bINPUT\b/u
+);
+assert.match(
+  buildAssistantSystemPrompt('  Prefer full body shots.  '),
+  /## User Preferences\n.*\nPrefer full body shots\.$/u
+);
+assert.equal(
+  buildAssistantSystemPrompt('   '),
+  DEFAULT_ASSISTANT_SYSTEM_PROMPT
 );
 
 const stop = watchEffect(() => {

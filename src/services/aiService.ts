@@ -20,14 +20,7 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   allowProviderFallbacks: true
 };
 
-import {
-  CHAT_TITLE_SYSTEM_PROMPT,
-  DEFAULT_ASSISTANT_SYSTEM_PROMPT,
-  buildAssistantSystemPrompt
-} from '../data/aiPrompts';
-
-export const DEFAULT_SYSTEM_PROMPT = DEFAULT_ASSISTANT_SYSTEM_PROMPT;
-export const buildSystemPrompt = buildAssistantSystemPrompt;
+import { CHAT_TITLE_SYSTEM_PROMPT } from '../data/aiPrompts';
 
 export const POPULAR_MODELS: OpenRouterModel[] = [
   {
