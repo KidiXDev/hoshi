@@ -3,7 +3,7 @@ import { BRAND_NAME } from '@/lib/brand';
 export const ANIMA_MODEL_SPECIFICATION = `### Anima Prompting Guide
 
 INPUT: Natural language description or existing tag/prompt string.
-OUTPUT: Tag-based, natural-language, or hybrid prompt. Anima handles all three well; do not force natural language into tags.
+OUTPUT: Tag-based, natural-language, or hybrid prompt. Anima handles all three well so you can mix them up without worry.
 
 **Syntax & Style Rules:**
 - All tags lowercase (standard capitalization permitted for natural language, character names, or series titles).
@@ -46,6 +46,7 @@ OUTPUT: Tag-based, natural-language, or hybrid prompt. Anima handles all three w
 - Hybrid prompts may mix tags and sentences freely; do not force them into tag-only field order.
 
 **Tag Vocabulary (Gelbooru/Danbooru standard):**
+- Rating: safe, sensitive, nsfw, explicit
 - Clothing: shirt, skirt, dress, swimsuit, thighhighs, boots, etc.
 - Features: blue eyes, red hair, long hair, smile, open mouth, etc.
 - Quality: masterpiece, best quality, good quality, worst quality, low quality
