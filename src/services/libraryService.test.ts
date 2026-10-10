@@ -1,6 +1,12 @@
-import assert from 'node:assert/strict';
+import { describe, expect, it } from 'vitest';
 import { isBooruMediaUrl } from './libraryService';
 
-assert.equal(isBooruMediaUrl('http://booru-image.localhost/?url=x'), true);
-assert.equal(isBooruMediaUrl('booru-image://localhost/?url=x'), true);
-assert.equal(isBooruMediaUrl('https://cdn.example.com/image.png'), false);
+describe('isBooruMediaUrl', () => {
+  it.each([
+    ['http://booru-image.localhost/?url=x', true],
+    ['booru-image://localhost/?url=x', true],
+    ['https://cdn.example.com/image.png', false]
+  ])('%s → %s', (url, expected) => {
+    expect(isBooruMediaUrl(url)).toBe(expected);
+  });
+});

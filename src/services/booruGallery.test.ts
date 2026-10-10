@@ -1,38 +1,56 @@
-import assert from 'node:assert/strict';
+import { describe, expect, it } from 'vitest';
 import {
   buildBooruPrompt,
   formatBooruWarnings,
   normalizeBooruRatings
 } from './booruGallery';
 
-assert.deepEqual(normalizeBooruRatings([], ['general']), []);
-assert.deepEqual(normalizeBooruRatings(['safe'], []), ['safe']);
-assert.deepEqual(
-  normalizeBooruRatings(['general', 'explicit'], ['explicit', 'unknown']),
-  ['explicit']
-);
-assert.deepEqual(normalizeBooruRatings(['general', 'explicit'], ['unknown']), [
-  'general'
-]);
+describe('normalizeBooruRatings', () => {
+  it('returns the available ratings when the source has fewer than two', () => {
+    expect(normalizeBooruRatings([], ['general'])).toEqual([]);
+    expect(normalizeBooruRatings(['safe'], [])).toEqual(['safe']);
+  });
 
-assert.equal(
-  buildBooruPrompt(
-    {
-      copyright: ['series_name'],
-      character: ['alice_(wonderland)'],
-      general: ['blue_hair', 'series_name']
-    },
-    {
-      categories: ['copyright', 'character', 'general'],
-      replaceUnderscores: true,
-      escapeParentheses: true
-    },
-    ['blue_hair']
-  ),
-  'series name, alice \\(wonderland\\)'
-);
+  it('keeps saved ratings the source supports', () => {
+    expect(
+      normalizeBooruRatings(['general', 'explicit'], ['explicit', 'unknown'])
+    ).toEqual(['explicit']);
+  });
 
-assert.deepEqual(
-  formatBooruWarnings(['local-blacklist-filtered', 'restricted-media-hidden']),
-  ['Some restricted posts are unavailable for this account.']
-);
+  it('falls back to general when no saved rating is supported', () => {
+    expect(normalizeBooruRatings(['general', 'explicit'], ['unknown'])).toEqual(
+      ['general']
+    );
+  });
+});
+
+describe('buildBooruPrompt', () => {
+  it('orders categories, formats tags and skips duplicates and excluded tags', () => {
+    expect(
+      buildBooruPrompt(
+        {
+          copyright: ['series_name'],
+          character: ['alice_(wonderland)'],
+          general: ['blue_hair', 'series_name']
+        },
+        {
+          categories: ['copyright', 'character', 'general'],
+          replaceUnderscores: true,
+          escapeParentheses: true
+        },
+        ['blue_hair']
+      )
+    ).toBe('series name, alice \\(wonderland\\)');
+  });
+});
+
+describe('formatBooruWarnings', () => {
+  it('shows only user-facing warnings', () => {
+    expect(
+      formatBooruWarnings([
+        'local-blacklist-filtered',
+        'restricted-media-hidden'
+      ])
+    ).toEqual(['Some restricted posts are unavailable for this account.']);
+  });
+});

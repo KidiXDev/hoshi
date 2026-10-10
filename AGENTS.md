@@ -65,6 +65,7 @@ koharu/
 │   ├── router/index.ts
 │   ├── services/                 # Thin clients: comfyApi.ts, comfyWs.ts, workflowBuilder.ts, one *.ts per Rust module
 │   ├── stores/                   # Pinia stores (comfyStore, workflowStore, launcherStore, aiStore, …)
+│   ├── test/                     # Test-only helpers (factories.ts, deferred.ts); never imported by app code
 │   ├── types/                    # comfy.ts, workflow.ts, launcher.ts, library.ts, ai.ts, animadex.ts, imageBatch.ts
 │   ├── utils/                    # Pure helpers (promptTools, dynamicPrompt, logFormatter, …) with *.test.* beside them
 │   ├── views/                    # One file per route
@@ -84,9 +85,8 @@ koharu/
 │   │   ├── civitai.rs  animadex.rs  danbooru_wiki.rs  network_cache.rs
 │   │   └── booru/                # Provider trait (mod.rs) + API engines danbooru/gelbooru/moebooru; sources/ has one file per site
 │   ├── Cargo.toml  tauri.conf.json  capabilities/default.json
-├── tests/                        # Standalone *.check.* scripts (not picked up by `bun test`)
 ├── .github/workflows/release.yml # v* tag → Windows NSIS + portable zip
-└── package.json  vite.config.ts  tsconfig.json  components.json
+└── package.json  vite.config.ts  vitest.config.ts  tsconfig.json  components.json
 ```
 
 ---
@@ -119,7 +119,7 @@ koharu/
 4. **Validation** — `bun run lint` + `bun run typecheck`; never `bun run build` for routine checks.
 5. **Select** — always the shadcn-vue `Select` suite, items wrapped in `<SelectGroup class="max-h-40 overflow-y-auto">`; canonical Tailwind classes over arbitrary values.
 6. **Comments** — none, except short section markers and `ponytail:` notes for deliberate simplifications.
-7. **Tests** — `*.test.{ts,js}` next to the code, `bun:test` + `node:assert/strict`, `setActivePinia(createPinia())` for stores.
+7. **Tests** — Vitest; typed `*.test.ts` next to the code with explicit `vitest` imports, one behavior per `it`, typed `vi.mock(import(...))`, `setActivePinia(createPinia())` for stores, `happy-dom` + `@vue/test-utils` for DOM/components. Shared helpers live in `src/test/`.
 
 ---
 
@@ -130,8 +130,9 @@ bun run dev                                      # vite only
 bun run tauri dev                                # desktop app
 bun run lint
 bun run typecheck
-bun test
-bun test src/services/workflowBuilder.test.ts
+bun run test                                     # vitest run (not `bun test`)
+bun run test src/services/workflowBuilder.test.ts
+bun run test:watch
 bun run format
 bun run format:check
 cargo check --manifest-path src-tauri/Cargo.toml

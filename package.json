@@ -11,7 +11,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "tauri": "tauri",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@ai-sdk/vue": "^4.0.84",
@@ -52,6 +54,8 @@
     "@types/dompurify": "^3.2.0",
     "@types/node": "^26.4.0",
     "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/test-utils": "^2.5.1",
+    "happy-dom": "^20.14.6",
     "oxlint": "^1.80.0",
     "prettier": "^3.9.6",
     "prettier-plugin-organize-imports": "^4.3.0",
@@ -61,6 +65,7 @@
     "unplugin-vue-components": "^32.1.0",
     "vite": "^6.0.3",
     "vite-plugin-vue-devtools": "^8.2.1",
+    "vitest": "^5.0.3",
     "vue-tsc": "^2.1.10"
   }
 }

@@ -219,7 +219,7 @@ export const NEGATIVE_ENHANCE_PRESETS: EnhancePreset[] = [
 
 function taggedSection(name: string, value?: string): string {
   const trimmed = value?.trim();
-  return trimmed ? `\n${trimmed}\n</${name}>` : '';
+  return trimmed ? `<${name}>\n${trimmed}\n</${name}>` : '';
 }
 
 export function buildEnhancerUserPrompt(

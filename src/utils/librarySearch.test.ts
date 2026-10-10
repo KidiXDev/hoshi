@@ -1,8 +1,8 @@
-import assert from 'node:assert/strict';
+import { describe, expect, it } from 'vitest';
 import type { CharacterLibraryItem, LibraryItem } from '../types/library';
 import { matchesQuery, searchCharacterEntries } from './librarySearch';
 
-const base = { category: 'characters', createdAt: 0, updatedAt: 0 };
+const base = { category: 'characters', createdAt: 0, updatedAt: 0 } as const;
 
 const miku: CharacterLibraryItem = {
   ...base,
@@ -27,35 +27,40 @@ const rin: CharacterLibraryItem = {
   }
 };
 
-// notes and tags are searchable
-assert.equal(matchesQuery(miku, 'dark themes'), true);
-assert.equal(matchesQuery(rin, 'hair bow'), true);
-assert.equal(matchesQuery(rin, 'dark'), false);
-
-// every term must match
-assert.equal(matchesQuery(miku, 'vocaloid twintails'), true);
-assert.equal(matchesQuery(miku, 'vocaloid blonde'), false);
-
-// name/trigger matches rank above tag/notes matches
-const ranked = searchCharacterEntries([miku, rin], 'cheerful');
-assert.deepEqual(
-  ranked.map((e) => e.id),
-  ['a', 'b']
-);
-const byTrigger = searchCharacterEntries([miku, rin], 'kagamine');
-assert.deepEqual(
-  byTrigger.map((e) => e.id),
-  ['b']
-);
-
-// non-character payloads still search safely
-const prompt: LibraryItem = {
+const sunset: LibraryItem = {
   ...base,
   id: 'c',
   category: 'prompts',
   name: 'Sunset',
   data: { type: 'both', positive: 'golden hour, beach', negative: 'lowres' }
 };
-assert.equal(matchesQuery(prompt, 'beach'), true);
-assert.equal(matchesQuery(prompt, 'lowres'), true);
-assert.equal(matchesQuery({ ...prompt, data: null }, 'sunset'), true);
+
+describe('matchesQuery', () => {
+  it('searches character notes and tags', () => {
+    expect(matchesQuery(miku, 'dark themes')).toBe(true);
+    expect(matchesQuery(rin, 'hair bow')).toBe(true);
+    expect(matchesQuery(rin, 'dark')).toBe(false);
+  });
+
+  it('requires every term to match', () => {
+    expect(matchesQuery(miku, 'vocaloid twintails')).toBe(true);
+    expect(matchesQuery(miku, 'vocaloid blonde')).toBe(false);
+  });
+
+  it('searches non-character payloads and tolerates missing data', () => {
+    expect(matchesQuery(sunset, 'beach')).toBe(true);
+    expect(matchesQuery(sunset, 'lowres')).toBe(true);
+    expect(matchesQuery({ ...sunset, data: null }, 'sunset')).toBe(true);
+  });
+});
+
+describe('searchCharacterEntries', () => {
+  it('ranks name and trigger matches above tag and notes matches', () => {
+    expect(
+      searchCharacterEntries([miku, rin], 'cheerful').map((entry) => entry.id)
+    ).toEqual(['a', 'b']);
+    expect(
+      searchCharacterEntries([miku, rin], 'kagamine').map((entry) => entry.id)
+    ).toEqual(['b']);
+  });
+});

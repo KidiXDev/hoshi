@@ -21,9 +21,9 @@ bun run dev                             # vite only — Tauri `invoke` calls wil
 bun run lint                            # oxlint (src/components/ui/** is ignored)
 bun run typecheck                       # vue-tsc --noEmit — preferred routine validation
 bun run format                          # prettier --write .
-bun test                                # all *.test.{ts,js} under src/ (bun:test + node:assert)
-bun test src/services/workflowBuilder.test.ts   # single file
-bun tests/confirm-dialog.check.ts       # tests/*.check.* are standalone scripts, not picked up by `bun test`
+bun run test                            # vitest run — every src/**/*.test.ts (NOT `bun test`, that is Bun's own runner)
+bun run test src/services/workflowBuilder.test.ts   # single file
+bun run test:watch                      # vitest watch mode
 cargo check --manifest-path src-tauri/Cargo.toml
 bun run tauri build                     # production bundle (slow; only when asked)
 ```
@@ -71,4 +71,11 @@ Vue frontend (src/)  ──Tauri invoke/events──▶  Rust backend (src-tauri
 
 ## Testing conventions
 
-Tests sit next to the code as `*.test.ts`/`*.test.js` and use `bun:test` (`mock.module` for Tauri/service mocks) with `node:assert/strict`. Pinia-backed tests call `setActivePinia(createPinia())`. `tests/*.check.*` are ad-hoc runnable scripts kept outside the `bun test` glob.
+Vitest (`vitest.config.ts`, Node environment by default). Tests are TypeScript, sit next to the code as `*.test.ts`, and import `describe`/`it`/`expect`/`vi` explicitly from `vitest` (no globals); they are type-checked by `bun run typecheck`.
+
+- One behavior per `it`; build fresh state per test (factories in `src/test/factories.ts`, `deferred()` in `src/test/deferred.ts`) instead of mutating shared fixtures.
+- Mock with `vi.mock(import('./module'), async (importOriginal) => ({ ...(await importOriginal()), fn: vi.fn() }))` so the factory is type-checked; share state with factories through `vi.hoisted`. Use a string path only for deliberate stand-ins that cannot match the real types (e.g. the `ai` SDK or `@openrouter/ai-sdk-provider`).
+- Tauri IPC: mock `invoke` from `@tauri-apps/api/core` the same way and assert on its calls.
+- Pinia: `setActivePinia(createPinia())` in `beforeEach`; prefer real stores with `vi.spyOn(store, 'action')` over mocking store modules.
+- DOM, composables with lifecycle hooks and components: add `/** @vitest-environment happy-dom */`, mount with `@vue/test-utils` (`enableAutoUnmount(afterEach)`), and await `nextTick`/`flushPromises`. Components using tooltips or portals need a `TooltipProvider` parent and an `#app-content` element, as `App.vue` provides.
+- Config already clears mock history, restores `vi.spyOn` spies and unstubs globals between tests.
