@@ -51,7 +51,6 @@ function onLoad() {
         loaded ? 'opacity-100' : 'opacity-0',
         imageClass
       ]"
-      loading="lazy"
       decoding="async"
       draggable="false"
       @load="onLoad"

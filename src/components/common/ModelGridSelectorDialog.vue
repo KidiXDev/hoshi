@@ -432,7 +432,6 @@ function getPreviewUrl(model: string, res = 300): string {
                   v-if="!failedImageSet.has(model)"
                   :src="getPreviewUrl(model, 300)"
                   :alt="model"
-                  loading="lazy"
                   decoding="async"
                   class="absolute inset-0 h-full w-full object-cover"
                   @error="handleImageError(model, $event)"

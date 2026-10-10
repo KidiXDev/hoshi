@@ -667,7 +667,7 @@ onUnmounted(deactivateView);
                 <div
                   role="button"
                   tabindex="0"
-                  class="group border-border/60 bg-muted/20 hover:border-primary/50 relative flex aspect-3/4 w-full cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-all duration-300 [content-visibility:auto] hover:shadow-xl hover:shadow-black/30"
+                  class="group border-border/60 bg-muted/20 hover:border-primary/50 relative flex aspect-3/4 w-full cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-all duration-300 hover:shadow-xl hover:shadow-black/30"
                   @click="openDetail(post)"
                   @keydown.enter="openDetail(post)"
                   @keydown.space.prevent="openDetail(post)"
@@ -683,7 +683,6 @@ onUnmounted(deactivateView);
                   <img
                     :src="mediaUrl(post)"
                     :alt="`${post.source} post ${post.postId}`"
-                    loading="lazy"
                     decoding="async"
                     class="h-full w-full object-cover transition-opacity duration-300"
                     :class="

@@ -773,7 +773,6 @@ onUnmounted(() => {
                       :src="previewUrl(currentImage(model)!.url, 450)"
                       :alt="`${model.name} preview`"
                       class="h-full w-full object-cover"
-                      loading="lazy"
                       decoding="async"
                       draggable="false"
                     />

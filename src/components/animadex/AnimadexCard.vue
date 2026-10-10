@@ -112,7 +112,7 @@ function handleSelect() {
   <ContextMenu>
     <ContextMenuTrigger as-child>
       <div
-        class="group border-border/70 bg-card/60 hover:bg-card/90 hover:border-primary/50 relative flex cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-colors duration-200 select-none [content-visibility:auto]"
+        class="group border-border/70 bg-card/60 hover:bg-card/90 hover:border-primary/50 relative flex cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-colors duration-200 select-none"
         @click="handleSelect"
       >
         <!-- Aspect ratio thumbnail container -->
@@ -128,7 +128,6 @@ function handleSelect() {
             v-if="item.thumb_url && !imageError"
             :src="item.thumb_url"
             :alt="item.name"
-            loading="lazy"
             class="h-full w-full object-cover object-center transition-opacity duration-300"
             :class="{ 'opacity-0': !imageLoaded, 'opacity-100': imageLoaded }"
             @load="imageLoaded = true"
