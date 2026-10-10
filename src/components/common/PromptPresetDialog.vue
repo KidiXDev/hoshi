@@ -4,7 +4,6 @@ import {
   ArrowUpRight,
   Bookmark,
   Check,
-  Clock,
   Copy,
   FileText,
   FolderOpen,
@@ -14,10 +13,10 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
-  Sparkles,
   Trash2,
   X
 } from '@lucide/vue';
+import LibraryEntryCard from '@/components/library/LibraryEntryCard.vue';
 import { Button } from '@/components/ui/button';
 import { useConfirmDialog } from '@/composables/useConfirmDialog';
 import {
@@ -33,14 +32,14 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { formatShortDate } from '@/utils/formatters';
+import { matchesQuery } from '@/utils/librarySearch';
 import { LibraryService } from '../../services/libraryService';
-import { useWorkflowStore } from '../../stores/workflowStore';
-import type {
-  LibraryItem,
-  LibraryListEntry,
-  PromptData
-} from '../../types/library';
+import { useLibraryStore } from '../../stores/libraryStore';
+import {
+  useWorkflowStore,
+  type PromptPresetTarget
+} from '../../stores/workflowStore';
+import type { LibraryListEntry, PromptData } from '../../types/library';
 
 const props = defineProps<{
   open: boolean;
@@ -51,12 +50,12 @@ const emit = defineEmits<{
 }>();
 
 const workflowStore = useWorkflowStore();
+const libraryStore = useLibraryStore();
 const { confirm } = useConfirmDialog();
 
 const activeTab = ref<'load' | 'save'>('load');
-const entries = ref<LibraryListEntry[]>([]);
-const failedThumbnails = ref<Set<string>>(new Set());
-const isLoading = ref(false);
+const entries = computed(() => libraryStore.getEntries('prompts'));
+const isLoading = computed(() => libraryStore.isLoading('prompts'));
 const searchQuery = ref('');
 const appendMode = ref(false);
 const copiedEntryId = ref<string | null>(null);
@@ -74,12 +73,8 @@ function resetToCurrentPrompt() {
   editNegativePrompt.value = workflowStore.negativePrompt;
 }
 
-async function fetchEntries() {
-  isLoading.value = true;
-  failedThumbnails.value.clear();
-  entries.value = await LibraryService.listItems('prompts');
-  isLoading.value = false;
-}
+const fetchEntries = () => libraryStore.fetchCategory('prompts');
+const promptData = (entry: LibraryListEntry) => entry.data as PromptData;
 
 watch(
   () => props.open,
@@ -101,70 +96,33 @@ onMounted(() => {
   }
 });
 
-const filteredEntries = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase();
-  return entries.value.filter((e) => {
-    if (q) {
-      const inName = e.name.toLowerCase().includes(q);
-      const inDesc = e.description?.toLowerCase().includes(q) ?? false;
-      return inName || inDesc;
-    }
-    return true;
-  });
-});
+const filteredEntries = computed(() =>
+  entries.value.filter((entry) => matchesQuery(entry, searchQuery.value))
+);
 
-async function applyPrompt(
-  entry: LibraryListEntry,
-  applyMode: 'both' | 'positive' | 'negative' = 'both'
-) {
-  const item = await LibraryService.getItem<PromptData>(entry.id, 'prompts');
-  const data = item.data;
-
-  if ((applyMode === 'both' || applyMode === 'positive') && data.positive) {
-    if (appendMode.value && workflowStore.positivePrompt.trim()) {
-      workflowStore.positivePrompt += `, ${data.positive}`;
-    } else {
-      workflowStore.positivePrompt = data.positive;
-    }
-  }
-
-  if ((applyMode === 'both' || applyMode === 'negative') && data.negative) {
-    if (appendMode.value && workflowStore.negativePrompt.trim()) {
-      workflowStore.negativePrompt += `, ${data.negative}`;
-    } else {
-      workflowStore.negativePrompt = data.negative;
-    }
-  }
-
+function applyPrompt(entry: LibraryListEntry, target: PromptPresetTarget) {
+  workflowStore.applyPromptPreset(promptData(entry), target, appendMode.value);
   emit('update:open', false);
 }
 
 async function handleSavePreset() {
   if (!saveName.value.trim()) return;
 
-  const data: PromptData = {
-    type: saveType.value,
-    positive:
-      saveType.value === 'negative' ? undefined : editPositivePrompt.value,
-    negative:
-      saveType.value === 'positive' ? undefined : editNegativePrompt.value
-  };
-
-  const payload: Omit<LibraryItem<PromptData>, 'thumbnailUrl'> = {
-    id: '',
+  await libraryStore.saveItem<PromptData>({
     category: 'prompts',
     name: saveName.value.trim(),
     description: saveDescription.value.trim() || undefined,
-    data,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  };
-
-  await LibraryService.saveItem(payload);
+    data: {
+      type: saveType.value,
+      positive:
+        saveType.value === 'negative' ? undefined : editPositivePrompt.value,
+      negative:
+        saveType.value === 'positive' ? undefined : editNegativePrompt.value
+    }
+  });
   saveSuccessMessage.value = `Saved "${saveName.value.trim()}" to Library!`;
   saveName.value = '';
   saveDescription.value = '';
-  await fetchEntries();
   setTimeout(() => {
     activeTab.value = 'load';
     saveSuccessMessage.value = '';
@@ -179,19 +137,16 @@ async function requestDelete(entry: LibraryListEntry) {
   if (!confirmed) return;
 
   try {
-    await LibraryService.deleteItem(entry.id, 'prompts');
-    await fetchEntries();
+    await libraryStore.deleteItem(entry.id, 'prompts');
   } catch (err) {
     console.error('Failed to delete prompt preset:', err);
   }
 }
 
 async function copyPromptText(entry: LibraryListEntry) {
-  const item = await LibraryService.getItem<PromptData>(entry.id, 'prompts');
-  const text = [item.data.positive, item.data.negative]
-    .filter(Boolean)
-    .join('\n\nNegative:\n');
-  void navigator.clipboard.writeText(text);
+  const { positive, negative } = promptData(entry);
+  const text = [positive, negative].filter(Boolean).join('\n\nNegative:\n');
+  await navigator.clipboard.writeText(text);
   copiedEntryId.value = entry.id;
   setTimeout(() => {
     if (copiedEntryId.value === entry.id) copiedEntryId.value = null;
@@ -307,7 +262,7 @@ async function copyPromptText(entry: LibraryListEntry) {
               />
               <Input
                 v-model="searchQuery"
-                placeholder="Search preset name or description..."
+                placeholder="Search name, description, prompt text..."
                 class="bg-background/80 focus:ring-primary/30 h-8 w-full pr-8 pl-8.5 text-xs"
               />
               <button
@@ -330,7 +285,7 @@ async function copyPromptText(entry: LibraryListEntry) {
                   type="checkbox"
                   class="text-primary accent-primary rounded"
                 />
-                <span class="text-xs font-medium">Append to prompt</span>
+                <span class="text-xs font-medium">Append missing tags</span>
               </Label>
             </div>
           </div>
@@ -361,130 +316,66 @@ async function copyPromptText(entry: LibraryListEntry) {
 
             <!-- Presets Grid / Cards -->
             <div v-else class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-              <div
+              <LibraryEntryCard
                 v-for="entry in filteredEntries"
                 :key="entry.id"
-                class="border-border bg-card hover:border-primary/50 relative flex min-h-36 flex-row overflow-hidden rounded-xl border transition-all hover:shadow-md"
+                :entry="entry"
               >
-                <!-- Left: Content & Actions -->
-                <div class="flex min-w-0 flex-1 flex-col justify-between p-3.5">
-                  <!-- Top: Badge + Date + Title + Desc -->
-                  <div>
-                    <div class="flex items-center justify-between gap-2">
-                      <span
-                        class="rounded-md border border-emerald-500/30 bg-emerald-500/15 px-1.5 py-0.5 font-mono text-xs font-bold text-emerald-400 uppercase"
-                      >
-                        Prompt
-                      </span>
-
-                      <div
-                        class="text-muted-foreground/70 flex items-center gap-1 font-mono text-xs"
-                      >
-                        <Clock class="h-2.5 w-2.5" />
-                        <span>{{ formatShortDate(entry.updatedAt) }}</span>
-                      </div>
-                    </div>
-
-                    <div class="mt-2">
-                      <h4
-                        class="text-foreground truncate text-sm leading-snug font-bold"
-                        :title="entry.name"
-                      >
-                        {{ entry.name }}
-                      </h4>
-                      <p
-                        v-if="entry.description"
-                        class="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed"
-                        :title="entry.description"
-                      >
-                        {{ entry.description }}
-                      </p>
-                    </div>
-                  </div>
-
-                  <!-- Bottom: Action Buttons -->
-                  <div
-                    class="border-border/60 mt-3 flex items-center justify-between gap-2 border-t pt-2.5"
+                <template #manage>
+                  <Button
+                    size="iconSm"
+                    variant="ghost"
+                    class="text-muted-foreground hover:text-foreground h-7 w-7"
+                    title="Copy Prompt Text"
+                    @click="copyPromptText(entry)"
                   >
-                    <!-- Left: Copy & Delete -->
-                    <div class="flex shrink-0 items-center gap-1">
-                      <Button
-                        size="iconSm"
-                        variant="ghost"
-                        class="text-muted-foreground hover:text-foreground h-7 w-7"
-                        title="Copy Prompt Text"
-                        @click="copyPromptText(entry)"
-                      >
-                        <Check
-                          v-if="copiedEntryId === entry.id"
-                          class="h-3.5 w-3.5 text-emerald-400"
-                        />
-                        <Copy v-else class="h-3.5 w-3.5" />
-                      </Button>
+                    <Check
+                      v-if="copiedEntryId === entry.id"
+                      class="h-3.5 w-3.5 text-emerald-400"
+                    />
+                    <Copy v-else class="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="iconSm"
+                    variant="ghost"
+                    class="text-muted-foreground hover:text-destructive h-7 w-7"
+                    title="Delete Preset"
+                    @click="requestDelete(entry)"
+                  >
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </Button>
+                </template>
 
-                      <Button
-                        size="iconSm"
-                        variant="ghost"
-                        class="text-muted-foreground hover:text-destructive h-7 w-7"
-                        title="Delete Preset"
-                        @click="requestDelete(entry)"
-                      >
-                        <Trash2 class="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-
-                    <!-- Right: Apply Buttons -->
-                    <div
-                      class="flex flex-wrap items-center justify-end gap-1.5"
+                <template #apply>
+                  <template v-if="promptData(entry).type === 'both'">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      class="h-7 px-2 text-xs"
+                      title="Apply positive only"
+                      @click="applyPrompt(entry, 'positive')"
                     >
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        class="h-7 px-2 text-xs"
-                        title="Apply positive only"
-                        @click="applyPrompt(entry, 'positive')"
-                      >
-                        + Pos
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        class="h-7 px-2 text-xs"
-                        title="Apply negative only"
-                        @click="applyPrompt(entry, 'negative')"
-                      >
-                        − Neg
-                      </Button>
-                      <Button
-                        size="sm"
-                        class="bg-primary text-primary-foreground hover:bg-primary/90 h-7 px-2.5 text-xs font-semibold"
-                        @click="applyPrompt(entry, 'both')"
-                      >
-                        Apply
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Right: Portrait Thumbnail -->
-                <div
-                  class="bg-muted/40 border-border/50 relative w-24 shrink-0 self-stretch overflow-hidden border-l sm:w-28"
-                >
-                  <img
-                    v-if="entry.thumbnailUrl && !failedThumbnails.has(entry.id)"
-                    :src="entry.thumbnailUrl"
-                    :alt="entry.name"
-                    class="h-full w-full object-cover object-center"
-                    @error="failedThumbnails.add(entry.id)"
-                  />
-                  <div
-                    v-else
-                    class="from-primary/5 to-primary/20 flex h-full w-full items-center justify-center bg-linear-to-br"
+                      + Pos
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      class="h-7 px-2 text-xs"
+                      title="Apply negative only"
+                      @click="applyPrompt(entry, 'negative')"
+                    >
+                      − Neg
+                    </Button>
+                  </template>
+                  <Button
+                    size="sm"
+                    class="bg-primary text-primary-foreground hover:bg-primary/90 h-7 px-2.5 text-xs font-semibold"
+                    @click="applyPrompt(entry, 'both')"
                   >
-                    <Sparkles class="text-primary/25 h-7 w-7" />
-                  </div>
-                </div>
-              </div>
+                    {{ appendMode ? 'Append' : 'Apply' }}
+                  </Button>
+                </template>
+              </LibraryEntryCard>
             </div>
           </ScrollArea>
         </TabsContent>

@@ -62,9 +62,15 @@ const resolutionPresets = [
   '1216 x 832 (19:13 Landscape)',
   '768 x 1344 (9:16 Mobile Portrait)',
   '1344 x 768 (16:9 Widescreen)',
-  '512 x 512 (Standard SD)',
-  'Custom'
+  '512 x 512 (Standard SD)'
 ];
+
+function presetDimensions(preset: string) {
+  const match = /^(\d+)\s*x\s*(\d+)/iu.exec(preset);
+  return match?.[1] && match[2]
+    ? { width: Number(match[1]), height: Number(match[2]) }
+    : null;
+}
 
 watch(
   () => workflowStore.resolution.preset,
@@ -76,15 +82,28 @@ watch(
       if (!workflowStore.resolution.height)
         workflowStore.resolution.height = 1024;
     } else {
-      const match = preset.match(/^(\d+)\s*x\s*(\d+)/iu);
-      if (match && match[1] && match[2]) {
-        workflowStore.resolution.width = Math.trunc(Number(match[1]));
-        workflowStore.resolution.height = Math.trunc(Number(match[2]));
+      const dimensions = presetDimensions(preset);
+      if (dimensions) {
+        workflowStore.resolution.width = dimensions.width;
+        workflowStore.resolution.height = dimensions.height;
         workflowStore.resolution.isCustom = false;
       }
     }
   },
   { immediate: true }
+);
+
+watch(
+  () => [workflowStore.resolution.width, workflowStore.resolution.height],
+  ([width, height]) => {
+    const dimensions = presetDimensions(workflowStore.resolution.preset);
+    if (
+      dimensions &&
+      (dimensions.width !== width || dimensions.height !== height)
+    ) {
+      workflowStore.resolution.preset = 'Custom';
+    }
+  }
 );
 
 function swapCustomDimensions() {
@@ -307,7 +326,9 @@ function setSeedValue(value: string | number) {
             class="w-full font-mono text-xs"
             :disabled="usesInputImage"
           >
-            <SelectValue placeholder="Select resolution..." />
+            <SelectValue placeholder="Select resolution...">
+              {{ workflowStore.resolution.preset }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectGroup class="max-h-40 overflow-y-auto">
@@ -326,14 +347,13 @@ function setSeedValue(value: string | number) {
     </div>
 
     <div
-      v-if="workflowStore.resolution.preset === 'Custom'"
       class="border-border bg-card/60 flex flex-col gap-2 rounded-lg border p-2.5"
     >
       <div class="flex items-center justify-between">
         <span
           class="text-muted-foreground text-xs font-bold tracking-wider uppercase"
         >
-          Custom Canvas Dimensions
+          Dimensions
         </span>
         <span class="text-primary font-mono text-xs font-semibold">
           {{ workflowStore.resolution.width || 1024 }} ×

@@ -3,15 +3,22 @@ import { ref, useTemplateRef } from 'vue';
 import { useImageDropZone } from '@/composables/useImageDropZone';
 import { blobToDataUrl } from '@/utils/imageFiles';
 import {
+  ChevronDown,
+  ChevronUp,
   Image as ImageIcon,
   Layers,
+  LayoutGrid,
   Loader2,
+  RotateCcw,
   Sparkles,
   Trash2,
   User,
   X
 } from '@lucide/vue';
+import EditableNumberBadge from '@/components/common/EditableNumberBadge.vue';
+import ModelGridSelectorDialog from '@/components/common/ModelGridSelectorDialog.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogCloseButton,
@@ -34,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { invoke } from '@tauri-apps/api/core';
 import { LibraryService } from '@/services/libraryService';
+import { useComfyStore } from '@/stores/comfyStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import type {
   LibraryListEntry,
@@ -55,6 +63,7 @@ const activeTab = toRef(props, 'category');
 const emit = defineEmits<{ delete: [entry: LibraryListEntry] }>();
 const libraryStore = useLibraryStore();
 const workflowStore = useWorkflowStore();
+const comfyStore = useComfyStore();
 const isEditorOpen = ref(false);
 const isEditorLoading = ref(false);
 const editorMode = ref<'create' | 'edit'>('create');
@@ -67,9 +76,7 @@ const editorCreatedAt = ref(0);
 const editorPromptType = ref<'both' | 'positive' | 'negative'>('both');
 const editorPositive = ref('');
 const editorNegative = ref('');
-const editorLoras = ref<
-  Array<{ name: string; strength: number; enabled: boolean }>
->([]);
+const editorLoras = ref<LoraData['loras']>([]);
 const editorCharSeries = ref('');
 const editorCharTrigger = ref('');
 const editorCharTags = ref('');
@@ -88,11 +95,7 @@ function resetEditor() {
   editorPromptType.value = 'both';
   editorPositive.value = '';
   editorNegative.value = '';
-  editorLoras.value = workflowStore.loras.map((l) => ({
-    name: l.name,
-    strength: l.strength,
-    enabled: l.enabled
-  }));
+  loadWorkflowLoras();
   editorCharSeries.value = '';
   editorCharTrigger.value = '';
   editorCharTags.value = '';
@@ -100,6 +103,33 @@ function resetEditor() {
   editorCharAnimadexSlug.value = '';
   editorCharNotes.value = '';
   editorSaveError.value = '';
+}
+function loadWorkflowLoras() {
+  editorLoras.value = workflowStore.loras.map(
+    ({ name, strength, enabled }) => ({
+      name,
+      strength,
+      enabled
+    })
+  );
+}
+function moveEditorLora(index: number, offset: -1 | 1) {
+  const [lora] = editorLoras.value.splice(index, 1);
+  if (lora) editorLoras.value.splice(index + offset, 0, lora);
+}
+const isLoraGridOpen = ref(false);
+const loraGridIndex = ref<number | null>(null);
+function openLoraGrid(index: number | null = null) {
+  loraGridIndex.value = index;
+  isLoraGridOpen.value = true;
+}
+function selectLora(name: string) {
+  const target =
+    loraGridIndex.value === null
+      ? undefined
+      : editorLoras.value[loraGridIndex.value];
+  if (target) target.name = name;
+  else editorLoras.value.push({ name, strength: 1, enabled: true });
 }
 function openCreateEditor() {
   resetEditor();
@@ -423,60 +453,114 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
             <!-- ── LORA FIELDS ── -->
             <template v-else-if="activeTab === 'loras'">
               <div class="flex flex-col gap-2">
-                <div class="flex items-center justify-between">
-                  <Label class="text-foreground text-xs font-bold"
-                    >LoRA Stack</Label
-                  >
-                  <span class="text-muted-foreground font-mono text-xs">
-                    {{ editorLoras.length }} LoRA{{
-                      editorLoras.length !== 1 ? 's' : ''
-                    }}
-                  </span>
+                <div class="flex items-center justify-between gap-2">
+                  <Label class="text-foreground text-xs font-bold">
+                    LoRA Stack
+                    <span class="text-muted-foreground font-mono font-normal">
+                      {{ editorLoras.filter((l) => l.enabled).length }} /
+                      {{ editorLoras.length }}
+                    </span>
+                  </Label>
+                  <div class="flex items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      class="h-7 gap-1.5 px-2.5 text-xs"
+                      title="Replace this stack with the generator's current LoRA stack"
+                      @click="loadWorkflowLoras"
+                    >
+                      <RotateCcw class="h-3 w-3" />
+                      Use workflow stack
+                    </Button>
+                    <Button
+                      size="sm"
+                      class="h-7 gap-1.5 px-2.5 text-xs"
+                      :disabled="!comfyStore.isConnected"
+                      title="Browse LoRAs in grid view"
+                      @click="openLoraGrid()"
+                    >
+                      <LayoutGrid class="h-3 w-3" />
+                      Add LoRA
+                    </Button>
+                  </div>
                 </div>
 
                 <div
                   v-if="editorLoras.length === 0"
                   class="border-border text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs"
                 >
-                  No LoRAs in stack. This entry will save an empty LoRA stack.
+                  No LoRAs in stack. Click "Add LoRA" to browse your models, or
+                  "Use workflow stack" to copy the generator's stack.
                 </div>
+                <p
+                  v-if="!comfyStore.isConnected"
+                  class="text-muted-foreground text-xs"
+                >
+                  Start ComfyUI to browse and add LoRAs.
+                </p>
 
                 <div
                   v-else
-                  class="border-border flex max-h-48 flex-col gap-1.5 overflow-y-auto rounded-lg border p-2"
+                  class="border-border flex max-h-64 flex-col gap-1.5 overflow-y-auto rounded-lg border p-2"
                 >
                   <div
                     v-for="(lora, i) in editorLoras"
                     :key="i"
-                    class="border-border bg-card/60 flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs"
+                    class="border-border bg-card/60 flex items-center gap-2 rounded-lg border py-1.5 pr-1.5 pl-2.5 text-xs transition-opacity"
+                    :class="{ 'opacity-60': !lora.enabled }"
                   >
-                    <span class="truncate font-mono">{{
-                      lora.name || '(No model)'
-                    }}</span>
-                    <div class="flex shrink-0 items-center gap-2">
-                      <span
-                        class="rounded px-1.5 py-0.5 font-mono text-xs font-bold"
-                        :class="
-                          lora.enabled
-                            ? 'bg-emerald-500/10 text-emerald-400'
-                            : 'bg-muted text-muted-foreground'
-                        "
+                    <Checkbox
+                      v-model="lora.enabled"
+                      :title="lora.enabled ? 'Disable' : 'Enable'"
+                    />
+                    <button
+                      type="button"
+                      class="hover:text-primary min-w-0 flex-1 cursor-pointer truncate text-left font-mono transition-colors disabled:cursor-default disabled:hover:text-current"
+                      :title="lora.name"
+                      :disabled="!comfyStore.isConnected"
+                      @click="openLoraGrid(i)"
+                    >
+                      {{ lora.name || '(No model)' }}
+                    </button>
+                    <EditableNumberBadge
+                      v-model="lora.strength"
+                      :step="0.05"
+                      :decimals="2"
+                      badge-class="text-primary min-w-11 text-right"
+                    />
+                    <div class="flex shrink-0 items-center">
+                      <Button
+                        size="iconSm"
+                        variant="ghost"
+                        class="text-muted-foreground hover:text-foreground"
+                        title="Move up"
+                        :disabled="i === 0"
+                        @click="moveEditorLora(i, -1)"
                       >
-                        {{ lora.enabled ? 'ON' : 'OFF' }}
-                      </span>
-                      <span
-                        class="border-border bg-muted text-primary rounded border px-1.5 py-0.5 font-mono text-xs font-bold"
+                        <ChevronUp class="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="iconSm"
+                        variant="ghost"
+                        class="text-muted-foreground hover:text-foreground"
+                        title="Move down"
+                        :disabled="i === editorLoras.length - 1"
+                        @click="moveEditorLora(i, 1)"
                       >
-                        {{ lora.strength }}x
-                      </span>
+                        <ChevronDown class="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="iconSm"
+                        variant="ghost"
+                        class="text-muted-foreground hover:text-destructive"
+                        title="Remove from stack"
+                        @click="editorLoras.splice(i, 1)"
+                      >
+                        <Trash2 class="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
                 </div>
-
-                <p class="text-muted-foreground text-xs">
-                  The LoRA stack above is pre-filled from your current workflow.
-                  Edit from the workflow panel before saving.
-                </p>
               </div>
             </template>
 
@@ -665,4 +749,15 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
       </DialogFooter>
     </DialogContent>
   </Dialog>
+
+  <ModelGridSelectorDialog
+    v-model:open="isLoraGridOpen"
+    :title="loraGridIndex === null ? 'Add LoRA to Stack' : 'Change LoRA'"
+    category="loras"
+    :models="comfyStore.availableLoras"
+    :selected-model="
+      loraGridIndex === null ? '' : (editorLoras[loraGridIndex]?.name ?? '')
+    "
+    @select="selectLora"
+  />
 </template>

@@ -52,4 +52,54 @@ describe('useWorkflowStore LoRA actions', () => {
 
     expect(workflow.loras).toEqual([]);
   });
+
+  it('replace or append a LoRA preset on the stack they are given', async () => {
+    const workflow = await initializedWorkflow();
+    const stack: LoraItem[] = [];
+    workflow.addLora('kept.safetensors', 1, stack);
+    const preset = {
+      loras: [{ name: 'style.safetensors', strength: 0.6, enabled: false }]
+    };
+
+    workflow.applyLoraPreset(preset, true, stack);
+    expect(names(stack)).toEqual(['kept.safetensors', 'style.safetensors']);
+    expect(stack[1]).toMatchObject({ strength: 0.6, enabled: false });
+
+    workflow.applyLoraPreset(preset, false, stack);
+    expect(names(stack)).toEqual(['style.safetensors']);
+    expect(workflow.loras).toEqual([]);
+  });
+});
+
+describe('useWorkflowStore prompt presets', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('replace only the prompt they target', async () => {
+    const workflow = await initializedWorkflow();
+    workflow.positivePrompt = 'old positive';
+    workflow.negativePrompt = 'old negative';
+
+    workflow.applyPromptPreset(
+      { type: 'both', positive: 'new positive', negative: 'new negative' },
+      'positive'
+    );
+
+    expect(workflow.positivePrompt).toBe('new positive');
+    expect(workflow.negativePrompt).toBe('old negative');
+  });
+
+  it('append only the tags the prompt is missing', async () => {
+    const workflow = await initializedWorkflow();
+    workflow.positivePrompt = 'masterpiece, 1girl';
+
+    workflow.applyPromptPreset(
+      { type: 'positive', positive: 'masterpiece, best quality' },
+      'both',
+      true
+    );
+
+    expect(workflow.positivePrompt).toBe('masterpiece, 1girl, best quality');
+  });
 });

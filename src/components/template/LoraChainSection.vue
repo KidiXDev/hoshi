@@ -76,7 +76,7 @@ function handleLoraSelect(model: string) {
   if (editingLoraIndex.value !== null && loras.value[editingLoraIndex.value]) {
     loras.value[editingLoraIndex.value].name = model;
   } else {
-    workflowStore.addLora(model, 0.8, loras.value);
+    workflowStore.addLora(model, 1, loras.value);
   }
 }
 
@@ -163,7 +163,7 @@ function showPreview(name: string, event: PointerEvent) {
           variant="outline"
           :disabled="!comfyStore.isConnected"
           class="border-border bg-secondary text-foreground hover:bg-accent px-2 py-1 text-xs"
-          @click="workflowStore.addLora('', 0.8, loras)"
+          @click="workflowStore.addLora('', 1, loras)"
         >
           <Plus class="h-3 w-3" />
           <span>Add LoRA</span>
@@ -326,8 +326,6 @@ function showPreview(name: string, event: PointerEvent) {
           />
           <EditableNumberBadge
             v-model="lora.strength"
-            :min="-3.0"
-            :max="3.0"
             :step="0.05"
             :decimals="2"
             :disabled="!comfyStore.isConnected"

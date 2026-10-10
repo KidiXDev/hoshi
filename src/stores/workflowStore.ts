@@ -7,7 +7,7 @@ import {
   saveAppData
 } from '../services/appStorage';
 import { LibraryService } from '../services/libraryService';
-import type { LoraData } from '../types/library';
+import type { LoraData, PromptData } from '../types/library';
 import type {
   AdvancedSettings,
   FaceDetailerSettings,
@@ -21,7 +21,13 @@ import type {
   UltimateUpscaleSettings,
   WorkflowState
 } from '../types/workflow';
+import { appendPromptTerms, splitPromptTags } from '../utils/promptTools';
 import { randomSeed } from '../utils/seed';
+
+export type PromptPresetTarget = PromptData['type'];
+
+const createLoraId = () =>
+  `lora-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
 const DEFAULT_POSITIVE_PROMPT =
   'beautiful scenery nature glass bottle landscape, purple galaxy bottle';
@@ -321,12 +327,34 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   function addLora(name = '', strength = 1.0, stack?: LoraItem[]) {
     stack ??= loras.value;
-    stack.push({
-      id: `lora-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      name,
-      strength,
-      enabled: true
-    });
+    stack.push({ id: createLoraId(), name, strength, enabled: true });
+  }
+
+  function applyLoraPreset(
+    preset: LoraData,
+    append = false,
+    stack?: LoraItem[]
+  ) {
+    stack ??= loras.value;
+    if (!append) stack.splice(0);
+    stack.push(
+      ...preset.loras.map((lora) => ({ ...lora, id: createLoraId() }))
+    );
+  }
+
+  function applyPromptPreset(
+    preset: PromptData,
+    target: PromptPresetTarget = 'both',
+    append = false
+  ) {
+    const merge = (current: string, text: string) =>
+      append ? appendPromptTerms(current, splitPromptTags(text)) : text;
+    if (target !== 'negative' && preset.positive) {
+      positivePrompt.value = merge(positivePrompt.value, preset.positive);
+    }
+    if (target !== 'positive' && preset.negative) {
+      negativePrompt.value = merge(negativePrompt.value, preset.negative);
+    }
   }
 
   function removeLora(id: string, stack?: LoraItem[]) {
@@ -419,6 +447,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     addLora,
     removeLora,
     moveLora,
+    applyLoraPreset,
+    applyPromptPreset,
     randomizeSeedValue,
     getFullWorkflowState,
     applyWorkflowState

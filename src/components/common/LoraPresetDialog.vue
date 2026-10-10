@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue';
 import {
   ArrowUpRight,
   Check,
-  Clock,
   FolderOpen,
   Layers,
   Library,
@@ -15,6 +14,7 @@ import {
   X,
   Zap
 } from '@lucide/vue';
+import LibraryEntryCard from '@/components/library/LibraryEntryCard.vue';
 import { Button } from '@/components/ui/button';
 import { useConfirmDialog } from '@/composables/useConfirmDialog';
 import {
@@ -29,14 +29,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatShortDate } from '@/utils/formatters';
+import { matchesQuery } from '@/utils/librarySearch';
 import { LibraryService } from '../../services/libraryService';
+import { useLibraryStore } from '../../stores/libraryStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
-import type {
-  LibraryItem,
-  LibraryListEntry,
-  LoraData
-} from '../../types/library';
+import type { LibraryListEntry, LoraData } from '../../types/library';
 import type { LoraItem } from '../../types/workflow';
 
 const props = defineProps<{
@@ -48,6 +45,7 @@ const emit = defineEmits<{
 }>();
 
 const workflowStore = useWorkflowStore();
+const libraryStore = useLibraryStore();
 const { confirm } = useConfirmDialog();
 
 const stack = defineModel<LoraItem[]>('loras');
@@ -60,9 +58,8 @@ const loras = computed({
 });
 
 const activeTab = ref<'load' | 'save'>('load');
-const entries = ref<LibraryListEntry[]>([]);
-const failedThumbnails = ref<Set<string>>(new Set());
-const isLoading = ref(false);
+const entries = computed(() => libraryStore.getEntries('loras'));
+const isLoading = computed(() => libraryStore.isLoading('loras'));
 const searchQuery = ref('');
 
 // Form state for saving
@@ -70,12 +67,7 @@ const saveName = ref('');
 const saveDescription = ref('');
 const saveSuccessMessage = ref('');
 
-async function fetchEntries() {
-  isLoading.value = true;
-  failedThumbnails.value.clear();
-  entries.value = await LibraryService.listItems('loras');
-  isLoading.value = false;
-}
+const fetchEntries = () => libraryStore.fetchCategory('loras');
 
 watch(
   () => props.open,
@@ -96,33 +88,12 @@ onMounted(() => {
   }
 });
 
-const filteredEntries = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase();
-  return entries.value.filter((e) => {
-    if (q) {
-      const inName = e.name.toLowerCase().includes(q);
-      const inDesc = e.description?.toLowerCase().includes(q) ?? false;
-      return inName || inDesc;
-    }
-    return true;
-  });
-});
+const filteredEntries = computed(() =>
+  entries.value.filter((entry) => matchesQuery(entry, searchQuery.value))
+);
 
-async function applyLoraPreset(entry: LibraryListEntry, append = false) {
-  const item = await LibraryService.getItem<LoraData>(entry.id, 'loras');
-  const newItems: LoraItem[] = item.data.loras.map((l, index) => ({
-    id: `lora-${index}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-    name: l.name,
-    strength: l.strength,
-    enabled: l.enabled
-  }));
-
-  if (append) {
-    loras.value.push(...newItems);
-  } else {
-    loras.value = newItems;
-  }
-
+function applyLoraPreset(entry: LibraryListEntry, append: boolean) {
+  workflowStore.applyLoraPreset(entry.data as LoraData, append, loras.value);
   emit('update:open', false);
 }
 
@@ -130,28 +101,22 @@ async function handleSavePreset() {
   if (!saveName.value.trim()) return;
 
   const data: LoraData = {
-    loras: loras.value.map((l) => ({
-      name: l.name,
-      strength: l.strength,
-      enabled: l.enabled
+    loras: loras.value.map(({ name, strength, enabled }) => ({
+      name,
+      strength,
+      enabled
     }))
   };
 
-  const payload: Omit<LibraryItem<LoraData>, 'thumbnailUrl'> = {
-    id: '',
+  await libraryStore.saveItem<LoraData>({
     category: 'loras',
     name: saveName.value.trim(),
     description: saveDescription.value.trim() || undefined,
-    data,
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  };
-
-  await LibraryService.saveItem(payload);
+    data
+  });
   saveSuccessMessage.value = `Saved "${saveName.value.trim()}" (${data.loras.length} LoRAs) to Library!`;
   saveName.value = '';
   saveDescription.value = '';
-  await fetchEntries();
   setTimeout(() => {
     activeTab.value = 'load';
     saveSuccessMessage.value = '';
@@ -166,8 +131,7 @@ async function requestDelete(entry: LibraryListEntry) {
   if (!confirmed) return;
 
   try {
-    await LibraryService.deleteItem(entry.id, 'loras');
-    await fetchEntries();
+    await libraryStore.deleteItem(entry.id, 'loras');
   } catch (err) {
     console.error('Failed to delete LoRA preset:', err);
   }
@@ -282,7 +246,7 @@ async function requestDelete(entry: LibraryListEntry) {
               />
               <Input
                 v-model="searchQuery"
-                placeholder="Search presets by name or description..."
+                placeholder="Search name, description, LoRA file names..."
                 class="bg-background/80 focus:ring-primary/30 h-8 w-full pr-8 pl-8.5 text-xs"
               />
               <button
@@ -326,108 +290,43 @@ async function requestDelete(entry: LibraryListEntry) {
 
             <!-- Presets Grid / Cards -->
             <div v-else class="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-              <div
+              <LibraryEntryCard
                 v-for="entry in filteredEntries"
                 :key="entry.id"
-                class="border-border bg-card hover:border-primary/50 relative flex min-h-36 flex-row overflow-hidden rounded-xl border transition-all hover:shadow-md"
+                :entry="entry"
               >
-                <!-- Left: Content & Actions -->
-                <div class="flex min-w-0 flex-1 flex-col justify-between p-3.5">
-                  <!-- Top: Badge + Date + Title + Desc -->
-                  <div>
-                    <div class="flex items-center justify-between gap-2">
-                      <span
-                        class="rounded-md border border-violet-500/30 bg-violet-500/15 px-1.5 py-0.5 font-mono text-xs font-bold text-violet-400 uppercase"
-                      >
-                        LoRA
-                      </span>
-
-                      <div
-                        class="text-muted-foreground/70 flex items-center gap-1 font-mono text-xs"
-                      >
-                        <Clock class="h-2.5 w-2.5" />
-                        <span>{{ formatShortDate(entry.updatedAt) }}</span>
-                      </div>
-                    </div>
-
-                    <div class="mt-2">
-                      <h4
-                        class="text-foreground truncate text-sm leading-snug font-bold"
-                        :title="entry.name"
-                      >
-                        {{ entry.name }}
-                      </h4>
-                      <p
-                        v-if="entry.description"
-                        class="text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed"
-                        :title="entry.description"
-                      >
-                        {{ entry.description }}
-                      </p>
-                    </div>
-                  </div>
-
-                  <!-- Bottom: Action Buttons -->
-                  <div
-                    class="border-border/60 mt-3 flex items-center justify-between gap-2 border-t pt-2.5"
+                <template #manage>
+                  <Button
+                    size="iconSm"
+                    variant="ghost"
+                    class="text-muted-foreground hover:text-destructive h-7 w-7"
+                    title="Delete Preset"
+                    @click="requestDelete(entry)"
                   >
-                    <!-- Left: Delete -->
-                    <div class="flex shrink-0 items-center gap-1">
-                      <Button
-                        size="iconSm"
-                        variant="ghost"
-                        class="text-muted-foreground hover:text-destructive h-7 w-7"
-                        title="Delete Preset"
-                        @click="requestDelete(entry)"
-                      >
-                        <Trash2 class="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    <Trash2 class="h-3.5 w-3.5" />
+                  </Button>
+                </template>
 
-                    <!-- Right: Apply Buttons -->
-                    <div
-                      class="flex flex-wrap items-center justify-end gap-1.5"
-                    >
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        class="h-7 px-2.5 text-xs"
-                        title="Append these LoRAs to existing chain"
-                        @click="applyLoraPreset(entry, true)"
-                      >
-                        + Append
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        class="bg-primary text-primary-foreground hover:bg-primary/90 h-7 px-3 text-xs font-semibold"
-                        @click="applyLoraPreset(entry, false)"
-                      >
-                        Apply Stack
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Right: Portrait Thumbnail -->
-                <div
-                  class="bg-muted/40 border-border/50 relative w-24 shrink-0 self-stretch overflow-hidden border-l sm:w-28"
-                >
-                  <img
-                    v-if="entry.thumbnailUrl && !failedThumbnails.has(entry.id)"
-                    :src="entry.thumbnailUrl"
-                    :alt="entry.name"
-                    class="h-full w-full object-cover object-center"
-                    @error="failedThumbnails.add(entry.id)"
-                  />
-                  <div
-                    v-else
-                    class="from-primary/5 to-primary/20 flex h-full w-full items-center justify-center bg-linear-to-br"
+                <template #apply>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    class="h-7 px-2.5 text-xs"
+                    title="Append these LoRAs to existing chain"
+                    @click="applyLoraPreset(entry, true)"
                   >
-                    <Layers class="text-primary/25 h-7 w-7" />
-                  </div>
-                </div>
-              </div>
+                    + Append
+                  </Button>
+                  <Button
+                    size="sm"
+                    class="bg-primary text-primary-foreground hover:bg-primary/90 h-7 px-3 text-xs font-semibold"
+                    title="Replace the current LoRA stack"
+                    @click="applyLoraPreset(entry, false)"
+                  >
+                    Apply Stack
+                  </Button>
+                </template>
+              </LibraryEntryCard>
             </div>
           </ScrollArea>
         </TabsContent>
