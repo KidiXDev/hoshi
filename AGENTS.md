@@ -75,7 +75,9 @@ koharu/
 │   │   ├── main.rs
 │   │   ├── app_data.rs           # Key/value app data (DPAPI-encrypted on Windows, atomic writes)
 │   │   ├── comfy_paths.rs        # ComfyUI root / base / output directory resolution (single source)
-│   │   ├── process_manager.rs    # Spawn/stop ComfyUI, bridge injection, model discovery (local_model_discovery.py)
+│   │   ├── process_manager.rs    # Spawn/stop ComfyUI, bridge injection, custom node install, model discovery
+│   │   ├── comfy_update.rs       # ComfyUI update check (commits behind origin/master) + portable update/update.py runner
+│   │   ├── python/               # Embedded Python scripts (include_str!) + interpreter resolution and JSON script runner (mod.rs)
 │   │   ├── image_gallery.rs      # Output index + thumbnail cache
 │   │   ├── model_manager.rs      # Local model index, hashing, Civitai sync, previews
 │   │   ├── library_manager.rs  prompt_suggestions.rs  download_manager.rs

@@ -16,6 +16,23 @@ export interface LauncherConfig {
   autocompleteEscapeParentheses: boolean;
 }
 
+export interface ComfyCommit {
+  id: string;
+  summary: string;
+  author: string;
+  timestamp: number;
+}
+
+export interface ComfyUpdateStatus {
+  version: string;
+  branch: string;
+  commit: string;
+  remoteCommit: string;
+  ahead: number;
+  behind: number;
+  commits: ComfyCommit[];
+}
+
 export interface LogEntry {
   id: string;
   stream: 'stdout' | 'stderr' | 'system';

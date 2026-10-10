@@ -7,6 +7,7 @@ import { loadAppData, saveAppData } from '../services/appStorage';
 import { ComfyApi } from '../services/comfyApi';
 import { openComfyOutputFolder } from '../services/imageGallery';
 import type {
+  ComfyUpdateStatus,
   LauncherConfig,
   LogEntry,
   ProcessStatus
@@ -51,6 +52,7 @@ export const useLauncherStore = defineStore('launcher', () => {
   const processStatus = ref<ProcessStatus>('stopped');
   const logs = ref<LogEntry[]>([]);
   const isTerminalOpen = ref(false);
+  const isUpdating = ref(false);
   const errorMessage = ref('');
   const hasComfyDirectory = computed(
     () => cleanPath(config.value.workingDir).length > 0
@@ -225,6 +227,7 @@ export const useLauncherStore = defineStore('launcher', () => {
       return;
     }
     if (
+      isUpdating.value ||
       processStatus.value === 'running' ||
       processStatus.value === 'starting' ||
       processStatus.value === 'stopping'
@@ -290,6 +293,30 @@ export const useLauncherStore = defineStore('launcher', () => {
     }
   }
 
+  function checkComfyUpdate() {
+    return invoke<ComfyUpdateStatus>('check_comfyui_update', {
+      workingDir: config.value.workingDir,
+      pythonPath: config.value.pythonPath
+    });
+  }
+
+  async function updateComfy() {
+    if (isUpdating.value) return;
+    isUpdating.value = true;
+    try {
+      await invoke('update_comfyui', {
+        workingDir: config.value.workingDir,
+        pythonPath: config.value.pythonPath
+      });
+      addLog('system', 'ComfyUI update finished.');
+    } catch (err) {
+      addLog('stderr', `ComfyUI update failed: ${err}`);
+      throw err;
+    } finally {
+      isUpdating.value = false;
+    }
+  }
+
   async function openOutputFolder() {
     try {
       await openComfyOutputFolder(config.value.workingDir, launchArgs.value);
@@ -305,6 +332,7 @@ export const useLauncherStore = defineStore('launcher', () => {
     processStatus,
     logs,
     isTerminalOpen,
+    isUpdating,
     errorMessage,
     hasComfyDirectory,
     launchArgs,
@@ -321,6 +349,8 @@ export const useLauncherStore = defineStore('launcher', () => {
     stopServer,
     restartServer,
     injectBridge,
+    checkComfyUpdate,
+    updateComfy,
     openOutputFolder
   };
 });

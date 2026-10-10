@@ -351,4 +351,4 @@ NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 WEB_DIRECTORY = "./web"
 
-print("\033[32m[Koharu Bridge]\033[0m Loaded successfully with thumbnail caching. API endpoints available at /koharu/models, /koharu/system")
+print("\033[32m[Koharu Bridge]\033[0m Loaded successfully")

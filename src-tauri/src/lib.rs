@@ -3,6 +3,7 @@ mod app_data;
 mod booru;
 mod civitai;
 mod comfy_paths;
+mod comfy_update;
 mod danbooru_wiki;
 mod download_manager;
 mod image_gallery;
@@ -11,6 +12,7 @@ mod model_manager;
 mod network_cache;
 mod process_manager;
 mod prompt_suggestions;
+mod python;
 
 use comfy_paths::clean_path;
 use process_manager::ProcessManager;
@@ -410,6 +412,8 @@ pub fn run() {
             get_comfyui_status,
             inject_bridge_custom_node,
             install_custom_node,
+            comfy_update::update_comfyui,
+            comfy_update::check_comfyui_update,
             show_in_folder,
             danbooru_wiki::danbooru_wiki_request,
             booru::booru_sources,

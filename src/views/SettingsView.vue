@@ -10,6 +10,7 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  CloudDownload,
   Cpu,
   ExternalLink,
   FolderOpen,
@@ -60,6 +61,8 @@ import {
   DEFAULT_LAUNCHER_CONFIG,
   useLauncherStore
 } from '../stores/launcherStore';
+import type { ComfyUpdateStatus } from '../types/launcher';
+import { formatRelativeTime } from '../utils/formatters';
 import { APP_VERSION, isNewerVersion } from '../version';
 import PageLayout from '@/components/layout/PageLayout.vue';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
@@ -122,6 +125,12 @@ const isInstallingCustomNode = ref(false);
 const installResult = ref<{ ok: boolean; message: string } | null>(null);
 const autocompleteReady = computed(
   () => comfyStore.isConnected && comfyStore.isYetEssentialAvailable
+);
+const comfyUpdate = ref<ComfyUpdateStatus | null>(null);
+const comfyUpdateError = ref('');
+const isCheckingComfyUpdate = ref(false);
+const isComfyServerActive = computed(
+  () => !['stopped', 'error'].includes(launcherStore.processStatus)
 );
 
 async function loadCivitaiSettings() {
@@ -304,6 +313,31 @@ async function installCustomNode() {
     };
   } finally {
     isInstallingCustomNode.value = false;
+  }
+}
+
+async function checkComfyUpdate() {
+  isCheckingComfyUpdate.value = true;
+  comfyUpdateError.value = '';
+  try {
+    comfyUpdate.value = await launcherStore.checkComfyUpdate();
+  } catch (error) {
+    comfyUpdate.value = null;
+    comfyUpdateError.value =
+      error instanceof Error ? error.message : String(error);
+  } finally {
+    isCheckingComfyUpdate.value = false;
+  }
+}
+
+async function updateComfy() {
+  comfyUpdateError.value = '';
+  try {
+    await launcherStore.updateComfy();
+    await checkComfyUpdate();
+  } catch (error) {
+    comfyUpdateError.value =
+      error instanceof Error ? error.message : String(error);
   }
 }
 
@@ -643,6 +677,141 @@ void loadNetworkCacheStats();
                 label="Auto-launch on startup"
                 description="Start the ComfyUI process as soon as the app opens."
               />
+            </SettingsSection>
+
+            <SettingsSection
+              title="Updates"
+              description="Pull the latest ComfyUI master, like update_comfyui.bat in the portable build."
+              icon-class="text-sky-400"
+            >
+              <template #icon>
+                <CloudDownload class="h-3.5 w-3.5" />
+              </template>
+              <template #actions>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="border-border bg-secondary text-xs font-medium"
+                  :disabled="
+                    !!launcherStore.localSetupMessage ||
+                    isCheckingComfyUpdate ||
+                    launcherStore.isUpdating
+                  "
+                  @click="checkComfyUpdate"
+                >
+                  <Loader2
+                    v-if="isCheckingComfyUpdate"
+                    class="h-3.5 w-3.5 animate-spin"
+                  />
+                  <RefreshCw v-else class="h-3.5 w-3.5" />
+                  Check for updates
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  class="text-xs font-medium"
+                  :disabled="
+                    !!launcherStore.localSetupMessage ||
+                    isComfyServerActive ||
+                    launcherStore.isUpdating
+                  "
+                  @click="updateComfy"
+                >
+                  <Loader2
+                    v-if="launcherStore.isUpdating"
+                    class="h-3.5 w-3.5 animate-spin"
+                  />
+                  <CloudDownload v-else class="h-3.5 w-3.5" />
+                  {{
+                    launcherStore.isUpdating ? 'Updating…' : 'Update ComfyUI'
+                  }}
+                </Button>
+              </template>
+
+              <div v-if="comfyUpdate">
+                <p class="text-muted-foreground text-xs">Installed</p>
+                <p class="mt-1 font-mono text-sm font-semibold">
+                  {{
+                    comfyUpdate.version
+                      ? `v${comfyUpdate.version}`
+                      : 'Unknown version'
+                  }}
+                  <span class="text-muted-foreground text-xs font-normal">
+                    {{ comfyUpdate.commit.slice(0, 7) }} on
+                    {{ comfyUpdate.branch || 'detached HEAD' }}
+                  </span>
+                </p>
+              </div>
+
+              <p
+                v-if="isComfyServerActive && !launcherStore.isUpdating"
+                class="text-muted-foreground text-xs"
+              >
+                Stop ComfyUI before updating it.
+              </p>
+
+              <NoticeBanner v-if="launcherStore.isUpdating" tone="info">
+                <template #icon>
+                  <Loader2 class="h-4 w-4 shrink-0 animate-spin" />
+                </template>
+                Updating ComfyUI. Live output is in the terminal.
+                <template #actions>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="h-7 shrink-0 text-xs"
+                    @click="launcherStore.isTerminalOpen = true"
+                  >
+                    <Terminal class="h-3.5 w-3.5" />
+                    Open terminal
+                  </Button>
+                </template>
+              </NoticeBanner>
+              <NoticeBanner v-else-if="comfyUpdateError" tone="destructive">
+                <template #icon>
+                  <XCircle class="h-4 w-4 shrink-0" />
+                </template>
+                {{ comfyUpdateError }}
+              </NoticeBanner>
+              <NoticeBanner
+                v-else-if="comfyUpdate"
+                :tone="comfyUpdate.behind ? 'info' : 'emerald'"
+              >
+                <template v-if="!comfyUpdate.behind" #icon>
+                  <CheckCircle2 class="h-4 w-4 shrink-0" />
+                </template>
+                {{
+                  comfyUpdate.behind
+                    ? `${comfyUpdate.behind} new commit${comfyUpdate.behind === 1 ? '' : 's'} on master.`
+                    : 'ComfyUI is up to date with master.'
+                }}
+              </NoticeBanner>
+
+              <ul
+                v-if="comfyUpdate?.commits.length && !launcherStore.isUpdating"
+                class="border-border/60 divide-border/60 max-h-64 divide-y overflow-y-auto rounded-lg border"
+              >
+                <li
+                  v-for="commit in comfyUpdate.commits"
+                  :key="commit.id"
+                  class="flex items-baseline gap-2.5 px-3 py-1.5 text-xs"
+                >
+                  <code class="text-muted-foreground shrink-0 font-mono">
+                    {{ commit.id.slice(0, 7) }}
+                  </code>
+                  <span
+                    class="text-foreground min-w-0 flex-1 truncate"
+                    :title="`${commit.summary} — ${commit.author}`"
+                  >
+                    {{ commit.summary }}
+                  </span>
+                  <span class="text-muted-foreground shrink-0">
+                    {{ formatRelativeTime(commit.timestamp) }}
+                  </span>
+                </li>
+              </ul>
             </SettingsSection>
 
             <SettingsSection

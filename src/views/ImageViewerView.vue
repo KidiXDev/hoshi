@@ -159,7 +159,7 @@ const GRID_GAP = 12;
 // 3:4 Portrait aspect ratio
 const CARD_ASPECT_RATIO = 4 / 3;
 const CARD_FOOTER_HEIGHT = 52;
-const OVERSCAN_ROWS = 3;
+const OVERSCAN_ROWS = 6;
 const launcherStore = useLauncherStore();
 
 const images = shallowRef<OutputImage[]>([]);

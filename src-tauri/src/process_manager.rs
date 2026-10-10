@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -8,6 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::comfy_paths::{clean_path, comfy_root};
+use crate::python;
 
 const BRIDGE_NODE_INIT: &str = include_str!("../../comfyui-koharu-bridge/__init__.py");
 const BRIDGE_WORKSPACE_JS: &str = include_str!("../../comfyui-koharu-bridge/web/workspace.js");
@@ -21,7 +23,7 @@ pub struct LogPayload {
     pub timestamp: u64,
 }
 
-fn emit_sys_log(app_handle: &AppHandle, message: String) {
+pub(crate) fn emit_sys_log(app_handle: &AppHandle, message: String) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -175,74 +177,6 @@ fn wait_for_exit(
     Ok(None)
 }
 
-fn resolve_python_executable(py_input: &str, comfy_dir: &Path) -> Result<PathBuf, String> {
-    let py_trimmed = clean_path(py_input);
-    if py_trimmed.is_empty() {
-        return Err(
-            "Python path is not configured. Please select the Python folder or executable in Settings."
-                .to_string(),
-        );
-    }
-
-    let p = PathBuf::from(py_trimmed);
-
-    if p.is_file() {
-        return Ok(p);
-    }
-
-    if p.is_dir() {
-        for sub in &[
-            "python.exe",
-            "python",
-            "bin/python3",
-            "bin/python",
-            "Scripts/python.exe",
-        ] {
-            let candidate = p.join(sub);
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-    }
-
-    if p.is_relative() {
-        let mut bases = vec![comfy_dir.to_path_buf()];
-        if let Some(parent) = comfy_dir.parent() {
-            bases.push(parent.to_path_buf());
-        }
-
-        for base in &bases {
-            let direct = base.join(&p);
-            if direct.is_file() {
-                return Ok(direct);
-            }
-            if direct.is_dir() {
-                for sub in &[
-                    "python.exe",
-                    "python",
-                    "bin/python3",
-                    "bin/python",
-                    "Scripts/python.exe",
-                ] {
-                    let sub_cand = direct.join(sub);
-                    if sub_cand.is_file() {
-                        return Ok(sub_cand);
-                    }
-                }
-            }
-        }
-    }
-
-    if !py_trimmed.contains('/') && !py_trimmed.contains('\\') {
-        return Ok(PathBuf::from(py_trimmed));
-    }
-
-    Err(format!(
-        "Python executable not found for '{}'. Please verify the Python path or folder in Settings.",
-        py_trimmed
-    ))
-}
-
 #[tauri::command]
 pub async fn discover_local_models(
     working_dir: String,
@@ -254,19 +188,14 @@ pub async fn discover_local_models(
         let root = comfy_root(&working_dir)?
             .canonicalize()
             .map_err(|error| error.to_string())?;
-        let mut command = Command::new(resolve_python_executable(&python_path, &work)?);
-        command
-            .current_dir(&work)
-            .args(["-s", "-c", include_str!("local_model_discovery.py")])
-            .arg(root)
-            .arg(serde_json::to_string(&args).map_err(|error| error.to_string())?)
-            .env("PYTHONIOENCODING", "utf-8");
-        hide_command_window(&mut command);
-        let output = command.output().map_err(|error| error.to_string())?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-        serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
+        let args = serde_json::to_string(&args).map_err(|error| error.to_string())?;
+        let python = python::resolve_executable(&python_path, &work)?;
+        python::run_json(
+            &python,
+            &work,
+            python::LOCAL_MODEL_DISCOVERY,
+            &[root.as_os_str(), OsStr::new(&args)],
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -297,13 +226,13 @@ fn github_repo_name(url: &str) -> Result<&str, String> {
 }
 
 #[cfg(windows)]
-fn hide_command_window(command: &mut Command) {
+pub(crate) fn hide_command_window(command: &mut Command) {
     use std::os::windows::process::CommandExt;
     command.creation_flags(0x08000000);
 }
 
 #[cfg(not(windows))]
-fn hide_command_window(_command: &mut Command) {}
+pub(crate) fn hide_command_window(_command: &mut Command) {}
 
 fn kill_process_tree(child: &mut Child) -> std::io::Result<()> {
     if cfg!(windows) {
@@ -354,7 +283,7 @@ pub fn install_custom_node(
 
     let requirements = target_dir.join("requirements.txt");
     if requirements.is_file() {
-        let python = resolve_python_executable(python_path, &comfy_dir)?;
+        let python = python::resolve_executable(python_path, &comfy_dir)?;
         let mut pip = Command::new(python);
         pip.args(["-m", "pip", "install", "-r"])
             .arg(&requirements)
@@ -377,11 +306,11 @@ pub fn install_custom_node(
     ))
 }
 
-fn spawn_stream_reader<R: std::io::Read + Send + 'static>(
+pub(crate) fn spawn_stream_reader<R: std::io::Read + Send + 'static>(
     reader: R,
     app_handle: AppHandle,
     stream_name: &'static str,
-) {
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut buf_reader = BufReader::new(reader);
         let mut buffer = Vec::new();
@@ -410,7 +339,7 @@ fn spawn_stream_reader<R: std::io::Read + Send + 'static>(
                 Err(_) => break,
             }
         }
-    });
+    })
 }
 
 impl ProcessManager {
@@ -448,7 +377,7 @@ impl ProcessManager {
         let main_py_path = comfy_dir.join("main.py");
         let exec_work_dir = work_path.clone();
 
-        let resolved_python = resolve_python_executable(&python_path, &work_path)?;
+        let resolved_python = python::resolve_executable(&python_path, &work_path)?;
 
         auto_inject_bridge_node(&comfy_dir, &app_handle);
 
