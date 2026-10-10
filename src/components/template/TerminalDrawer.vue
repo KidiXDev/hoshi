@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useLocalStorage } from '@vueuse/core';
 import { ArrowDown, Copy, Pause, Terminal, Trash2 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -57,6 +58,42 @@ function ignoreToggleButton(event: CustomEvent<{ originalEvent: Event }>) {
   if (target?.closest('[data-terminal-toggle]')) event.preventDefault();
 }
 
+// Resizable height
+const MIN_HEIGHT = 160;
+const DEFAULT_HEIGHT_RATIO = 0.45;
+const drawerHeight = useLocalStorage('terminal-drawer-height', 0);
+const drawerStyle = computed(() => ({
+  height: drawerHeight.value
+    ? `${drawerHeight.value}px`
+    : `${DEFAULT_HEIGHT_RATIO * 100}vh`
+}));
+
+function resizeBy(delta: number) {
+  const current =
+    drawerHeight.value || window.innerHeight * DEFAULT_HEIGHT_RATIO;
+  setDrawerHeight(current + delta);
+}
+
+function setDrawerHeight(height: number) {
+  drawerHeight.value = Math.round(
+    Math.min(Math.max(height, MIN_HEIGHT), window.innerHeight * 0.85)
+  );
+}
+
+function startResize(event: PointerEvent) {
+  event.preventDefault();
+  const handle = event.currentTarget as HTMLElement;
+  handle.setPointerCapture(event.pointerId);
+  const onMove = (move: PointerEvent) =>
+    setDrawerHeight(window.innerHeight - move.clientY);
+  handle.addEventListener('pointermove', onMove);
+  handle.addEventListener(
+    'lostpointercapture',
+    () => handle.removeEventListener('pointermove', onMove),
+    { once: true }
+  );
+}
+
 function toggleAutoScroll() {
   autoScroll.value = !isFollowing.value;
   if (autoScroll.value) terminalScroll.scrollToEnd();
@@ -77,9 +114,26 @@ function copyAllLogs() {
   <Sheet v-model:open="launcherStore.isTerminalOpen">
     <SheetContent
       side="bottom"
-      class="border-border bg-sidebar text-foreground flex h-[45vh] max-h-[80vh] flex-col gap-0 border-t p-0"
+      class="border-border bg-sidebar text-foreground flex max-h-[85vh] min-h-40 flex-col gap-0 border-t p-0"
+      :style="drawerStyle"
       @interact-outside="ignoreToggleButton"
     >
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize terminal"
+        tabindex="0"
+        title="Drag to resize"
+        class="group focus-visible:outline-primary absolute inset-x-0 -top-1 z-10 flex h-2.5 cursor-row-resize touch-none justify-center outline-none focus-visible:outline-1"
+        @pointerdown="startResize"
+        @keydown.up.prevent="resizeBy(24)"
+        @keydown.down.prevent="resizeBy(-24)"
+      >
+        <div
+          class="bg-border group-hover:bg-primary/70 group-focus-visible:bg-primary/70 mt-1 h-1 w-12 rounded-full transition-colors"
+        />
+      </div>
+
       <SheetHeader class="border-border shrink-0 border-b px-4 py-2.5">
         <div class="flex items-center justify-between pr-6">
           <div class="flex items-center gap-3">
