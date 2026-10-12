@@ -13,7 +13,7 @@ pub static RULE34: Gelbooru = Gelbooru {
         "wimg.rule34.xxx",
         "us.rule34.xxx",
     ],
-    ratings: &["general", "sensitive", "questionable", "explicit"],
+    ratings: &["questionable", "explicit"],
     default_rating: "",
     max_limit: 100,
     credentials_url: "https://rule34.xxx/index.php?page=account&s=options",

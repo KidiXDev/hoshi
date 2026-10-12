@@ -612,5 +612,6 @@ mod tests {
         assert!(RULE34.credentials(&HashMap::new()).is_err());
         assert!(TBIB.credentials(&HashMap::new()).unwrap().is_empty());
         assert_eq!(RULE34.capabilities().auth_fields, ["userId", "apiKey"]);
+        assert_eq!(RULE34.capabilities().ratings, ["questionable", "explicit"]);
     }
 }

@@ -303,7 +303,9 @@ function retryDetailImage() {
   detailImageError.value = false;
   detailImageLoaded.value = false;
 }
+let detailRequest = 0;
 async function openDetail(post: BooruPost) {
+  const request = ++detailRequest;
   detailActivePost.value = post;
   detailOpen.value = true;
   detailLoading.value = true;
@@ -315,11 +317,12 @@ async function openDetail(post: BooruPost) {
   copiedPrompt.value = false;
   copiedTag.value = null;
   try {
-    detail.value = await fetchBooruDetail(post.source, post.postId);
+    const result = await fetchBooruDetail(post.source, post.postId);
+    if (request === detailRequest) detail.value = result;
   } catch (error) {
-    detailError.value = readableError(error);
+    if (request === detailRequest) detailError.value = readableError(error);
   } finally {
-    detailLoading.value = false;
+    if (request === detailRequest) detailLoading.value = false;
   }
 }
 async function copyPrompt() {

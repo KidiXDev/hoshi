@@ -419,8 +419,15 @@ pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, 
                     .min(5);
                 let body = response.text().unwrap_or_default();
                 if status.is_success() {
-                    return serde_json::from_str(&body)
-                        .map_err(|_| format!("{source} GET {final_url} returned invalid JSON"));
+                    if body.trim().is_empty() {
+                        return Ok(Value::Null);
+                    }
+                    return serde_json::from_str(&body).map_err(|_| {
+                        format!(
+                            "{source} GET {final_url} returned invalid JSON: {}",
+                            truncate(&body, 300)
+                        )
+                    });
                 }
                 if status == StatusCode::FORBIDDEN && body.contains("you have been blocked") {
                     // Cloudflare WAF block page (error 1020): no challenge exists to solve.
@@ -1579,6 +1586,26 @@ fn prune_media(app: &AppHandle, budget_mib: u64) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_success_body_means_no_results() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/index.php", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            assert!(stream.read(&mut [0; 4096]).unwrap() > 0);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .unwrap();
+        });
+        assert_eq!(
+            send_json("rule34", client(5).unwrap().get(url)),
+            Ok(Value::Null)
+        );
+        server.join().unwrap();
+    }
 
     #[test]
     fn repairs_spaced_tags_without_touching_operators() {
