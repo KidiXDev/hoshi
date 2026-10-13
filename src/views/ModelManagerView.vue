@@ -18,6 +18,7 @@ import {
   CloudDownload,
   CloudOff,
   Copy,
+  FolderInput,
   FolderOpen,
   HardDrive,
   Image as ImageIcon,
@@ -44,6 +45,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger
 } from '@/components/ui/context-menu';
 import {
@@ -78,6 +82,7 @@ import {
   loadCivitaiApiKey,
   useDeleteModelMutation,
   useLocalModelsIndexQuery,
+  useMoveModelMutation,
   useRescanModelsMutation,
   useSetModelPreviewMutation
 } from '@/composables/useModelManagerQueries';
@@ -131,6 +136,7 @@ const CATEGORY_ORDER = [
   'embeddings',
   'hypernetworks'
 ];
+const MODEL_DRAG_MIME = 'application/x-koharu-model-id';
 
 const router = useRouter();
 const launcherStore = useLauncherStore();
@@ -156,6 +162,7 @@ const rescan = useRescanModelsMutation();
 const syncDialog = useModelSyncDialog();
 const setPreview = useSetModelPreviewMutation();
 const removeModel = useDeleteModelMutation();
+const moveModel = useMoveModelMutation();
 
 const scrollViewport = ref<HTMLElement | null>(null);
 const gridWidth = ref(1200);
@@ -172,6 +179,9 @@ const syncResult = ref<SyncAllResult | null>(null);
 const syncRunning = ref(false);
 /** Per-model problems collected during a bulk sync, shown in the summary. */
 const syncIssues = ref<{ file: string; reason: string }[]>([]);
+const draggingId = ref<string>();
+const dropCategory = ref<string>();
+let dragStartTimer: ReturnType<typeof setTimeout> | undefined;
 let resizeObserver: ResizeObserver | null = null;
 let savedScrollTop = 0;
 let unlistenIndex: UnlistenFn | null = null;
@@ -185,13 +195,30 @@ const errorMessage = computed(() =>
 );
 const baseModels = computed(() => collectBaseModels(allModels.value));
 const categoryCounts = computed(() => countByCategory(allModels.value));
-const categories = computed(() => {
-  const present = Object.keys(categoryCounts.value);
-  const ordered = CATEGORY_ORDER.filter((key) => present.includes(key));
-  const rest = present.filter((key) => !CATEGORY_ORDER.includes(key));
+
+function orderCategories(keys: string[]) {
+  const ordered = CATEGORY_ORDER.filter((key) => keys.includes(key));
+  const rest = keys.filter((key) => !CATEGORY_ORDER.includes(key));
   rest.sort((a, b) => a.localeCompare(b));
   return [...ordered, ...rest];
-});
+}
+
+const categories = computed(() =>
+  orderCategories(Object.keys(categoryCounts.value))
+);
+const moveTargets = computed(() =>
+  orderCategories([
+    ...new Set(
+      (indexQuery.data.value?.roots ?? []).map((root) => root.category)
+    )
+  ])
+);
+const draggedModel = computed(() =>
+  allModels.value.find((model) => model.id === draggingId.value)
+);
+const categoryPills = computed(() =>
+  draggedModel.value ? moveTargets.value : categories.value
+);
 // Sort once per sort change; filtering (every keystroke) preserves that order.
 const sortedModels = computed(() =>
   sortModels(allModels.value, sort.value, sortDir.value)
@@ -359,6 +386,57 @@ async function confirmDelete(model: LocalModel) {
   } finally {
     markBusy(model.id, false);
   }
+}
+
+async function moveToCategory(model: LocalModel, target: string) {
+  if (isBusy(model) || model.category === target) return;
+  markBusy(model.id, true);
+  try {
+    await moveModel.mutateAsync({ id: model.id, category: target });
+    toast.success(`Moved ${model.filename} to ${modelCategoryLabel(target)}`);
+  } catch (error) {
+    toast.error(`Move failed: ${String(error)}`);
+  } finally {
+    markBusy(model.id, false);
+  }
+}
+
+function onModelDragStart(event: DragEvent, model: LocalModel) {
+  if (!event.dataTransfer) return;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData(MODEL_DRAG_MIME, model.id);
+  dragStartTimer = setTimeout(() => {
+    draggingId.value = model.id;
+  });
+}
+
+function onModelDragEnd() {
+  clearTimeout(dragStartTimer);
+  draggingId.value = undefined;
+  dropCategory.value = undefined;
+}
+
+function canDropOn(target: string) {
+  return Boolean(draggedModel.value && draggedModel.value.category !== target);
+}
+
+function onCategoryDragOver(event: DragEvent, target: string) {
+  if (!canDropOn(target)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  dropCategory.value = target;
+}
+
+function onCategoryDragLeave(target: string) {
+  if (dropCategory.value === target) dropCategory.value = undefined;
+}
+
+function onCategoryDrop(event: DragEvent, target: string) {
+  const model = draggedModel.value;
+  onModelDragEnd();
+  if (!model || model.category === target) return;
+  event.preventDefault();
+  void moveToCategory(model, target);
 }
 
 async function runRescan() {
@@ -716,20 +794,29 @@ onUnmounted(() => {
               }}</span>
             </button>
             <button
-              v-for="key in categories"
+              v-for="key in categoryPills"
               :key="key"
               type="button"
-              class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
-              :class="
+              class="cursor-pointer rounded-md px-2.5 py-1 text-xs font-medium transition-colors *:pointer-events-none"
+              :class="[
                 category === key
                   ? 'bg-primary text-primary-foreground shadow-xs'
-                  : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-              "
+                  : 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground',
+                {
+                  'ring-primary ring-2': dropCategory === key,
+                  'outline-primary/60 outline-1 outline-dashed':
+                    canDropOn(key) && dropCategory !== key,
+                  'opacity-40': draggedModel && !canDropOn(key)
+                }
+              ]"
               @click="category = key"
+              @dragover="onCategoryDragOver($event, key)"
+              @dragleave="onCategoryDragLeave(key)"
+              @drop="onCategoryDrop($event, key)"
             >
               {{ modelCategoryLabel(key) }}
               <span class="ml-1 font-mono opacity-70">{{
-                categoryCounts[key]
+                categoryCounts[key] ?? 0
               }}</span>
             </button>
           </div>
@@ -892,8 +979,14 @@ onUnmounted(() => {
             <ContextMenuTrigger as-child>
               <article
                 class="border-border/70 bg-card/75 hover:border-primary/50 hover:bg-card/95 group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border shadow-xs transition-all duration-200 hover:shadow-md"
-                :class="{ 'opacity-60': isBusy(model) }"
-                @click="openDetail(model)"
+                :class="{
+                  'opacity-60': isBusy(model) || draggingId === model.id
+                }"
+                :draggable="!isBusy(model)"
+                :aria-busy="isBusy(model)"
+                @click="!isBusy(model) && openDetail(model)"
+                @dragstart="onModelDragStart($event, model)"
+                @dragend="onModelDragEnd"
               >
                 <div
                   class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
@@ -1007,6 +1100,24 @@ onUnmounted(() => {
               <ContextMenuItem @select="copyPath(model)">
                 <Copy /> Copy path
               </ContextMenuItem>
+              <ContextMenuSub>
+                <ContextMenuSubTrigger
+                  :disabled="isBusy(model)"
+                  class="[&_svg]:text-muted-foreground gap-2 data-disabled:opacity-50"
+                >
+                  <FolderInput /> Move to
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent class="max-h-80 w-48 overflow-y-auto">
+                  <ContextMenuItem
+                    v-for="target in moveTargets"
+                    :key="target"
+                    :disabled="target === model.category"
+                    @select="moveToCategory(model, target)"
+                  >
+                    {{ modelCategoryLabel(target) }}
+                  </ContextMenuItem>
+                </ContextMenuSubContent>
+              </ContextMenuSub>
               <ContextMenuSeparator />
               <ContextMenuItem
                 :disabled="isBusy(model)"

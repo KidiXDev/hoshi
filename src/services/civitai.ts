@@ -104,6 +104,7 @@ export function getComfyTargetFolder(
       'flux',
       'hidream',
       'hunyuan',
+      'krea',
       'ltxv',
       'lumina',
       'mochi',

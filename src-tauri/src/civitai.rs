@@ -343,6 +343,7 @@ fn is_diffusion_model(base_model: &str, file_type: &str) -> bool {
             "flux",
             "hidream",
             "hunyuan",
+            "krea",
             "ltxv",
             "lumina",
             "mochi",
@@ -629,6 +630,10 @@ mod tests {
         );
         assert_eq!(
             model_folder("Checkpoint", "Anima", "Model"),
+            Ok("diffusion_models")
+        );
+        assert_eq!(
+            model_folder("Checkpoint", "Krea 2", "Model"),
             Ok("diffusion_models")
         );
         assert_eq!(

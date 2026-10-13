@@ -1782,6 +1782,70 @@ pub async fn delete_model(id: String, index: State<'_, ModelIndex>) -> Result<Ve
     .await
 }
 
+fn move_file(from: &Path, to: &Path) -> Result<(), String> {
+    match fs::rename(from, to) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => {
+            if let Err(error) = fs::copy(from, to).and_then(|_| fs::remove_file(from)) {
+                let _ = fs::remove_file(to);
+                return Err(error.to_string());
+            }
+            Ok(())
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+fn move_model_blocking(index: &ModelIndex, id: &str, category: &str) -> Result<LocalModel, String> {
+    let model = index.get(id).ok_or("Model not found in the index.")?;
+    let category = canonical_category(category);
+    if model.category == category {
+        return Ok(model);
+    }
+    let (path, _, _) = model_file_parts(&model)?;
+    let roots = index.state.read().map_err(lock_error)?.roots.clone();
+    if !is_within_roots(&path, &roots) {
+        return Err("Refusing to move a file outside the known model folders.".into());
+    }
+    let root = roots
+        .iter()
+        .find(|root| root.category == category)
+        .ok_or_else(|| format!("No model folder is configured for {category}."))?;
+    let target = Path::new(&root.path).join(&model.relative_name);
+    if target.exists() {
+        return Err(format!("A file already exists at {}", target.display()));
+    }
+    fs::create_dir_all(target.parent().ok_or("Invalid target path.")?)
+        .map_err(|error| error.to_string())?;
+    move_file(&path, &target)?;
+    for candidate in sidecar_candidates(&path) {
+        if let (true, Some(name)) = (candidate.is_file(), candidate.file_name()) {
+            if let Err(error) = move_file(&candidate, &target.with_file_name(name)) {
+                eprintln!("Could not move {}: {error}", candidate.display());
+            }
+        }
+    }
+    index.clear_thumbnails(id);
+    let moved = describe_model(root, &target, Some(&model))?;
+    {
+        let mut state = index.state.write().map_err(lock_error)?;
+        state.models.remove(id);
+        state.models.insert(moved.id.clone(), moved.clone());
+    }
+    index.persist()?;
+    Ok(moved)
+}
+
+#[tauri::command]
+pub async fn move_model(
+    id: String,
+    category: String,
+    index: State<'_, ModelIndex>,
+) -> Result<LocalModel, String> {
+    let index = index.inner().clone();
+    run_blocking(move || move_model_blocking(&index, &id, &category)).await
+}
+
 fn image_extension(bytes: &[u8]) -> Result<&'static str, String> {
     let format = image::guess_format(bytes).map_err(|_| "Unsupported image format.".to_string())?;
     Ok(match format {
@@ -2191,6 +2255,51 @@ mod tests {
         assert_eq!(find("loras", "other/foo.safetensors"), Some("b".into()));
         assert_eq!(find("loras", "bar.safetensors"), Some("c".into()));
         assert_eq!(find("unet", "missing.safetensors"), None);
+    }
+
+    #[test]
+    fn moves_model_with_sidecars_into_another_category() {
+        let dir = temp_dir("move");
+        let root_for = |category: &str| CategoryRoot {
+            category: category.into(),
+            path: dir.join(category).to_string_lossy().into_owned(),
+            is_default: true,
+        };
+        let (checkpoints, diffusion) = (root_for("checkpoints"), root_for("diffusion_models"));
+        let source = dir.join("checkpoints").join("krea").join("k2.safetensors");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"weights").unwrap();
+        fs::write(source.with_file_name("k2.preview.png"), b"png").unwrap();
+        let mut model = describe_model(&checkpoints, &source, None).unwrap();
+        model.sha256 = Some("abc".into());
+        model.hash_size = Some(model.file_size);
+        model.hash_modified_ms = Some(model.modified_ms);
+        let index = ModelIndex::default();
+        {
+            let mut state = index.state.write().unwrap();
+            state.roots = vec![checkpoints, diffusion];
+            state.models.insert(model.id.clone(), model.clone());
+        }
+
+        let moved = move_model_blocking(&index, &model.id, "unet").unwrap();
+        let target = dir
+            .join("diffusion_models")
+            .join("krea")
+            .join("k2.safetensors");
+        assert_eq!(moved.category, "diffusion_models");
+        assert_eq!(moved.relative_name, "krea/k2.safetensors");
+        assert_eq!(moved.valid_hash(), Some("abc"));
+        assert!(target.is_file() && !source.exists());
+        assert!(target.with_file_name("k2.preview.png").is_file());
+        assert!(index.get(&model.id).is_none());
+        assert!(index.get(&moved.id).is_some());
+
+        fs::write(&source, b"other").unwrap();
+        let blocked = describe_model(&root_for("checkpoints"), &source, None).unwrap();
+        index.update(blocked.clone()).unwrap();
+        assert!(move_model_blocking(&index, &blocked.id, "diffusion_models").is_err());
+        assert!(source.is_file());
+        let _ = fs::remove_dir_all(dir);
     }
 
     /// Manual benchmark: `cargo test hash_throughput -- --ignored --nocapture`.

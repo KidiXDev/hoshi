@@ -171,6 +171,10 @@ export function deleteModel(id: string) {
   return invoke<string[]>('delete_model', { id });
 }
 
+export function moveModel(id: string, category: string) {
+  return invoke<LocalModel>('move_model', { id, category });
+}
+
 export function setModelPreview(id: string, source: PreviewSource) {
   return invoke<LocalModel>('set_model_preview', { id, source });
 }

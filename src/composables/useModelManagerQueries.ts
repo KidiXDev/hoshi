@@ -7,6 +7,7 @@ import {
   deleteModel,
   findLocalModel,
   listLocalModelsIndex,
+  moveModel,
   readModelMetadata,
   rescanModels,
   setModelPreview,
@@ -110,20 +111,20 @@ export function useModelMetadataQuery(
 }
 
 /** Replaces one record inside every cached index snapshot. */
-function replaceIndexedModel(model: LocalModel) {
+function replaceIndexedModel(model: LocalModel, previousId = model.id) {
   queryClient.setQueriesData<LocalModelsIndex>(
     { queryKey: ['models', 'index'] },
     (current) =>
       current && {
         ...current,
         models: current.models.map((item) =>
-          item.id === model.id ? model : item
+          item.id === previousId ? model : item
         )
       }
   );
   queryClient.setQueriesData<LocalModel | null>(
     { queryKey: ['models', 'byName'] },
-    (current) => (current?.id === model.id ? model : current)
+    (current) => (current?.id === previousId ? model : current)
   );
 }
 
@@ -183,6 +184,21 @@ export function useDeleteModelMutation() {
     mutationFn: (id: string) => deleteModel(id),
     onSuccess: (_deleted, id) => {
       removeIndexedModel(id);
+      if (comfyStore.isConnected) void comfyStore.refreshModels();
+      void civitaiStore.refreshLocalModels();
+    }
+  });
+}
+
+export function useMoveModelMutation() {
+  const comfyStore = useComfyStore();
+  const civitaiStore = useCivitaiStore();
+  return useMutation({
+    mutationFn: ({ id, category }: { id: string; category: string }) =>
+      moveModel(id, category),
+    onSuccess: (model, { id }) => {
+      replaceIndexedModel(model, id);
+      queryClient.removeQueries({ queryKey: queryKeys.models.metadata(id) });
       if (comfyStore.isConnected) void comfyStore.refreshModels();
       void civitaiStore.refreshLocalModels();
     }

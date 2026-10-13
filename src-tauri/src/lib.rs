@@ -445,6 +445,7 @@ pub fn run() {
             model_manager::cancel_model_sync,
             model_manager::check_model_update,
             model_manager::delete_model,
+            model_manager::move_model,
             model_manager::set_model_preview,
             download_manager::list,
             download_manager::pause,
