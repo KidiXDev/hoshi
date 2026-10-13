@@ -218,6 +218,20 @@ impl GalleryFiles {
         }
     }
 
+    fn stats(&self) -> GalleryCacheStats {
+        let mut stats = GalleryCacheStats::default();
+        let entries = self.cache_dir().and_then(|dir| fs::read_dir(dir).ok());
+        for entry in entries.into_iter().flatten().flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with(THUMBNAIL_PREFIX) && name.ends_with(".jpg") {
+                stats.thumbnails += 1;
+            }
+            stats.total_size_bytes += entry.metadata().map(|meta| meta.len()).unwrap_or(0);
+        }
+        stats
+    }
+
     fn clear(&self) -> Result<(), String> {
         let cache_dir = self
             .cache_dir()
@@ -236,6 +250,13 @@ impl GalleryFiles {
             .map_err(|_| "Image gallery index is unavailable")? = None;
         Ok(())
     }
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GalleryCacheStats {
+    thumbnails: usize,
+    total_size_bytes: u64,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -649,11 +670,13 @@ pub async fn clear_gallery_cache(gallery_files: State<'_, GalleryFiles>) -> Resu
 }
 
 #[tauri::command]
-pub fn gallery_cache_directory(gallery_files: State<'_, GalleryFiles>) -> Result<String, String> {
-    gallery_files
-        .cache_dir()
-        .map(|path| path.to_string_lossy().into_owned())
-        .ok_or_else(|| "Image gallery cache lock is unavailable".to_owned())
+pub async fn gallery_cache_stats(
+    gallery_files: State<'_, GalleryFiles>,
+) -> Result<GalleryCacheStats, String> {
+    let gallery_files = gallery_files.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || gallery_files.stats())
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

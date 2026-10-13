@@ -25,7 +25,8 @@ export const DEFAULT_LAUNCHER_CONFIG: LauncherConfig = {
   autocompleteLimit: 20,
   autocompleteReplaceUnderscores: false,
   autocompleteIncludeArtistPrefix: true,
-  autocompleteEscapeParentheses: true
+  autocompleteEscapeParentheses: true,
+  promptEditorMode: false
 };
 
 export function cleanPath(value: string): string {

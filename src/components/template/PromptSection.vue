@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
 import PromptChips from '@/components/prompt/PromptChips.vue';
+import PromptEditorFrame from '@/components/prompt/PromptEditorFrame.vue';
 import PromptFindHighlight, {
   type HighlightRange
 } from '@/components/prompt/PromptFindHighlight.vue';
@@ -61,10 +62,12 @@ import {
   findDynamicGroups,
   resolveDynamicPrompt
 } from '../../utils/dynamicPrompt';
+import { useLauncherStore } from '../../stores/launcherStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { loadAppData, saveAppData } from '../../services/appStorage';
 import { toast } from 'vue-sonner';
 
+const launcherStore = useLauncherStore();
 const workflowStore = useWorkflowStore();
 
 type PromptTextareaSizes = Record<PromptField, number>;
@@ -357,9 +360,6 @@ const positiveDynamicRanges = computed(() =>
 const negativeDynamicRanges = computed(() =>
   dynamicRanges(workflowStore.negativePrompt)
 );
-const positiveVariants = computed(() =>
-  countDynamicVariants(workflowStore.positivePrompt)
-);
 const negativeVariants = computed(() =>
   countDynamicVariants(workflowStore.negativePrompt)
 );
@@ -513,30 +513,6 @@ function previewDynamicRoll(field: PromptField) {
 
     <!-- 1. POSITIVE PROMPT SECTION -->
     <WorkflowField label="Positive Prompt">
-      <template #label-extra>
-        <Tooltip v-if="positiveDynamicRanges.length > 0">
-          <TooltipTrigger as-child>
-            <button
-              type="button"
-              class="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 inline-flex h-5 cursor-pointer items-center gap-1 rounded-md border px-1.5 font-mono text-xs transition-colors"
-              aria-label="Dynamic prompt groups in positive prompt"
-              @click="previewDynamicRoll('positive')"
-            >
-              <Braces class="h-3 w-3" />
-              <span>{{ positiveDynamicRanges.length }}</span>
-              <span class="text-primary/70">·</span>
-              <span>{{ positiveVariants.toLocaleString() }}</span>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" class="max-w-xs text-xs">
-            {{ positiveDynamicRanges.length }} dynamic
-            {{ positiveDynamicRanges.length === 1 ? 'group' : 'groups' }} ·
-            {{ positiveVariants.toLocaleString() }} possible variants. One
-            option per group is picked from the seed at generation time. Click
-            to preview a roll.
-          </TooltipContent>
-        </Tooltip>
-      </template>
       <template #action>
         <div class="flex items-center gap-1.5">
           <!-- Shortcut Tip Tooltip -->
@@ -695,84 +671,91 @@ function previewDynamicRoll(field: PromptField) {
         </div>
       </template>
 
-      <div v-if="!isPositiveChipsMode" class="relative">
-        <ContextMenu>
-          <ContextMenuTrigger as-child>
-            <Textarea
-              ref="positiveTextarea"
-              v-model="workflowStore.positivePrompt"
-              :rows="4"
-              :style="{
-                height: `${textareaSizes.positive ?? defaultTextareaSizes.positive}px`
-              }"
-              placeholder="Describe the image you want to generate..."
-              class="field-sizing-fixed min-h-24 w-full resize-y font-mono text-xs leading-relaxed"
-              :class="{
-                'caret-foreground bg-transparent':
-                  positiveDynamicRanges.length > 0 ||
-                  (isFindBarOpen &&
-                    findTarget === 'positive' &&
-                    findMatches.length > 0)
-              }"
-              @input="handleInput('positive', $event)"
-              @scroll="handleTextareaScroll('positive', $event)"
-              @click="updateCursor('positive', $event)"
-              @keyup="updateCursor('positive', $event)"
-              @select="updateCursor('positive', $event)"
-              @keydown="handleKeydown('positive', $event)"
-              @blur="handleBlur('positive', $event)"
-              @pointerup="saveTextareaSize('positive', $event)"
-            />
-          </ContextMenuTrigger>
-          <ContextMenuContent class="w-44">
-            <ContextMenuItem
-              :disabled="!workflowStore.positivePrompt.trim()"
-              @select="formatPrompt('positive')"
-            >
-              <Code2 /> Format Prompt
-            </ContextMenuItem>
-            <ContextMenuItem
-              :disabled="!workflowStore.positivePrompt"
-              @select="copyPrompt('positive')"
-            >
-              <Copy /> Copy Prompt
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              variant="destructive"
-              :disabled="!workflowStore.positivePrompt"
-              @select="workflowStore.positivePrompt = ''"
-            >
-              <Trash2 /> Clear Prompt
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+      <PromptEditorFrame
+        v-if="!isPositiveChipsMode"
+        :enabled="launcherStore.config.promptEditorMode"
+        :textarea-el="rawPositiveTextarea"
+        :text="workflowStore.positivePrompt"
+      >
+        <div class="relative">
+          <ContextMenu>
+            <ContextMenuTrigger as-child>
+              <Textarea
+                ref="positiveTextarea"
+                v-model="workflowStore.positivePrompt"
+                :rows="4"
+                :style="{
+                  height: `${textareaSizes.positive ?? defaultTextareaSizes.positive}px`
+                }"
+                placeholder="Describe the image you want to generate..."
+                class="field-sizing-fixed min-h-24 w-full resize-y font-mono text-xs leading-relaxed"
+                :class="{
+                  'caret-foreground bg-transparent':
+                    positiveDynamicRanges.length > 0 ||
+                    (isFindBarOpen &&
+                      findTarget === 'positive' &&
+                      findMatches.length > 0)
+                }"
+                @input="handleInput('positive', $event)"
+                @scroll="handleTextareaScroll('positive', $event)"
+                @click="updateCursor('positive', $event)"
+                @keyup="updateCursor('positive', $event)"
+                @select="updateCursor('positive', $event)"
+                @keydown="handleKeydown('positive', $event)"
+                @blur="handleBlur('positive', $event)"
+                @pointerup="saveTextareaSize('positive', $event)"
+              />
+            </ContextMenuTrigger>
+            <ContextMenuContent class="w-44">
+              <ContextMenuItem
+                :disabled="!workflowStore.positivePrompt.trim()"
+                @select="formatPrompt('positive')"
+              >
+                <Code2 /> Format Prompt
+              </ContextMenuItem>
+              <ContextMenuItem
+                :disabled="!workflowStore.positivePrompt"
+                @select="copyPrompt('positive')"
+              >
+                <Copy /> Copy Prompt
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                variant="destructive"
+                :disabled="!workflowStore.positivePrompt"
+                @select="workflowStore.positivePrompt = ''"
+              >
+                <Trash2 /> Clear Prompt
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
 
-        <!-- Search Match Highlight Overlay -->
-        <PromptFindHighlight
-          :textarea-el="rawPositiveTextarea"
-          :text="workflowStore.positivePrompt"
-          :matches="findMatches"
-          :current-match-index="currentMatchIndex"
-          :active="isFindBarOpen && findTarget === 'positive'"
-          :ranges="positiveDynamicRanges"
-        />
-
-        <!-- Autocomplete Floating Dropdown -->
-        <div
-          v-if="activeField === 'positive'"
-          ref="autocompleteListRef"
-          role="listbox"
-          :style="getAutocompleteDropdownStyle('positive')"
-          class="border-border bg-popover/95 absolute z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
-        >
-          <PromptSuggestionOptions
-            :suggestions="suggestions"
-            :active-index="activeIndex"
-            @select="selectSuggestion('positive', $event)"
+          <!-- Search Match Highlight Overlay -->
+          <PromptFindHighlight
+            :textarea-el="rawPositiveTextarea"
+            :text="workflowStore.positivePrompt"
+            :matches="findMatches"
+            :current-match-index="currentMatchIndex"
+            :active="isFindBarOpen && findTarget === 'positive'"
+            :ranges="positiveDynamicRanges"
           />
+
+          <!-- Autocomplete Floating Dropdown -->
+          <div
+            v-if="activeField === 'positive'"
+            ref="autocompleteListRef"
+            role="listbox"
+            :style="getAutocompleteDropdownStyle('positive')"
+            class="border-border bg-popover/95 absolute z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
+          >
+            <PromptSuggestionOptions
+              :suggestions="suggestions"
+              :active-index="activeIndex"
+              @select="selectSuggestion('positive', $event)"
+            />
+          </div>
         </div>
-      </div>
+      </PromptEditorFrame>
 
       <!-- Interactive Tag Chips Mode -->
       <PromptChips
@@ -980,84 +963,91 @@ function previewDynamicRoll(field: PromptField) {
       </template>
 
       <!-- Negative Content: Textarea or Interactive Chips -->
-      <div v-if="!isNegativeChipsMode" class="relative">
-        <ContextMenu>
-          <ContextMenuTrigger as-child>
-            <Textarea
-              ref="negativeTextarea"
-              v-model="workflowStore.negativePrompt"
-              :rows="3"
-              :style="{
-                height: `${textareaSizes.negative ?? defaultTextareaSizes.negative}px`
-              }"
-              placeholder="Things to avoid in generation..."
-              class="field-sizing-fixed min-h-20 w-full resize-y font-mono text-xs leading-relaxed"
-              :class="{
-                'caret-foreground bg-transparent':
-                  negativeDynamicRanges.length > 0 ||
-                  (isFindBarOpen &&
-                    findTarget === 'negative' &&
-                    findMatches.length > 0)
-              }"
-              @input="handleInput('negative', $event)"
-              @scroll="handleTextareaScroll('negative', $event)"
-              @click="updateCursor('negative', $event)"
-              @keyup="updateCursor('negative', $event)"
-              @select="updateCursor('negative', $event)"
-              @keydown="handleKeydown('negative', $event)"
-              @blur="handleBlur('negative', $event)"
-              @pointerup="saveTextareaSize('negative', $event)"
-            />
-          </ContextMenuTrigger>
-          <ContextMenuContent class="w-44">
-            <ContextMenuItem
-              :disabled="!workflowStore.negativePrompt.trim()"
-              @select="formatPrompt('negative')"
-            >
-              <Code2 /> Format Prompt
-            </ContextMenuItem>
-            <ContextMenuItem
-              :disabled="!workflowStore.negativePrompt"
-              @select="copyPrompt('negative')"
-            >
-              <Copy /> Copy Prompt
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              variant="destructive"
-              :disabled="!workflowStore.negativePrompt"
-              @select="workflowStore.negativePrompt = ''"
-            >
-              <Trash2 /> Clear Prompt
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+      <PromptEditorFrame
+        v-if="!isNegativeChipsMode"
+        :enabled="launcherStore.config.promptEditorMode"
+        :textarea-el="rawNegativeTextarea"
+        :text="workflowStore.negativePrompt"
+      >
+        <div class="relative">
+          <ContextMenu>
+            <ContextMenuTrigger as-child>
+              <Textarea
+                ref="negativeTextarea"
+                v-model="workflowStore.negativePrompt"
+                :rows="3"
+                :style="{
+                  height: `${textareaSizes.negative ?? defaultTextareaSizes.negative}px`
+                }"
+                placeholder="Things to avoid in generation..."
+                class="field-sizing-fixed min-h-20 w-full resize-y font-mono text-xs leading-relaxed"
+                :class="{
+                  'caret-foreground bg-transparent':
+                    negativeDynamicRanges.length > 0 ||
+                    (isFindBarOpen &&
+                      findTarget === 'negative' &&
+                      findMatches.length > 0)
+                }"
+                @input="handleInput('negative', $event)"
+                @scroll="handleTextareaScroll('negative', $event)"
+                @click="updateCursor('negative', $event)"
+                @keyup="updateCursor('negative', $event)"
+                @select="updateCursor('negative', $event)"
+                @keydown="handleKeydown('negative', $event)"
+                @blur="handleBlur('negative', $event)"
+                @pointerup="saveTextareaSize('negative', $event)"
+              />
+            </ContextMenuTrigger>
+            <ContextMenuContent class="w-44">
+              <ContextMenuItem
+                :disabled="!workflowStore.negativePrompt.trim()"
+                @select="formatPrompt('negative')"
+              >
+                <Code2 /> Format Prompt
+              </ContextMenuItem>
+              <ContextMenuItem
+                :disabled="!workflowStore.negativePrompt"
+                @select="copyPrompt('negative')"
+              >
+                <Copy /> Copy Prompt
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                variant="destructive"
+                :disabled="!workflowStore.negativePrompt"
+                @select="workflowStore.negativePrompt = ''"
+              >
+                <Trash2 /> Clear Prompt
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
 
-        <!-- Search Match Highlight Overlay -->
-        <PromptFindHighlight
-          :textarea-el="rawNegativeTextarea"
-          :text="workflowStore.negativePrompt"
-          :matches="findMatches"
-          :current-match-index="currentMatchIndex"
-          :active="isFindBarOpen && findTarget === 'negative'"
-          :ranges="negativeDynamicRanges"
-        />
-
-        <!-- Autocomplete Floating Dropdown for Negative -->
-        <div
-          v-if="activeField === 'negative'"
-          ref="autocompleteListRef"
-          role="listbox"
-          :style="getAutocompleteDropdownStyle('negative')"
-          class="border-border bg-popover/95 absolute z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
-        >
-          <PromptSuggestionOptions
-            :suggestions="suggestions"
-            :active-index="activeIndex"
-            @select="selectSuggestion('negative', $event)"
+          <!-- Search Match Highlight Overlay -->
+          <PromptFindHighlight
+            :textarea-el="rawNegativeTextarea"
+            :text="workflowStore.negativePrompt"
+            :matches="findMatches"
+            :current-match-index="currentMatchIndex"
+            :active="isFindBarOpen && findTarget === 'negative'"
+            :ranges="negativeDynamicRanges"
           />
+
+          <!-- Autocomplete Floating Dropdown for Negative -->
+          <div
+            v-if="activeField === 'negative'"
+            ref="autocompleteListRef"
+            role="listbox"
+            :style="getAutocompleteDropdownStyle('negative')"
+            class="border-border bg-popover/95 absolute z-50 max-h-56 overflow-y-auto rounded-lg border p-1 shadow-xl backdrop-blur-md"
+          >
+            <PromptSuggestionOptions
+              :suggestions="suggestions"
+              :active-index="activeIndex"
+              @select="selectSuggestion('negative', $event)"
+            />
+          </div>
         </div>
-      </div>
+      </PromptEditorFrame>
 
       <!-- Interactive Tag Chips Mode for Negative -->
       <PromptChips

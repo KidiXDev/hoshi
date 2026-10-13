@@ -38,9 +38,6 @@ const choices: { key: keyof FormatOptions; label: string }[] = [
         @select.prevent
         >{{ choice.label }}</DropdownMenuCheckboxItem
       >
-      <p class="text-muted-foreground px-2 py-1 text-xs">
-        Escaping makes parentheses literal, including prompt weights.
-      </p>
       <DropdownMenuSeparator />
       <DropdownMenuItem :disabled="disabled" @click="emit('format')"
         ><Sparkles />Apply formatting</DropdownMenuItem

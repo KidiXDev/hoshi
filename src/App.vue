@@ -12,6 +12,7 @@ import {
 } from 'vue';
 import { RouterView, useRoute } from 'vue-router';
 import ConfirmDialogProvider from '@/components/common/ConfirmDialogProvider.vue';
+import GalleryRebuildDialog from '@/components/gallery/GalleryRebuildDialog.vue';
 import AppSidebar from '@/components/template/AppSidebar.vue';
 import AppTitlebar from '@/components/template/AppTitlebar.vue';
 import AiAssistantDrawer from '@/components/template/AiAssistantDrawer.vue';
@@ -210,6 +211,7 @@ onUnmounted(() => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <GalleryRebuildDialog />
           <Toaster position="bottom-right" theme="dark" richColors />
         </div>
       </div>

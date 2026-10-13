@@ -14,6 +14,7 @@ export interface LauncherConfig {
   autocompleteReplaceUnderscores: boolean;
   autocompleteIncludeArtistPrefix: boolean;
   autocompleteEscapeParentheses: boolean;
+  promptEditorMode: boolean;
 }
 
 export interface ComfyCommit {

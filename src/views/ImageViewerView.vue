@@ -14,19 +14,16 @@ import {
 } from 'vue';
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { formatFileSize } from '@/utils/formatters';
 import {
   ArrowUpDown,
   Columns2,
   FolderOpen,
-  HardDrive,
   Image as ImageIcon,
   Layers,
   Loader2,
   RefreshCw,
   Search,
-  Trash2,
   X,
   ZoomIn
 } from '@lucide/vue';
@@ -58,16 +55,15 @@ import {
   TooltipTrigger
 } from '@/components/ui/tooltip';
 import {
-  clearGalleryCache,
   dragOutputImage,
   GALLERY_IMAGE_MIME,
-  getGalleryCacheDirectory,
   listOutputImages,
   localImageUrl,
   prepareOutputGallery,
   refreshOutputImages,
   type OutputImage
 } from '../services/imageGallery';
+import { useGalleryCacheStore } from '../stores/galleryCacheStore';
 import { useLauncherStore } from '../stores/launcherStore';
 import { pickCompareTarget } from '@/utils/imageCompare';
 
@@ -161,6 +157,7 @@ const CARD_ASPECT_RATIO = 4 / 3;
 const CARD_FOOTER_HEIGHT = 52;
 const OVERSCAN_ROWS = 6;
 const launcherStore = useLauncherStore();
+const galleryCache = useGalleryCacheStore();
 
 const images = shallowRef<OutputImage[]>([]);
 const query = ref('');
@@ -173,14 +170,9 @@ const scrollViewport = ref<HTMLElement | null>(null);
 const gridWidth = ref(1200);
 const isViewActive = ref(true);
 const isLoading = ref(false);
-const indexStage = ref('Preparing image index');
-const indexProcessed = ref(0);
-const indexTotal = ref(0);
-const cacheDirectory = ref('');
 const errorMessage = ref('');
 
 let resizeObserver: ResizeObserver | undefined;
-let unlistenProgress: UnlistenFn | undefined;
 let savedScrollTop = 0;
 
 const availableSubfolders = computed<string[]>(() => {
@@ -277,17 +269,12 @@ const rowVirtualizer = useVirtualizer(
 const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems());
 const totalVirtualHeight = computed(() => rowVirtualizer.value.getTotalSize());
 
-const indexPercent = computed(() =>
-  indexTotal.value > 0
-    ? Math.round((indexProcessed.value / indexTotal.value) * 100)
-    : 0
-);
-
 function imageUrl(image: OutputImage, thumbnail = true) {
   return localImageUrl(image.localId, thumbnail);
 }
 
 async function loadImages() {
+  if (galleryCache.isRebuilding) return;
   if (!launcherStore.hasComfyDirectory) {
     images.value = [];
     errorMessage.value = '';
@@ -296,9 +283,7 @@ async function loadImages() {
   }
   const workingDir = launcherStore.config.workingDir;
   isLoading.value = true;
-  indexStage.value = 'Scanning output files';
-  indexProcessed.value = 0;
-  indexTotal.value = 0;
+  galleryCache.resetProgress('Scanning output files');
   errorMessage.value = '';
   try {
     const result = await prepareOutputGallery(
@@ -313,16 +298,6 @@ async function loadImages() {
       errorMessage.value = String(error);
   } finally {
     if (workingDir === launcherStore.config.workingDir) isLoading.value = false;
-  }
-}
-
-async function clearCacheAndReindex() {
-  if (isLoading.value) return;
-  try {
-    await clearGalleryCache();
-    await loadImages();
-  } catch (error) {
-    errorMessage.value = String(error);
   }
 }
 
@@ -369,7 +344,7 @@ function deactivateView() {
 }
 
 async function restoreImages() {
-  if (!launcherStore.hasComfyDirectory) return;
+  if (galleryCache.isRebuilding || !launcherStore.hasComfyDirectory) return;
   const workingDir = launcherStore.config.workingDir;
   try {
     const cached = await listOutputImages(workingDir, launcherStore.launchArgs);
@@ -397,17 +372,27 @@ watch(
   }
 );
 
+watch(
+  () => galleryCache.isRebuilding,
+  async (rebuilding) => {
+    if (rebuilding || !launcherStore.hasComfyDirectory) return;
+    const workingDir = launcherStore.config.workingDir;
+    try {
+      const indexed = await listOutputImages(
+        workingDir,
+        launcherStore.launchArgs
+      );
+      if (workingDir !== launcherStore.config.workingDir) return;
+      images.value = indexed;
+      errorMessage.value = '';
+    } catch (error) {
+      if (workingDir === launcherStore.config.workingDir)
+        errorMessage.value = String(error);
+    }
+  }
+);
+
 onMounted(async () => {
-  cacheDirectory.value = await getGalleryCacheDirectory();
-  unlistenProgress = await listen<{
-    stage: string;
-    processed: number;
-    total: number;
-  }>('gallery-index-progress', (event) => {
-    indexStage.value = event.payload.stage;
-    indexProcessed.value = event.payload.processed;
-    indexTotal.value = event.payload.total;
-  });
   resizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
       if (entry.contentRect.width > 0) {
@@ -425,7 +410,6 @@ onDeactivated(deactivateView);
 
 onUnmounted(() => {
   deactivateView();
-  unlistenProgress?.();
 });
 </script>
 
@@ -540,43 +524,6 @@ onUnmounted(() => {
 
         <Separator orientation="vertical" class="h-5" />
 
-        <!-- Cache Folder Button -->
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button
-              variant="outline"
-              size="iconSm"
-              class="border-border/80 bg-secondary/70 hover:bg-secondary h-8 w-8"
-              @click="openLocalPath(cacheDirectory)"
-            >
-              <HardDrive
-                class="text-muted-foreground hover:text-foreground h-3.5 w-3.5"
-              />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p class="text-xs">Open thumbnail cache directory</p>
-          </TooltipContent>
-        </Tooltip>
-
-        <!-- Clear Cache & Rebuild -->
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button
-              variant="outline"
-              size="iconSm"
-              :disabled="isLoading"
-              class="border-border/80 bg-secondary/70 hover:bg-destructive/10 hover:text-destructive h-8 w-8 disabled:opacity-40"
-              @click="clearCacheAndReindex"
-            >
-              <Trash2 class="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p class="text-xs">Clear cache and re-index images</p>
-          </TooltipContent>
-        </Tooltip>
-
         <!-- Output Folder Button -->
         <Tooltip>
           <TooltipTrigger as-child>
@@ -603,11 +550,14 @@ onUnmounted(() => {
               variant="outline"
               size="iconSm"
               class="border-border/80 bg-secondary/70 hover:bg-secondary h-8 w-8"
+              :disabled="galleryCache.isRebuilding"
               @click="loadImages"
             >
               <RefreshCw
                 class="text-muted-foreground hover:text-foreground h-3.5 w-3.5"
-                :class="{ 'animate-spin': isLoading }"
+                :class="{
+                  'animate-spin': isLoading || galleryCache.isRebuilding
+                }"
               />
             </Button>
           </TooltipTrigger>
@@ -665,7 +615,9 @@ onUnmounted(() => {
         >
       </div>
       <div
-        v-else-if="isLoading && images.length === 0"
+        v-else-if="
+          galleryCache.isRebuilding || (isLoading && images.length === 0)
+        "
         class="flex h-full items-center justify-center p-8"
       >
         <div
@@ -678,23 +630,22 @@ onUnmounted(() => {
           </div>
           <div>
             <p class="text-foreground text-sm font-bold tracking-tight">
-              {{ indexStage }}
+              {{ galleryCache.progress.stage }}
             </p>
             <p class="text-muted-foreground mt-1 font-mono text-xs">
-              {{ indexProcessed }} / {{ indexTotal || '—' }} images processed
+              {{ galleryCache.progress.processed }} /
+              {{ galleryCache.progress.total || '—' }} images processed
             </p>
           </div>
           <div class="w-full">
             <Progress
-              :model-value="indexTotal ? indexPercent : 15"
+              :model-value="
+                galleryCache.progress.total ? galleryCache.percent : 15
+              "
               class="h-2 w-full"
-              :class="{ 'animate-pulse': !indexTotal }"
+              :class="{ 'animate-pulse': !galleryCache.progress.total }"
             />
           </div>
-          <p class="text-muted-foreground text-xs">
-            The 7-column portrait grid will appear automatically once cache is
-            ready.
-          </p>
         </div>
       </div>
 

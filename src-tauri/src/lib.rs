@@ -457,7 +457,7 @@ pub fn run() {
             process_manager::discover_local_models,
             image_gallery::prepare_output_gallery,
             image_gallery::clear_gallery_cache,
-            image_gallery::gallery_cache_directory,
+            image_gallery::gallery_cache_stats,
             image_gallery::refresh_output_images,
             image_gallery::read_output_image_metadata,
             image_gallery::open_comfy_output_folder,

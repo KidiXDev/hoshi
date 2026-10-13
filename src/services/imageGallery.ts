@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { customSchemeUrl } from '../lib/customScheme';
 import type { HistoryItem } from '../types/workflow';
 import { withFileName } from '../utils/imageFiles';
@@ -98,8 +99,27 @@ export function clearGalleryCache(): Promise<void> {
   return invoke('clear_gallery_cache');
 }
 
-export function getGalleryCacheDirectory(): Promise<string> {
-  return invoke('gallery_cache_directory');
+export interface GalleryCacheStats {
+  thumbnails: number;
+  totalSizeBytes: number;
+}
+
+export function getGalleryCacheStats(): Promise<GalleryCacheStats> {
+  return invoke('gallery_cache_stats');
+}
+
+export interface GalleryIndexProgress {
+  stage: string;
+  processed: number;
+  total: number;
+}
+
+export function onGalleryIndexProgress(
+  handler: (progress: GalleryIndexProgress) => void
+): Promise<UnlistenFn> {
+  return listen<GalleryIndexProgress>('gallery-index-progress', (event) =>
+    handler(event.payload)
+  );
 }
 
 export function readOutputImageMetadata(

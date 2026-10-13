@@ -13,6 +13,7 @@ import {
   CloudDownload,
   Cpu,
   ExternalLink,
+  FlaskConical,
   FolderOpen,
   FolderSearch,
   Globe,
@@ -28,6 +29,7 @@ import {
   Terminal,
   Trash2,
   Wifi,
+  Wrench,
   XCircle
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
@@ -55,14 +57,19 @@ import {
 import { BRAND_NAME, REPO_SLUG } from '@/lib/brand';
 import { loadAppData, saveAppData } from '../services/appStorage';
 import { ComfyApi } from '../services/comfyApi';
+import {
+  getGalleryCacheStats,
+  type GalleryCacheStats
+} from '../services/imageGallery';
 import { useComfyStore } from '../stores/comfyStore';
+import { useGalleryCacheStore } from '../stores/galleryCacheStore';
 import {
   cleanPath,
   DEFAULT_LAUNCHER_CONFIG,
   useLauncherStore
 } from '../stores/launcherStore';
 import type { ComfyUpdateStatus } from '../types/launcher';
-import { formatRelativeTime } from '../utils/formatters';
+import { formatFileSize, formatRelativeTime } from '../utils/formatters';
 import { APP_VERSION, isNewerVersion } from '../version';
 import PageLayout from '@/components/layout/PageLayout.vue';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
@@ -74,13 +81,10 @@ const comfyStore = useComfyStore();
 
 const tabs = [
   { id: 'comfyui', label: 'ComfyUI', icon: Terminal },
-  { id: 'autocomplete', label: 'Tag autocomplete', icon: Sparkles },
   { id: 'booru', label: 'Booru gallery', icon: ImageIcon },
   { id: 'civitai', label: 'Civitai', icon: KeyRound },
   { id: 'ai', label: 'AI assistant', icon: Bot },
-  { id: 'general', label: 'General', icon: AppWindow },
-  { id: 'storage', label: 'Storage', icon: HardDrive },
-  { id: 'about', label: 'About', icon: Info }
+  { id: 'general', label: 'General', icon: AppWindow }
 ] as const;
 type SettingsTab = (typeof tabs)[number]['id'];
 const activeTab = ref<SettingsTab>('comfyui');
@@ -103,6 +107,7 @@ const autocompleteIncludeArtistPrefix = ref(
 const autocompleteEscapeParentheses = ref(
   launcherStore.config.autocompleteEscapeParentheses
 );
+const promptEditorMode = ref(launcherStore.config.promptEditorMode);
 const civitaiApiKey = ref('');
 const savedCivitaiApiKey = ref('');
 const hasCivitaiApiKey = ref(false);
@@ -232,7 +237,8 @@ async function saveApplicationSettings() {
     autocompleteLimit: autocompleteLimit.value,
     autocompleteReplaceUnderscores: autocompleteReplaceUnderscores.value,
     autocompleteIncludeArtistPrefix: autocompleteIncludeArtistPrefix.value,
-    autocompleteEscapeParentheses: autocompleteEscapeParentheses.value
+    autocompleteEscapeParentheses: autocompleteEscapeParentheses.value,
+    promptEditorMode: promptEditorMode.value
   });
   if (!serverChanged && autocompleteEnabled.value && autocompleteReady.value) {
     await ComfyApi.updateTagAutocompleteSettings(
@@ -284,7 +290,8 @@ watch(
     autocompleteLimit,
     autocompleteReplaceUnderscores,
     autocompleteIncludeArtistPrefix,
-    autocompleteEscapeParentheses
+    autocompleteEscapeParentheses,
+    promptEditorMode
   ],
   () => autosaveApplicationSettings(),
   { deep: true }
@@ -357,6 +364,7 @@ function handleResetDefaults() {
     DEFAULT_LAUNCHER_CONFIG.autocompleteIncludeArtistPrefix;
   autocompleteEscapeParentheses.value =
     DEFAULT_LAUNCHER_CONFIG.autocompleteEscapeParentheses;
+  promptEditorMode.value = DEFAULT_LAUNCHER_CONFIG.promptEditorMode;
   civitaiApiKey.value = '';
   civitaiNsfw.value = false;
 }
@@ -433,48 +441,69 @@ async function checkForUpdates() {
   }
 }
 
-// Network Disk Cache (Danbooru & Animadex)
-const cacheStats = ref<{ totalEntries: number; totalSizeBytes: number } | null>(
-  null
-);
-const isClearingCache = ref(false);
-const cacheMessage = ref('');
+// Disk cache (network responses + generation thumbnails)
+const galleryCache = useGalleryCacheStore();
+const networkCacheStats = ref<{
+  totalEntries: number;
+  totalSizeBytes: number;
+} | null>(null);
+const thumbnailCacheStats = ref<GalleryCacheStats | null>(null);
+const isClearingNetworkCache = ref(false);
+const cacheResult = ref<{ ok: boolean; message: string } | null>(null);
+let cacheResultTimer: ReturnType<typeof setTimeout> | undefined;
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+async function loadCacheStats() {
+  const [network, thumbnails] = await Promise.allSettled([
+    invoke<{ totalEntries: number; totalSizeBytes: number }>(
+      'get_network_cache_stats'
+    ),
+    getGalleryCacheStats()
+  ]);
+  if (network.status === 'fulfilled') networkCacheStats.value = network.value;
+  else console.warn('Failed to load network cache stats:', network.reason);
+  if (thumbnails.status === 'fulfilled')
+    thumbnailCacheStats.value = thumbnails.value;
+  else console.warn('Failed to load thumbnail cache stats:', thumbnails.reason);
 }
 
-async function loadNetworkCacheStats() {
-  try {
-    cacheStats.value = await invoke<{
-      totalEntries: number;
-      totalSizeBytes: number;
-    }>('get_network_cache_stats');
-  } catch (err) {
-    console.warn('Failed to load network cache stats:', err);
+function showCacheResult(error: string, successMessage: string) {
+  clearTimeout(cacheResultTimer);
+  cacheResult.value = error
+    ? { ok: false, message: `Failed to clear: ${error}` }
+    : { ok: true, message: successMessage };
+  if (!error) {
+    cacheResultTimer = setTimeout(() => {
+      cacheResult.value = null;
+    }, 3000);
   }
 }
 
-async function clearNetworkDiskCache() {
-  if (isClearingCache.value) return;
-  isClearingCache.value = true;
+async function clearNetworkCache() {
+  if (isClearingNetworkCache.value) return;
+  isClearingNetworkCache.value = true;
+  let error = '';
   try {
     await invoke('clear_network_cache', { namespace: null });
-    await loadNetworkCacheStats();
-    cacheMessage.value = 'Disk cache cleared.';
-    setTimeout(() => {
-      cacheMessage.value = '';
-    }, 3000);
   } catch (err) {
-    cacheMessage.value = `Failed to clear: ${err instanceof Error ? err.message : String(err)}`;
+    error = err instanceof Error ? err.message : String(err);
   } finally {
-    isClearingCache.value = false;
+    isClearingNetworkCache.value = false;
   }
+  await loadCacheStats();
+  showCacheResult(error, 'Network cache cleared.');
 }
 
-void loadNetworkCacheStats();
+async function clearThumbnailCache() {
+  if (galleryCache.isRebuilding) return;
+  await galleryCache.clearAndRebuild();
+  await loadCacheStats();
+  showCacheResult(
+    galleryCache.error,
+    'Thumbnail cache cleared and re-indexed.'
+  );
+}
+
+void loadCacheStats();
 </script>
 
 <template>
@@ -882,123 +911,6 @@ void loadNetworkCacheStats();
             </SettingsSection>
           </template>
 
-          <!-- Autocomplete -->
-          <SettingsSection
-            v-if="activeTab === 'autocomplete'"
-            title="Tag autocomplete"
-            description="Danbooru tag suggestions while typing prompts. Requires the yet_essential custom node."
-            icon-class="text-amber-400"
-          >
-            <template #icon>
-              <Sparkles class="h-3.5 w-3.5" />
-            </template>
-            <template #actions>
-              <Label
-                class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
-                :class="{ 'opacity-50': !autocompleteReady }"
-              >
-                <Switch
-                  v-model="autocompleteEnabled"
-                  :disabled="!autocompleteReady"
-                />
-                <span>Enabled</span>
-              </Label>
-            </template>
-
-            <NoticeBanner v-if="!autocompleteReady">
-              <span v-if="!comfyStore.isConnected">
-                Start the ComfyUI server to detect autocomplete support.
-              </span>
-              <span v-else>
-                The
-                <code class="font-mono font-semibold">yet_essential</code>
-                custom node is not detected. Install it into
-                <code class="font-mono">custom_nodes</code> and restart ComfyUI.
-              </span>
-            </NoticeBanner>
-
-            <div
-              class="grid grid-cols-1 gap-4 sm:grid-cols-2"
-              :class="{
-                'pointer-events-none opacity-50':
-                  !autocompleteEnabled || !autocompleteReady
-              }"
-            >
-              <Field class="gap-1.5">
-                <FieldLabel class="text-foreground text-xs font-medium">
-                  Search mode
-                </FieldLabel>
-                <Select
-                  v-model="autocompleteAlgorithm"
-                  :disabled="!autocompleteEnabled || !autocompleteReady"
-                >
-                  <SelectTrigger class="w-full text-xs">
-                    <SelectValue placeholder="Search mode">
-                      {{
-                        autocompleteAlgorithm === 'fuzzy'
-                          ? 'Fuzzy (flexible matching)'
-                          : autocompleteAlgorithm === 'contains'
-                            ? 'Contains (substring search)'
-                            : autocompleteAlgorithm === 'prefix'
-                              ? 'Prefix (fastest & strictest)'
-                              : autocompleteAlgorithm
-                      }}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup class="max-h-40 overflow-y-auto">
-                      <SelectItem value="fuzzy">
-                        Fuzzy (flexible matching)
-                      </SelectItem>
-                      <SelectItem value="contains">
-                        Contains (substring search)
-                      </SelectItem>
-                      <SelectItem value="prefix">
-                        Prefix (fastest & strictest)
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-
-              <Field class="gap-1.5">
-                <FieldLabel class="text-foreground text-xs font-medium">
-                  Max suggestions
-                </FieldLabel>
-                <Input
-                  v-model="autocompleteLimit"
-                  type="number"
-                  min="5"
-                  max="50"
-                  :disabled="!autocompleteEnabled || !autocompleteReady"
-                  class="font-mono text-xs"
-                />
-                <FieldDescription class="text-xs">5 – 50</FieldDescription>
-              </Field>
-            </div>
-
-            <SettingsSwitchRow
-              v-model="autocompleteReplaceUnderscores"
-              label="Replace underscores with spaces"
-              description="Insert “long hair” instead of “long_hair”."
-              :disabled="!autocompleteEnabled || !autocompleteReady"
-            />
-
-            <SettingsSwitchRow
-              v-model="autocompleteIncludeArtistPrefix"
-              label="Keep @ on artist tags"
-              description="Prefix inserted artist tags with @ so Anima treats them as artists."
-              :disabled="!autocompleteEnabled || !autocompleteReady"
-            />
-
-            <SettingsSwitchRow
-              v-model="autocompleteEscapeParentheses"
-              label="Escape parentheses"
-              description="Insert “miku_\(vocaloid\)” so ComfyUI does not read a tag's parentheses as emphasis."
-              :disabled="!autocompleteEnabled || !autocompleteReady"
-            />
-          </SettingsSection>
-
           <!-- Booru -->
           <BooruSettings v-show="activeTab === 'booru'" @saved="showSaved" />
 
@@ -1065,132 +977,314 @@ void loadNetworkCacheStats();
           <AiSettings v-show="activeTab === 'ai'" @saved="showSaved" />
 
           <!-- General -->
-          <SettingsSection
-            v-if="activeTab === 'general'"
-            title="Window"
-            description="What happens when you close the main window."
-            icon-class="text-sky-400"
-          >
-            <template #icon>
-              <AppWindow class="h-3.5 w-3.5" />
-            </template>
-            <SettingsSwitchRow
-              v-model="closeToTray"
-              label="Minimize to tray on close"
-              :description="`Keep ${BRAND_NAME} running in the system tray. Use Quit from the tray menu to exit completely.`"
-            />
-          </SettingsSection>
-
-          <!-- Storage -->
-          <SettingsSection
-            v-if="activeTab === 'storage'"
-            title="Network cache"
-            description="Cached Danbooru and Animadex responses stored on disk."
-            icon-class="text-cyan-400"
-          >
-            <template #icon>
-              <HardDrive class="h-3.5 w-3.5" />
-            </template>
-
-            <div class="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p class="text-muted-foreground text-xs">Size on disk</p>
-                <p class="mt-1 font-mono text-sm font-semibold">
-                  <template v-if="cacheStats">
-                    {{ formatBytes(cacheStats.totalSizeBytes) }}
-                    <span class="text-muted-foreground text-xs font-normal">
-                      · {{ cacheStats.totalEntries }} entries
-                    </span>
-                  </template>
-                  <span v-else class="text-muted-foreground">Loading…</span>
-                </p>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                :disabled="
-                  isClearingCache ||
-                  !cacheStats ||
-                  cacheStats.totalEntries === 0
-                "
-                class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
-                @click="clearNetworkDiskCache"
-              >
-                <Loader2
-                  v-if="isClearingCache"
-                  class="h-3.5 w-3.5 animate-spin"
-                />
-                <Trash2 v-else class="h-3.5 w-3.5 text-rose-400" />
-                {{ isClearingCache ? 'Clearing…' : 'Clear cache' }}
-              </Button>
-            </div>
-
-            <NoticeBanner v-if="cacheMessage" tone="emerald">
-              {{ cacheMessage }}
-            </NoticeBanner>
-          </SettingsSection>
-
-          <!-- About -->
-          <SettingsSection
-            v-if="activeTab === 'about'"
-            :title="`About ${BRAND_NAME}`"
-            icon-class="text-violet-400"
-          >
-            <template #icon>
-              <Info class="h-3.5 w-3.5" />
-            </template>
-
-            <div class="flex items-center justify-between gap-4">
-              <div>
-                <p class="text-muted-foreground text-xs">Current version</p>
-                <p class="mt-1 font-mono text-sm font-semibold">
-                  {{ APP_VERSION }}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                :disabled="updateChecking"
-                class="border-border bg-secondary text-xs font-medium"
-                @click="checkForUpdates"
-              >
-                <Loader2
-                  v-if="updateChecking"
-                  class="h-3.5 w-3.5 animate-spin"
-                />
-                <RefreshCw v-else class="h-3.5 w-3.5" />
-                Check for updates
-              </Button>
-            </div>
-
-            <NoticeBanner
-              v-if="updateResult"
-              :tone="
-                updateResult.type === 'current'
-                  ? 'emerald'
-                  : updateResult.type === 'update'
-                    ? 'info'
-                    : 'destructive'
-              "
+          <template v-if="activeTab === 'general'">
+            <SettingsSection
+              title="Window"
+              description="What happens when you close the main window."
+              icon-class="text-sky-400"
             >
-              {{ updateResult.message }}
-              <template v-if="updateResult.url" #actions>
+              <template #icon>
+                <AppWindow class="h-3.5 w-3.5" />
+              </template>
+              <SettingsSwitchRow
+                v-model="closeToTray"
+                label="Minimize to tray on close"
+                :description="`Keep ${BRAND_NAME} running in the system tray. Use Quit from the tray menu to exit completely.`"
+              />
+            </SettingsSection>
+
+            <!-- Autocomplete -->
+            <SettingsSection
+              title="Tag autocomplete"
+              description="Danbooru tag suggestions while typing prompts. Requires the yet_essential custom node."
+              icon-class="text-amber-400"
+            >
+              <template #icon>
+                <Sparkles class="h-3.5 w-3.5" />
+              </template>
+              <template #actions>
+                <Label
+                  class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
+                  :class="{ 'opacity-50': !autocompleteReady }"
+                >
+                  <Switch
+                    v-model="autocompleteEnabled"
+                    :disabled="!autocompleteReady"
+                  />
+                  <span>Enabled</span>
+                </Label>
+              </template>
+
+              <NoticeBanner v-if="!autocompleteReady">
+                <span v-if="!comfyStore.isConnected">
+                  Start the ComfyUI server to detect autocomplete support.
+                </span>
+                <span v-else>
+                  The
+                  <code class="font-mono font-semibold">yet_essential</code>
+                  custom node is not detected. Install it into
+                  <code class="font-mono">custom_nodes</code> and restart
+                  ComfyUI.
+                </span>
+              </NoticeBanner>
+
+              <div
+                class="grid grid-cols-1 gap-4 sm:grid-cols-2"
+                :class="{
+                  'pointer-events-none opacity-50':
+                    !autocompleteEnabled || !autocompleteReady
+                }"
+              >
+                <Field class="gap-1.5">
+                  <FieldLabel class="text-foreground text-xs font-medium">
+                    Search mode
+                  </FieldLabel>
+                  <Select
+                    v-model="autocompleteAlgorithm"
+                    :disabled="!autocompleteEnabled || !autocompleteReady"
+                  >
+                    <SelectTrigger class="w-full text-xs">
+                      <SelectValue placeholder="Search mode">
+                        {{
+                          autocompleteAlgorithm === 'fuzzy'
+                            ? 'Fuzzy (flexible matching)'
+                            : autocompleteAlgorithm === 'contains'
+                              ? 'Contains (substring search)'
+                              : autocompleteAlgorithm === 'prefix'
+                                ? 'Prefix (fastest & strictest)'
+                                : autocompleteAlgorithm
+                        }}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup class="max-h-40 overflow-y-auto">
+                        <SelectItem value="fuzzy">
+                          Fuzzy (flexible matching)
+                        </SelectItem>
+                        <SelectItem value="contains">
+                          Contains (substring search)
+                        </SelectItem>
+                        <SelectItem value="prefix">
+                          Prefix (fastest & strictest)
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field class="gap-1.5">
+                  <FieldLabel class="text-foreground text-xs font-medium">
+                    Max suggestions
+                  </FieldLabel>
+                  <Input
+                    v-model="autocompleteLimit"
+                    type="number"
+                    min="5"
+                    max="50"
+                    :disabled="!autocompleteEnabled || !autocompleteReady"
+                    class="font-mono text-xs"
+                  />
+                  <FieldDescription class="text-xs">5 – 50</FieldDescription>
+                </Field>
+              </div>
+
+              <SettingsSwitchRow
+                v-model="autocompleteReplaceUnderscores"
+                label="Replace underscores with spaces"
+                description="Insert “long hair” instead of “long_hair”."
+                :disabled="!autocompleteEnabled || !autocompleteReady"
+              />
+
+              <SettingsSwitchRow
+                v-model="autocompleteIncludeArtistPrefix"
+                label="Keep @ on artist tags"
+                description="Prefix inserted artist tags with @ so Anima treats them as artists."
+                :disabled="!autocompleteEnabled || !autocompleteReady"
+              />
+
+              <SettingsSwitchRow
+                v-model="autocompleteEscapeParentheses"
+                label="Escape parentheses"
+                description="Insert “miku_\(vocaloid\)” so ComfyUI does not read a tag's parentheses as emphasis."
+                :disabled="!autocompleteEnabled || !autocompleteReady"
+              />
+            </SettingsSection>
+
+            <!-- Disk cache -->
+            <SettingsSection
+              title="Disk cache"
+              description="Data cached on disk"
+              icon-class="text-cyan-400"
+            >
+              <template #icon>
+                <HardDrive class="h-3.5 w-3.5" />
+              </template>
+
+              <div
+                class="border-border/60 bg-muted/20 flex items-center justify-between gap-4 rounded-lg border p-3"
+              >
+                <div class="min-w-0">
+                  <p class="text-foreground text-xs font-medium">
+                    Network responses
+                  </p>
+                  <p class="mt-1.5 font-mono text-sm font-semibold">
+                    <template v-if="networkCacheStats">
+                      {{ formatFileSize(networkCacheStats.totalSizeBytes) }}
+                    </template>
+                    <span v-else class="text-muted-foreground">Loading…</span>
+                  </p>
+                </div>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
-                  class="h-7 shrink-0 text-xs"
-                  @click="openUrl(updateResult.url)"
+                  :disabled="
+                    isClearingNetworkCache || !networkCacheStats?.totalEntries
+                  "
+                  class="border-border bg-secondary hover:bg-accent h-8 shrink-0 gap-1.5 text-xs font-medium"
+                  @click="clearNetworkCache"
                 >
-                  View release
-                  <ExternalLink class="h-3.5 w-3.5" />
+                  <Loader2
+                    v-if="isClearingNetworkCache"
+                    class="h-3.5 w-3.5 animate-spin"
+                  />
+                  <Trash2 v-else class="h-3.5 w-3.5 text-rose-400" />
+                  {{ isClearingNetworkCache ? 'Clearing…' : 'Clear cache' }}
                 </Button>
+              </div>
+
+              <div
+                class="border-border/60 bg-muted/20 flex items-center justify-between gap-4 rounded-lg border p-3"
+              >
+                <div class="min-w-0">
+                  <p class="text-foreground text-xs font-medium">
+                    Generation thumbnails
+                  </p>
+                  <p class="mt-1.5 font-mono text-sm font-semibold">
+                    <template v-if="thumbnailCacheStats">
+                      {{ formatFileSize(thumbnailCacheStats.totalSizeBytes) }}
+                    </template>
+                    <span v-else class="text-muted-foreground">Loading…</span>
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  :disabled="
+                    galleryCache.isRebuilding ||
+                    !thumbnailCacheStats?.totalSizeBytes
+                  "
+                  class="border-border bg-secondary hover:bg-accent h-8 shrink-0 gap-1.5 text-xs font-medium"
+                  @click="clearThumbnailCache"
+                >
+                  <Loader2
+                    v-if="galleryCache.isRebuilding"
+                    class="h-3.5 w-3.5 animate-spin"
+                  />
+                  <Trash2 v-else class="h-3.5 w-3.5 text-rose-400" />
+                  {{
+                    galleryCache.isRebuilding ? 'Re-indexing…' : 'Clear cache'
+                  }}
+                </Button>
+              </div>
+
+              <NoticeBanner
+                v-if="cacheResult"
+                :tone="cacheResult.ok ? 'emerald' : 'destructive'"
+              >
+                {{ cacheResult.message }}
+              </NoticeBanner>
+            </SettingsSection>
+
+            <!-- Advanced -->
+            <SettingsSection
+              title="Advanced"
+              description="Power-user options that change how the app behaves."
+              icon-class="text-fuchsia-400"
+            >
+              <template #icon>
+                <Wrench class="h-3.5 w-3.5" />
               </template>
-            </NoticeBanner>
-          </SettingsSection>
+
+              <div class="flex flex-col gap-2.5">
+                <div class="flex items-center gap-2">
+                  <FlaskConical class="h-3.5 w-3.5 text-fuchsia-400" />
+                  <h3 class="text-foreground text-xs font-semibold">
+                    Experimental features
+                  </h3>
+                </div>
+                <p class="text-muted-foreground text-xs">
+                  Still in progress. They may change or be removed in a future
+                  release.
+                </p>
+                <SettingsSwitchRow
+                  v-model="promptEditorMode"
+                  label="Prompt editor mode"
+                  description="Show the prompt fields on the generation page as a text editor with line numbers."
+                />
+              </div>
+            </SettingsSection>
+
+            <!-- About -->
+            <SettingsSection
+              :title="`About ${BRAND_NAME}`"
+              icon-class="text-violet-400"
+            >
+              <template #icon>
+                <Info class="h-3.5 w-3.5" />
+              </template>
+
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <p class="text-muted-foreground text-xs">Current version</p>
+                  <p class="mt-1 font-mono text-sm font-semibold">
+                    {{ APP_VERSION }}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  :disabled="updateChecking"
+                  class="border-border bg-secondary text-xs font-medium"
+                  @click="checkForUpdates"
+                >
+                  <Loader2
+                    v-if="updateChecking"
+                    class="h-3.5 w-3.5 animate-spin"
+                  />
+                  <RefreshCw v-else class="h-3.5 w-3.5" />
+                  Check for updates
+                </Button>
+              </div>
+
+              <NoticeBanner
+                v-if="updateResult"
+                :tone="
+                  updateResult.type === 'current'
+                    ? 'emerald'
+                    : updateResult.type === 'update'
+                      ? 'info'
+                      : 'destructive'
+                "
+              >
+                {{ updateResult.message }}
+                <template v-if="updateResult.url" #actions>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="h-7 shrink-0 text-xs"
+                    @click="openUrl(updateResult.url)"
+                  >
+                    View release
+                    <ExternalLink class="h-3.5 w-3.5" />
+                  </Button>
+                </template>
+              </NoticeBanner>
+            </SettingsSection>
+          </template>
         </div>
       </div>
     </div>
