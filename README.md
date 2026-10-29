@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>A standalone desktop studio for ComfyUI, built for the Anima model family.</strong>
+  <strong>A standalone desktop studio for ComfyUI, built for Anima and MOSS-Image.</strong>
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
 
 ## Overview
 
-**Hoshi** is a desktop frontend for ComfyUI aimed at creators who want to generate images with the **[Anima](https://huggingface.co/circlestone-labs/Anima)** model family without building or maintaining node graphs. It launches and supervises your local ComfyUI, builds the workflow graph for you on every run, and wraps generation, post-processing, model management and reference browsing in one studio-style window.
+**Hoshi** is a desktop frontend for ComfyUI aimed at creators who want to generate images with the **[Anima](https://huggingface.co/circlestone-labs/Anima)** model family and **MOSS-Image** without building or maintaining node graphs. It launches and supervises your local ComfyUI, builds the workflow graph for you on every run, and wraps generation, post-processing, model management and reference browsing in one studio-style window.
 
 Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its normal HTTP/WebSocket API plus a small bridge custom node that Hoshi installs automatically.
 
@@ -32,10 +32,11 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 
 ### Generate
 
-- **Workflow Generator** — txt2img, img2img and inpainting (with a built-in mask painter) for Anima, with resolution presets, sampler/scheduler selection, seed control and variation seeds.
+- **Workflow Generator** — txt2img and img2img for Anima and MOSS-Image, plus Anima inpainting with a built-in mask painter. Switch model profiles to keep separate generation settings, with resolution presets, sampler/scheduler selection, seed control and variation seeds.
+- **MOSS-Image layouts** — draw, move and resize boxes for objects, characters and exact text, with a scene caption and descriptions for each box. Import layout drafts from Maya or the prompt enhancer.
 - **Prompting** — tag autocomplete backed by a local suggestion catalog and the ComfyUI server, prompt chips, weight hotkeys, find-in-prompt, negative prompt bundles and `{a|b}` dynamic prompts resolved from the seed.
 - **LoRA chain** — stack LoRAs with per-item strength and pull trigger words from Civitai sidecars or safetensors metadata.
-- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); advanced model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite).
+- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance.
 - **Live output** — streaming latent previews, progress, batch queueing, generation history with "reuse settings", and the elapsed-time HUD.
 
 ### Post-process
@@ -62,13 +63,13 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 
 ### Maya, the AI assistant
 
-An OpenRouter-powered chat assistant that understands Anima prompting, can inspect the current prompt, search Animadex and your character library, inject prompt changes and queue generations. It also drives the inline prompt enhancer and auto-names chat sessions.
+An OpenRouter-powered chat assistant that adapts to the active model profile: Anima tags or MOSS-Image captions and layout drafts. Maya can inspect the current prompt and layout, search Animadex and your character library, apply prompt changes and queue generations. It also drives the inline prompt enhancer and auto-names chat sessions, with separate assistant and enhancer instructions for each model profile.
 
 ## Screenshots
 
 ### Workflow Generator
 
-Intuitive controls for Anima model generation, prompt autocomplete, LoRA stacking, and live execution previews.
+Intuitive controls for Anima and MOSS-Image generation, prompt autocomplete, LoRA stacking, and live execution previews.
 
 ![Workflow Generator](screenshot/generation.png)
 
@@ -84,9 +85,9 @@ Browse models, inspect versions and preview samples, with background download ma
 
 - **[v0.33.1](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.33.1) or later.** Hoshi starts ComfyUI with `--enable-cors-header` and injects its bridge node (`custom_nodes/comfyui-koharu-bridge`) before every launch — no manual install needed.
 
-### Model
+### Models
 
-- Hoshi currently targets the **[Anima](https://huggingface.co/circlestone-labs/Anima)** family. Other architectures may run but are not supported.
+- Hoshi supports the **[Anima](https://huggingface.co/circlestone-labs/Anima)** family and **MOSS-Image**. Select the matching model profile in the Generation Studio and choose its diffusion model, text encoder and VAE. Other architectures may run but are not supported.
 
 ### External custom nodes
 
