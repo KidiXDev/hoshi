@@ -293,6 +293,7 @@ async function saveMask(blob: Blob) {
     >
       <!-- Mode Subpanel: Inpainting Toggle -->
       <div
+        v-if="workflowStore.profile === 'anima'"
         class="border-border bg-muted/30 flex items-center justify-between rounded-lg border p-2.5 transition-colors"
       >
         <div class="flex items-center gap-2.5">

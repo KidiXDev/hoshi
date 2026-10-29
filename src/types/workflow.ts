@@ -169,7 +169,30 @@ export interface PromptTemplates {
   faceDetailerNegativePrompt: string;
 }
 
+export type WorkflowProfile = 'anima' | 'moss';
+
+export type LayoutBoxKind = 'object' | 'character' | 'text';
+
+export interface LayoutBox {
+  id: string;
+  kind: LayoutBoxKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  caption: string;
+  text: string;
+}
+
+export interface MossSettings {
+  skipLayerGuidance: boolean;
+  layoutEnabled: boolean;
+  layoutBoxes: LayoutBox[];
+}
+
 export interface WorkflowState {
+  profile: WorkflowProfile;
+  moss: MossSettings;
   positivePrompt: string;
   negativePrompt: string;
   models: ModelSettings;

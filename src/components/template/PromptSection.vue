@@ -65,6 +65,7 @@ import {
 import { useLauncherStore } from '../../stores/launcherStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { loadAppData, saveAppData } from '../../services/appStorage';
+import { mossLayoutToDraft } from '../../utils/mossLayout';
 import { toast } from 'vue-sonner';
 
 const launcherStore = useLauncherStore();
@@ -145,6 +146,13 @@ const isPresetDialogOpen = ref(false);
 const isEnhanceDialogOpen = ref(false);
 const enhanceTarget = ref<'positive' | 'negative'>('positive');
 
+const enhanceOriginalPrompt = computed(() => {
+  if (enhanceTarget.value === 'negative') return workflowStore.negativePrompt;
+  const layout =
+    workflowStore.profile === 'moss' ? mossLayoutToDraft(workflowStore) : null;
+  return layout ? JSON.stringify(layout) : workflowStore.positivePrompt;
+});
+
 function openEnhanceDialog(target: 'positive' | 'negative') {
   enhanceTarget.value = target;
   isEnhanceDialogOpen.value = true;
@@ -156,6 +164,15 @@ function handleEnhanceApply(payload: {
   target: 'positive' | 'negative';
 }) {
   if (payload.target === 'positive') {
+    try {
+      if (workflowStore.applyLayoutDraft(payload.text)) {
+        toast.success('Layout draft imported into the layout editor.');
+        return;
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+      return;
+    }
     if (payload.mode === 'replace') {
       workflowStore.positivePrompt = payload.text;
     } else {
@@ -788,6 +805,7 @@ function previewDynamicRoll(field: PromptField) {
 
           <!-- Token Counter (Bottom Right) -->
           <span
+            v-if="workflowStore.profile === 'anima'"
             class="font-mono text-xs"
             :class="
               positiveTokenInfo.chunks > 1
@@ -1076,6 +1094,7 @@ function previewDynamicRoll(field: PromptField) {
 
         <!-- Token Counter for Negative (Bottom Right) -->
         <span
+          v-if="workflowStore.profile === 'anima'"
           class="shrink-0 font-mono text-xs"
           :class="
             negativeTokenInfo.chunks > 1
@@ -1096,11 +1115,7 @@ function previewDynamicRoll(field: PromptField) {
     <PromptEnhanceDialog
       v-model:open="isEnhanceDialogOpen"
       :target="enhanceTarget"
-      :original-prompt="
-        enhanceTarget === 'positive'
-          ? workflowStore.positivePrompt
-          : workflowStore.negativePrompt
-      "
+      :original-prompt="enhanceOriginalPrompt"
       @apply="handleEnhanceApply"
     />
   </div>

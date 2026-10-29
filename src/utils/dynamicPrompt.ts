@@ -98,7 +98,18 @@ function parseGroup(text: string, start: number): GroupNode | null {
   }
 }
 
+function isJsonObject(text: string): boolean {
+  if (!text.trimStart().startsWith('{')) return false;
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === 'object' && value !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function parseDynamicPrompt(text: string): PromptNode[] {
+  if (isJsonObject(text)) return [{ type: 'text', value: text }];
   return parseSequence(text, 0, false).nodes;
 }
 

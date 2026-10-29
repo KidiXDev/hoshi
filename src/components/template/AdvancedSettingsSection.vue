@@ -26,6 +26,7 @@ import { useWorkflowStore } from '../../stores/workflowStore';
 
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
+const isAnima = computed(() => workflowStore.profile === 'anima');
 const cacheModelTypes = [
   'Auto',
   'Anima',
@@ -90,13 +91,20 @@ const renormCfgModel = computed({
             </span>
             <template v-else>
               <span
-                v-if="workflowStore.advanced.auraFlowEnabled"
+                v-if="isAnima && workflowStore.advanced.auraFlowEnabled"
                 class="border-primary/30 bg-primary/10 text-primary rounded border px-2 py-0.5 font-mono text-xs font-bold"
               >
                 Shift ON
               </span>
               <span
+                v-if="!isAnima && workflowStore.moss.skipLayerGuidance"
+                class="border-primary/30 bg-primary/10 text-primary rounded border px-2 py-0.5 font-mono text-xs font-bold"
+              >
+                SLG ON
+              </span>
+              <span
                 v-if="
+                  isAnima &&
                   workflowStore.advanced.cacheDiT.enabled &&
                   comfyStore.isCacheDiTAvailable
                 "
@@ -105,7 +113,7 @@ const renormCfgModel = computed({
                 CacheDiT ON
               </span>
               <span
-                v-if="workflowStore.advanced.renormCfg.enabled"
+                v-if="isAnima && workflowStore.advanced.renormCfg.enabled"
                 class="border-primary/30 bg-primary/10 text-primary rounded border px-2 py-0.5 font-mono text-xs font-bold"
               >
                 Renorm ON
@@ -117,8 +125,34 @@ const renormCfgModel = computed({
 
       <AccordionContent class="px-1 pt-2">
         <div class="flex flex-col gap-3">
+          <!-- MOSS Skip Layer Guidance -->
+          <div
+            v-if="!isAnima"
+            class="border-border bg-card flex items-center justify-between rounded-lg border p-3"
+          >
+            <div class="flex flex-col gap-0.5">
+              <Label
+                for="moss-slg-enabled"
+                class="text-foreground text-xs font-medium"
+                :class="{ 'cursor-pointer': comfyStore.isConnected }"
+              >
+                Skip Layer Guidance
+              </Label>
+              <p class="text-muted-foreground text-xs">
+                Official MOSS-Image guidance on layer 22. Turn off for a more
+                photographic look at the cost of fine detail.
+              </p>
+            </div>
+            <Switch
+              id="moss-slg-enabled"
+              v-model="workflowStore.moss.skipLayerGuidance"
+              :disabled="!comfyStore.isConnected"
+            />
+          </div>
+
           <!-- 1. AuraFlow Shift Group -->
           <div
+            v-if="isAnima"
             class="border-border bg-card flex flex-col gap-3 rounded-lg border p-3"
           >
             <div class="flex items-center justify-between">
@@ -173,6 +207,7 @@ const renormCfgModel = computed({
 
           <!-- 2. CacheDiT Accelerator Group -->
           <div
+            v-if="isAnima"
             class="border-border bg-card flex flex-col gap-3 rounded-lg border p-3"
           >
             <div class="flex items-center justify-between">
@@ -366,6 +401,7 @@ const renormCfgModel = computed({
 
           <!-- 3. RenormCFG Group -->
           <div
+            v-if="isAnima"
             class="border-border bg-card flex flex-col gap-3 rounded-lg border p-3"
           >
             <div class="flex items-center justify-between">

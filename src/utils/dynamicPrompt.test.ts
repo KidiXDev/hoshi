@@ -23,6 +23,13 @@ describe('resolveDynamicPrompt', () => {
     expect(countDynamicVariants(text)).toBe(1);
   });
 
+  it('leaves JSON prompts untouched', () => {
+    const text = '{"summary":{"caption":"a {red|blue} cup"},"items":[]}';
+    expect(hasDynamicPrompt(text)).toBe(false);
+    expect(findDynamicGroups(text)).toEqual([]);
+    expect(resolveDynamicPrompt(text, always(0))).toBe(text);
+  });
+
   it('picks an option from the draw', () => {
     expect(resolveDynamicPrompt('{a|b}', always(0))).toBe('a');
     expect(resolveDynamicPrompt('{a|b}', always(0.99))).toBe('b');

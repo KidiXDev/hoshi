@@ -19,7 +19,9 @@ export type AppDataName =
   | 'session_history'
   | 'upscaler_preferences'
   | 'ultimate_upscale_preferences'
-  | 'workflow_session_state';
+  | 'workflow_profile'
+  | 'workflow_session_state'
+  | 'workflow_session_state_moss';
 
 type DataFile =
   'config' | 'history' | 'state' | 'chat' | 'ai_config' | 'bookmarks';
@@ -42,7 +44,9 @@ const dataFiles: Record<AppDataName, DataFile> = {
   session_history: 'history',
   upscaler_preferences: 'state',
   ultimate_upscale_preferences: 'state',
-  workflow_session_state: 'state'
+  workflow_profile: 'state',
+  workflow_session_state: 'state',
+  workflow_session_state_moss: 'state'
 };
 
 const pendingWrites: Record<DataFile, Promise<void>> = {

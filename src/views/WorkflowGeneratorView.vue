@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Folder, History, Images, Loader2, Workflow } from '@lucide/vue';
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { toast } from 'vue-sonner';
 import { useComfyUiWorkspace } from '@/composables/useComfyUiWorkspace';
@@ -14,20 +15,44 @@ import PostFxSection from '@/components/template/PostFxSection.vue';
 import FaceDetailerSection from '@/components/template/FaceDetailerSection.vue';
 import GenerationHistoryPanel from '@/components/template/GenerationHistoryPanel.vue';
 import GenerationPreview from '@/components/template/GenerationPreview.vue';
+import MossLayoutSection from '@/components/template/MossLayoutSection.vue';
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup
 } from '@/components/ui/resizable';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { useHistoryStore } from '../stores/historyStore';
 import { useLauncherStore } from '../stores/launcherStore';
-import { useWorkflowStore } from '../stores/workflowStore';
+import { WORKFLOW_PROFILES, useWorkflowStore } from '../stores/workflowStore';
+import type { WorkflowProfile } from '../types/workflow';
 
 const workflowStore = useWorkflowStore();
 const launcherStore = useLauncherStore();
 const historyStore = useHistoryStore();
 const router = useRouter();
 const { pending, openSnapshot, finishSnapshot } = useComfyUiWorkspace();
+
+const profileModel = computed({
+  get: () => workflowStore.profile,
+  set: (profile: WorkflowProfile) => {
+    workflowStore.switchProfile(profile).catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : String(error));
+    });
+  }
+});
+const profileLabel = computed(
+  () =>
+    WORKFLOW_PROFILES.find(({ value }) => value === workflowStore.profile)
+      ?.label
+);
 
 async function viewWorkflow() {
   let requestId: string | undefined;
@@ -53,10 +78,10 @@ async function viewWorkflow() {
   >
     <!-- Top Studio Toolbar / Tab Strip -->
     <header
-      class="border-border bg-card/60 flex h-10 shrink-0 items-center justify-between border-b px-4 backdrop-blur-xs select-none"
+      class="border-border bg-card/60 @container flex h-10 shrink-0 items-center justify-between gap-3 border-b px-4 whitespace-nowrap backdrop-blur-xs select-none"
     >
       <!-- Left: Workspace Tab Strip -->
-      <div class="flex items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2">
         <!-- Active Workspace Tab -->
         <div
           class="border-primary/30 bg-primary/10 text-primary inline-flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-semibold shadow-xs"
@@ -64,6 +89,29 @@ async function viewWorkflow() {
           <Images class="h-3 w-3" />
           <span>Generation Studio</span>
         </div>
+
+        <Select v-model="profileModel">
+          <SelectTrigger
+            size="sm"
+            aria-label="Model profile"
+            title="Switch model profile"
+            class="w-32 px-2 text-xs font-medium data-[size=sm]:h-6.5"
+          >
+            <SelectValue placeholder="Profile" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup class="max-h-40 overflow-y-auto">
+              <SelectItem
+                v-for="option in WORKFLOW_PROFILES"
+                :key="option.value"
+                :value="option.value"
+                class="text-xs"
+              >
+                {{ option.label }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
 
         <!-- Session History Toggle Button -->
         <button
@@ -111,8 +159,8 @@ async function viewWorkflow() {
       </div>
 
       <!-- Right: Active Stats & Quick Meta -->
-      <div class="flex items-center gap-3">
-        <div class="flex items-center gap-1.5 font-mono text-xs">
+      <div class="hidden min-w-0 items-center gap-3 @4xl:flex">
+        <div class="flex shrink-0 items-center gap-1.5 font-mono text-xs">
           <span class="text-muted-foreground">Active LoRAs:</span>
           <span class="text-primary font-semibold">
             {{ workflowStore.loras.filter((l) => l.enabled).length }}/{{
@@ -121,9 +169,12 @@ async function viewWorkflow() {
           </span>
         </div>
 
-        <div class="bg-border h-3 w-px" />
+        <div class="bg-border h-3 w-px shrink-0" />
 
-        <span class="text-muted-foreground font-mono text-xs">
+        <span
+          class="text-muted-foreground min-w-0 truncate font-mono text-xs"
+          :title="workflowStore.models.unetName"
+        >
           {{ workflowStore.models.unetName || 'No model selected' }}
         </span>
       </div>
@@ -151,7 +202,7 @@ async function viewWorkflow() {
               Generation Parameters
             </h2>
             <span class="text-muted-foreground font-mono text-xs">
-              Qwen-Image / Anima
+              {{ profileLabel }}
             </span>
           </div>
 
@@ -174,6 +225,12 @@ async function viewWorkflow() {
             class="border-border bg-card hover:border-primary/40 flex flex-col gap-3 rounded-xl border p-3.5 shadow-2xs transition-colors"
           >
             <PromptSection />
+            <div
+              v-if="workflowStore.profile === 'moss'"
+              class="border-border border-t pt-2"
+            >
+              <MossLayoutSection />
+            </div>
             <div class="border-border border-t pt-2">
               <ImageInputSection />
             </div>

@@ -4,7 +4,8 @@ import { ref, watch } from 'vue';
 import {
   deleteAppData,
   loadAppData,
-  saveAppData
+  saveAppData,
+  type AppDataName
 } from '../services/appStorage';
 import { LibraryService } from '../services/libraryService';
 import type { LoraData, PromptData } from '../types/library';
@@ -15,12 +16,15 @@ import type {
   LoraItem,
   LoraPreset,
   ModelSettings,
+  MossSettings,
   PostFxSettings,
   ResolutionSettings,
   SamplerSettings,
   UltimateUpscaleSettings,
+  WorkflowProfile,
   WorkflowState
 } from '../types/workflow';
+import { layoutDraftToMoss, parseMossLayoutDraft } from '../utils/mossLayout';
 import { appendPromptTerms, splitPromptTags } from '../utils/promptTools';
 import { randomSeed } from '../utils/seed';
 
@@ -167,7 +171,52 @@ export const DEFAULT_FACE_DETAILER: FaceDetailerSettings = {
   turboLora: 'anima-turbo-lora-v0.2.safetensors'
 };
 
-const SESSION_STORAGE_KEY = 'workflow_session_state';
+const DEFAULT_MOSS: MossSettings = {
+  skipLayerGuidance: true,
+  layoutEnabled: false,
+  layoutBoxes: []
+};
+
+interface ProfileDefaults {
+  positivePrompt: string;
+  negativePrompt: string;
+  sampler: Partial<SamplerSettings>;
+  resolution: ResolutionSettings;
+}
+
+const PROFILE_DEFAULTS: Record<WorkflowProfile, ProfileDefaults> = {
+  anima: {
+    positivePrompt: DEFAULT_POSITIVE_PROMPT,
+    negativePrompt: DEFAULT_NEGATIVE_PROMPT,
+    sampler: {},
+    resolution: DEFAULT_RESOLUTION
+  },
+  moss: {
+    positivePrompt:
+      'Digital illustration of a glass bottle holding a swirling purple galaxy, resting on mossy stones in a sunlit meadow.',
+    negativePrompt:
+      'nsfw, worst quality, bad anatomy, watermark, jpeg artifact',
+    sampler: { steps: 25, cfg: 2.5 },
+    resolution: {
+      preset: '1024 x 1024 (1:1 Square)',
+      batchSize: 1,
+      width: 1024,
+      height: 1024,
+      isCustom: false
+    }
+  }
+};
+
+export const WORKFLOW_PROFILES: { value: WorkflowProfile; label: string }[] = [
+  { value: 'anima', label: 'Anima' },
+  { value: 'moss', label: 'MOSS-Image' }
+];
+
+const SESSION_STORAGE_KEYS: Record<WorkflowProfile, AppDataName> = {
+  anima: 'workflow_session_state',
+  moss: 'workflow_session_state_moss'
+};
+const PROFILE_STORAGE_KEY = 'workflow_profile';
 const LEGACY_PRESETS_STORAGE_KEY = 'lora_presets';
 
 function clone<T>(value: T): T {
@@ -188,15 +237,25 @@ export function normalizeWorkflowState(
   saved: Partial<WorkflowState>
 ): WorkflowState {
   const state = clone(saved);
+  const profile: WorkflowProfile = state.profile === 'moss' ? 'moss' : 'anima';
+  const defaults = PROFILE_DEFAULTS[profile];
   return {
+    profile,
+    moss: {
+      ...DEFAULT_MOSS,
+      ...state.moss,
+      layoutBoxes: Array.isArray(state.moss?.layoutBoxes)
+        ? state.moss.layoutBoxes
+        : []
+    },
     positivePrompt:
       typeof state.positivePrompt === 'string'
         ? state.positivePrompt
-        : DEFAULT_POSITIVE_PROMPT,
+        : defaults.positivePrompt,
     negativePrompt:
       typeof state.negativePrompt === 'string'
         ? state.negativePrompt
-        : DEFAULT_NEGATIVE_PROMPT,
+        : defaults.negativePrompt,
     models: { ...DEFAULT_MODELS, ...state.models },
     advanced: {
       ...DEFAULT_ADVANCED,
@@ -205,9 +264,9 @@ export function normalizeWorkflowState(
       renormCfg: { ...DEFAULT_ADVANCED.renormCfg, ...state.advanced?.renormCfg }
     },
     loras: normalizeLoras(state.loras),
-    sampler: { ...DEFAULT_SAMPLER, ...state.sampler },
+    sampler: { ...DEFAULT_SAMPLER, ...defaults.sampler, ...state.sampler },
     imageInput: { ...DEFAULT_IMAGE_INPUT, ...state.imageInput },
-    resolution: { ...DEFAULT_RESOLUTION, ...state.resolution },
+    resolution: { ...defaults.resolution, ...state.resolution },
     postfx: {
       ...DEFAULT_POSTFX,
       ...state.postfx,
@@ -249,6 +308,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const isLoaded = ref(false);
   const initial = normalizeWorkflowState({});
 
+  const profile = ref<WorkflowProfile>(initial.profile);
+  const moss = ref<MossSettings>(initial.moss);
   const positivePrompt = ref(initial.positivePrompt);
   const negativePrompt = ref(initial.negativePrompt);
   const models = ref<ModelSettings>(initial.models);
@@ -261,6 +322,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const faceDetailer = ref<FaceDetailerSettings>(initial.faceDetailer);
 
   function assignState(state: WorkflowState) {
+    profile.value = state.profile;
+    moss.value = state.moss;
     positivePrompt.value = state.positivePrompt;
     negativePrompt.value = state.negativePrompt;
     models.value = state.models;
@@ -273,11 +336,20 @@ export const useWorkflowStore = defineStore('workflow', () => {
     faceDetailer.value = state.faceDetailer;
   }
 
+  async function loadProfileState(target: WorkflowProfile) {
+    const saved = await loadAppData<Partial<WorkflowState>>(
+      SESSION_STORAGE_KEYS[target]
+    );
+    return normalizeWorkflowState({ ...saved, profile: target });
+  }
+
   async function loadSession() {
     try {
-      const saved =
-        await loadAppData<Partial<WorkflowState>>(SESSION_STORAGE_KEY);
-      if (saved) assignState(normalizeWorkflowState(saved));
+      const savedProfile =
+        await loadAppData<WorkflowProfile>(PROFILE_STORAGE_KEY);
+      assignState(
+        await loadProfileState(savedProfile === 'moss' ? 'moss' : 'anima')
+      );
     } catch (err) {
       console.warn('Failed to load workflow session state:', err);
     } finally {
@@ -287,11 +359,31 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   async function saveSession() {
     if (!isLoaded.value) return;
+    const state = getFullWorkflowState();
     try {
-      await saveAppData(SESSION_STORAGE_KEY, getFullWorkflowState());
+      await saveAppData(SESSION_STORAGE_KEYS[state.profile], state);
     } catch (err) {
       console.error('Failed to save workflow session state:', err);
     }
+  }
+
+  function saveActiveProfile(target: WorkflowProfile) {
+    return saveAppData(PROFILE_STORAGE_KEY, target).catch((err) =>
+      console.error('Failed to save workflow profile:', err)
+    );
+  }
+
+  let profileSwitch = Promise.resolve();
+  function switchProfile(target: WorkflowProfile) {
+    profileSwitch = profileSwitch
+      .catch(() => {})
+      .then(async () => {
+        if (target === profile.value) return;
+        await saveSession();
+        assignState(await loadProfileState(target));
+        await saveActiveProfile(target);
+      });
+    return profileSwitch;
   }
 
   const debouncedSaveSession = useDebounceFn(() => {
@@ -300,6 +392,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   watch(
     [
+      moss,
       positivePrompt,
       negativePrompt,
       models,
@@ -385,6 +478,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   function getFullWorkflowState(): WorkflowState {
     return clone({
+      profile: profile.value,
+      moss: moss.value,
       positivePrompt: positivePrompt.value,
       negativePrompt: negativePrompt.value,
       models: models.value,
@@ -408,8 +503,32 @@ export const useWorkflowStore = defineStore('workflow', () => {
       next.faceDetailer.negativePrompt = templates.faceDetailerNegativePrompt;
     }
     next.sampler.randomizeSeed = next.sampler.seed < 0;
+    if (next.profile !== profile.value) {
+      void saveSession();
+      void saveActiveProfile(next.profile);
+    }
     assignState(next);
     void saveSession();
+  }
+
+  function applyLayoutDraft(text: string): boolean {
+    const draft = profile.value === 'moss' ? parseMossLayoutDraft(text) : null;
+    if (!draft) return false;
+    const layout = layoutDraftToMoss(draft);
+    positivePrompt.value = layout.caption;
+    resolution.value = {
+      ...resolution.value,
+      preset: 'Custom',
+      width: layout.width,
+      height: layout.height,
+      isCustom: true
+    };
+    moss.value = {
+      ...moss.value,
+      layoutEnabled: true,
+      layoutBoxes: layout.boxes
+    };
+    return true;
   }
 
   async function initialize() {
@@ -431,6 +550,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   return {
     isLoaded,
+    profile,
+    moss,
     positivePrompt,
     negativePrompt,
     models,
@@ -451,6 +572,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     applyPromptPreset,
     randomizeSeedValue,
     getFullWorkflowState,
-    applyWorkflowState
+    applyWorkflowState,
+    applyLayoutDraft,
+    switchProfile
   };
 });

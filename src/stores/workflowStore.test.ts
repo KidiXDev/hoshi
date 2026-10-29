@@ -1,7 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadAppData, saveAppData } from '../services/appStorage';
 import type { LoraItem } from '../types/workflow';
-import { useWorkflowStore } from './workflowStore';
+import { normalizeWorkflowState, useWorkflowStore } from './workflowStore';
 
 vi.mock(import('../services/appStorage'), () => ({
   loadAppData: vi.fn(async () => null),
@@ -101,5 +102,87 @@ describe('useWorkflowStore prompt presets', () => {
     );
 
     expect(workflow.positivePrompt).toBe('masterpiece, 1girl, best quality');
+  });
+});
+
+describe('useWorkflowStore profiles', () => {
+  const LAYOUT_DRAFT = JSON.stringify({
+    width: 1024,
+    height: 512,
+    bbox_coord_space: 'abs',
+    bbox_format: 'xyxy',
+    summary: { caption: 'A poster.' },
+    items: [{ label: 'object', caption: 'A cup', bbox: [0, 0, 512, 256] }]
+  });
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  it('save the current session and load MOSS defaults on switch', async () => {
+    const workflow = await initializedWorkflow();
+    workflow.positivePrompt = 'anima prompt';
+
+    await workflow.switchProfile('moss');
+
+    expect(saveAppData).toHaveBeenCalledWith(
+      'workflow_session_state',
+      expect.objectContaining({
+        profile: 'anima',
+        positivePrompt: 'anima prompt'
+      })
+    );
+    expect(loadAppData).toHaveBeenCalledWith('workflow_session_state_moss');
+    expect(saveAppData).toHaveBeenCalledWith('workflow_profile', 'moss');
+    expect(workflow.profile).toBe('moss');
+    expect(workflow.sampler).toMatchObject({ steps: 25, cfg: 2.5 });
+    expect(workflow.negativePrompt).toBe(
+      'nsfw, worst quality, bad anatomy, watermark, jpeg artifact'
+    );
+  });
+
+  it('switch to the profile of a restored history state', async () => {
+    const workflow = await initializedWorkflow();
+    workflow.positivePrompt = 'anima prompt';
+
+    workflow.applyWorkflowState(
+      normalizeWorkflowState({
+        profile: 'moss',
+        positivePrompt: 'from history'
+      })
+    );
+
+    expect(workflow.profile).toBe('moss');
+    expect(workflow.positivePrompt).toBe('from history');
+    expect(saveAppData).toHaveBeenCalledWith(
+      'workflow_session_state',
+      expect.objectContaining({ positivePrompt: 'anima prompt' })
+    );
+    expect(saveAppData).toHaveBeenCalledWith('workflow_profile', 'moss');
+  });
+
+  it('import a layout draft into the MOSS layout editor', async () => {
+    const workflow = await initializedWorkflow();
+    await workflow.switchProfile('moss');
+
+    expect(workflow.applyLayoutDraft(LAYOUT_DRAFT)).toBe(true);
+
+    expect(workflow.positivePrompt).toBe('A poster.');
+    expect(workflow.resolution).toMatchObject({
+      preset: 'Custom',
+      width: 1024,
+      height: 512
+    });
+    expect(workflow.moss.layoutEnabled).toBe(true);
+    expect(workflow.moss.layoutBoxes).toMatchObject([
+      { kind: 'object', x: 0, y: 0, width: 0.5, height: 0.5, caption: 'A cup' }
+    ]);
+  });
+
+  it('leave layout drafts alone outside the MOSS profile', async () => {
+    const workflow = await initializedWorkflow();
+
+    expect(workflow.applyLayoutDraft(LAYOUT_DRAFT)).toBe(false);
+    expect(workflow.moss.layoutBoxes).toEqual([]);
   });
 });

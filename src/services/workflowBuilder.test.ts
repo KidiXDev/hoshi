@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createWorkflowSnapshot } from '../composables/useComfyUiWorkspace';
-import type { LoraItem, WorkflowState } from '../types/workflow';
+import type { LayoutBox, LoraItem, WorkflowState } from '../types/workflow';
 import { buildFaceDetailerPrompt } from './faceDetailerWorkflow';
 import { buildUltimateUpscalePrompt } from './ultimateUpscaleWorkflow';
 import {
@@ -14,6 +14,8 @@ type Graph = Record<
 >;
 
 const BASE_STATE: WorkflowState = {
+  profile: 'anima',
+  moss: { skipLayerGuidance: true, layoutEnabled: false, layoutBoxes: [] },
   positivePrompt: 'test',
   negativePrompt: 'bad',
   models: {
@@ -437,6 +439,193 @@ describe('buildWorkflowPrompt', () => {
         }
       }
     );
+  });
+});
+
+describe('MOSS profile', () => {
+  const LAYOUT_BOXES: LayoutBox[] = [
+    {
+      id: 'title',
+      kind: 'text',
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 0.25,
+      caption: 'cream serif capitals',
+      text: 'MOSS'
+    },
+    {
+      id: 'knight',
+      kind: 'character',
+      x: 0.25,
+      y: 0.25,
+      width: 0.5,
+      height: 0.75,
+      caption: 'a kneeling knight',
+      text: 'ignored'
+    }
+  ];
+
+  const mossState = (configure?: (state: WorkflowState) => void) =>
+    createState((s) => {
+      s.profile = 'moss';
+      s.imageInput.mode = 'text2img';
+      configure?.(s);
+    });
+
+  const withLayout = (s: WorkflowState) => {
+    s.resolution.width = 1024;
+    s.resolution.height = 512;
+    s.moss.layoutEnabled = true;
+    s.moss.layoutBoxes = structuredClone(LAYOUT_BOXES);
+  };
+
+  it('loads the MOSS text encoder and a Flux 2 latent', () => {
+    const graph = graphOf(mossState());
+
+    expect(graph['28']?.inputs.type).toBe('moss_image');
+    expect(graph['19']?.class_type).toBe('EmptyFlux2LatentImage');
+    expect(graph['19']?.inputs).toEqual({
+      width: 512,
+      height: 768,
+      batch_size: 1
+    });
+  });
+
+  it('encodes prompts with CLIPTextEncode for the sampler and Ultimate Upscale', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        enableUpscale(s);
+        s.postfx.upscale.ultimate.enabled = true;
+      })
+    );
+
+    expect(graph['18']).toBeUndefined();
+    expect(graph.moss_positive?.inputs.text).toBe('test');
+    expect(graph.moss_negative?.inputs.text).toBe('bad');
+    for (const node of [graph['9'], graph['8']]) {
+      expect(node?.inputs).toMatchObject({
+        positive: ['moss_positive', 0],
+        negative: ['moss_negative', 0]
+      });
+    }
+  });
+
+  it('chains skip layer guidance after LoRAs and skips Anima-only patches', () => {
+    const graph = graphOf(mossState(enableModelPatches));
+
+    expect(graph.moss_slg?.class_type).toBe('SkipLayerGuidanceDiTSimple');
+    expect(graph.moss_slg?.inputs.model).toEqual(['101', 0]);
+    expect(graph.cache_dit).toBeUndefined();
+    expect(graph['13']).toBeUndefined();
+    expect(graph.renorm_cfg).toBeUndefined();
+    expect(graph['9']?.inputs.model).toEqual(['moss_slg', 0]);
+  });
+
+  it('leaves skip layer guidance out when it is off', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.skipLayerGuidance = false;
+      })
+    );
+
+    expect(graph.moss_slg).toBeUndefined();
+    expect(graph['9']?.inputs.model).toEqual(['29', 0]);
+  });
+
+  it('treats inpaint mode as img2img instead of the Anima LLLite graph', () => {
+    const graph = graphOf(mossState(enableInpaint));
+
+    expect(graph['33']).toBeUndefined();
+    expect(graph['19']?.class_type).toBe('VAEEncode');
+  });
+
+  it('turns layout boxes into bounding boxes and a layout prompt', () => {
+    const graph = graphOf(mossState(withLayout));
+
+    expect(graph.moss_boxes?.inputs).toEqual({
+      width: 1024,
+      height: 512,
+      editor_state: {
+        __value__: [
+          {
+            x: 0,
+            y: 0,
+            width: 1024,
+            height: 128,
+            metadata: {
+              type: 'text',
+              text: 'MOSS',
+              desc: 'cream serif capitals',
+              palette: []
+            }
+          },
+          {
+            x: 256,
+            y: 128,
+            width: 512,
+            height: 384,
+            metadata: {
+              type: 'obj',
+              text: '',
+              desc: 'a kneeling knight',
+              palette: []
+            }
+          }
+        ]
+      }
+    });
+    expect(graph.moss_layout?.inputs).toEqual({
+      prompt: 'test',
+      width: 1024,
+      height: 512,
+      character_boxes: '2',
+      element: ['moss_boxes', 2]
+    });
+    expect(graph.moss_positive?.inputs.text).toEqual(['moss_layout', 0]);
+  });
+
+  it('sends the plain prompt when the layout has no boxes', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.layoutEnabled = true;
+      })
+    );
+
+    expect(graph.moss_boxes).toBeUndefined();
+    expect(graph.moss_positive?.inputs.text).toBe('test');
+  });
+
+  it.each(['text2img', 'img2img'] as const)(
+    'connects every input to an emitted node (%s)',
+    (mode) => {
+      const graph = graphOf(
+        mossState((s) => {
+          enableModelPatches(s);
+          enableTurboFaceDetailer(s);
+          enableUpscale(s);
+          withLayout(s);
+          s.imageInput.mode = mode;
+          s.sampler.variationEnabled = true;
+        })
+      );
+
+      for (const [nodeId] of connections(graph)) {
+        expect(graph, `missing node ${nodeId}`).toHaveProperty([nodeId]);
+      }
+    }
+  );
+
+  it('keeps a JSON prompt intact through queue preparation', () => {
+    const json = '{"summary":{"caption":"a {red|blue} cup"},"items":[]}';
+    const queued = prepareWorkflowForQueue(
+      mossState((s) => {
+        s.positivePrompt = json;
+      })
+    );
+
+    expect(queued.positivePrompt).toBe(json);
+    expect(graphOf(queued).moss_positive?.inputs.text).toBe(json);
   });
 });
 
