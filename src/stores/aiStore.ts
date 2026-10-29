@@ -4,6 +4,7 @@ import { computed, reactive, ref } from 'vue';
 import { z } from 'zod';
 import { buildAssistantSystemPrompt } from '../data/aiPrompts';
 import {
+  cutOffMessage,
   DEFAULT_AI_CONFIG,
   fetchAvailableModels,
   generateChatTitle,
@@ -890,6 +891,12 @@ export const useAiStore = defineStore('ai', () => {
           );
           if (failed) failed.state = 'rejected';
           assistantMsg.currentStep = 'tool_completed';
+        } else if (part.type === 'error') {
+          throw part.error;
+        } else if (part.type === 'finish' && part.finishReason === 'length') {
+          const cutOffNotice = `\n\n*(${cutOffMessage(config.value.maxOutputTokens)})*`;
+          assistantMsg.content += cutOffNotice;
+          appendTextPart(assistantMsg.parts, cutOffNotice);
         }
       }
     } catch (err: unknown) {

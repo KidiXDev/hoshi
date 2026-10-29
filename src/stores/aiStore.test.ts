@@ -285,6 +285,31 @@ describe('useAiStore.sendMessage', () => {
     );
   });
 
+  it('notes a reply cut off by the response token limit', async () => {
+    const store = await readyStore();
+    streamParts([
+      { type: 'reasoning-delta', text: 'Weighing the layout' },
+      { type: 'finish', finishReason: 'length' }
+    ]);
+
+    await store.sendMessage('Design a poster');
+
+    expect(textOf(latestReply(store).parts ?? [], 'text')).toContain(
+      'Reply cut off'
+    );
+  });
+
+  it('shows a stream error in the reply', async () => {
+    const store = await readyStore();
+    streamParts([{ type: 'error', error: new Error('Provider overloaded') }]);
+
+    await store.sendMessage('Hello');
+
+    expect(latestReply(store).content).toContain(
+      '**Error:** Provider overloaded'
+    );
+  });
+
   it('uses only the MOSS-Image prompt and instructions in the MOSS profile', async () => {
     const store = await readyStore();
     store.config.customSystemPrompt = 'Anima-only instruction';

@@ -31,6 +31,7 @@ import {
   ENHANCE_PRESETS
 } from '../../data/aiPrompts';
 import {
+  cutOffMessage,
   getOpenRouterModel,
   profileInstructions
 } from '../../services/aiService';
@@ -174,11 +175,17 @@ async function runEnhance() {
       prompt: userPrompt,
       temperature: aiStore.config.temperature,
       maxOutputTokens: aiStore.config.maxOutputTokens,
-      abortSignal: abortController.signal
+      abortSignal: abortController.signal,
+      onError: ({ error }) => {
+        errorMsg.value = error instanceof Error ? error.message : String(error);
+      }
     });
 
     for await (const chunk of result.textStream) {
       enhancedPrompt.value += chunk;
+    }
+    if ((await result.finishReason) === 'length') {
+      errorMsg.value = cutOffMessage(aiStore.config.maxOutputTokens);
     }
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AbortError') {

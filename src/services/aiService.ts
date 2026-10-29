@@ -44,6 +44,9 @@ export const PROFILE_INSTRUCTION_KEYS: Record<
   }
 };
 
+export const cutOffMessage = (maxOutputTokens: number) =>
+  `Reply cut off: the model used all ${maxOutputTokens.toLocaleString()} response tokens, thinking included. Raise Response Tokens in AI settings or lower the reasoning effort.`;
+
 export function profileInstructions(
   config: AiConfig,
   profile: WorkflowProfile
