@@ -3,6 +3,7 @@ import type { AiConfig, OpenRouterModel } from '../types/ai';
 import {
   DEFAULT_AI_CONFIG,
   getOpenRouterModel,
+  profileInstructions,
   supportsReasoning
 } from './aiService';
 
@@ -37,6 +38,33 @@ describe('supportsReasoning', () => {
   it('reads the model capabilities', () => {
     expect(supportsReasoning(reasoningModel)).toBe(true);
     expect(supportsReasoning()).toBe(false);
+  });
+});
+
+describe('profileInstructions', () => {
+  const config: AiConfig = {
+    ...DEFAULT_AI_CONFIG,
+    customSystemPrompt: 'anima chat',
+    enhancerSystemPrompt: 'anima enhance',
+    mossCustomSystemPrompt: 'moss chat',
+    mossEnhancerSystemPrompt: 'moss enhance'
+  };
+
+  it('keeps each profile on its own instructions', () => {
+    expect(profileInstructions(config, 'anima')).toEqual({
+      assistant: 'anima chat',
+      enhancer: 'anima enhance'
+    });
+    expect(profileInstructions(config, 'moss')).toEqual({
+      assistant: 'moss chat',
+      enhancer: 'moss enhance'
+    });
+  });
+
+  it("reuses the profile's assistant instruction for the enhancer when asked", () => {
+    const shared = { ...config, enhancerUsesAssistantInstruction: true };
+
+    expect(profileInstructions(shared, 'moss').enhancer).toBe('moss chat');
   });
 });
 

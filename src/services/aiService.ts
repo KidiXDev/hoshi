@@ -2,6 +2,7 @@ import { BRAND_NAME, REPO_URL } from '@/lib/brand';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText } from 'ai';
 import type { AiConfig, OpenRouterModel } from '../types/ai';
+import type { WorkflowProfile } from '../types/workflow';
 import { http } from './httpClient';
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
@@ -10,6 +11,8 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   titleModel: '',
   customSystemPrompt: '',
   enhancerSystemPrompt: '',
+  mossCustomSystemPrompt: '',
+  mossEnhancerSystemPrompt: '',
   enhancerUsesAssistantInstruction: false,
   autoApply: false,
   temperature: 0.7,
@@ -21,6 +24,39 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
 };
 
 import { CHAT_TITLE_SYSTEM_PROMPT } from '../data/aiPrompts';
+
+type InstructionKey = Extract<
+  keyof AiConfig,
+  | 'customSystemPrompt'
+  | 'enhancerSystemPrompt'
+  | 'mossCustomSystemPrompt'
+  | 'mossEnhancerSystemPrompt'
+>;
+
+export const PROFILE_INSTRUCTION_KEYS: Record<
+  WorkflowProfile,
+  { assistant: InstructionKey; enhancer: InstructionKey }
+> = {
+  anima: { assistant: 'customSystemPrompt', enhancer: 'enhancerSystemPrompt' },
+  moss: {
+    assistant: 'mossCustomSystemPrompt',
+    enhancer: 'mossEnhancerSystemPrompt'
+  }
+};
+
+export function profileInstructions(
+  config: AiConfig,
+  profile: WorkflowProfile
+) {
+  const keys = PROFILE_INSTRUCTION_KEYS[profile];
+  const assistant = config[keys.assistant] ?? '';
+  return {
+    assistant,
+    enhancer: config.enhancerUsesAssistantInstruction
+      ? assistant
+      : (config[keys.enhancer] ?? '')
+  };
+}
 
 export const POPULAR_MODELS: OpenRouterModel[] = [
   {

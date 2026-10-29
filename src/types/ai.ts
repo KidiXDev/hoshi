@@ -4,6 +4,8 @@ export interface AiConfig {
   titleModel?: string;
   customSystemPrompt: string;
   enhancerSystemPrompt?: string;
+  mossCustomSystemPrompt?: string;
+  mossEnhancerSystemPrompt?: string;
   enhancerUsesAssistantInstruction?: boolean;
   autoApply: boolean;
   temperature: number;

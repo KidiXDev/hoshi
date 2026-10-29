@@ -9,6 +9,7 @@ import type {
   CharacterSearchResponse
 } from '../types/animadex';
 import { useAiStore } from './aiStore';
+import { useWorkflowStore } from './workflowStore';
 
 type StreamPart = { type: string } & Record<string, unknown>;
 type ToolExecutor = (input: Record<string, unknown>) => Promise<unknown>;
@@ -282,6 +283,20 @@ describe('useAiStore.sendMessage', () => {
     expect(call.system).not.toMatch(
       /inspect_current_prompt|search_animadex|retrieve_animadex_tag_by_id/u
     );
+  });
+
+  it('uses only the MOSS-Image prompt and instructions in the MOSS profile', async () => {
+    const store = await readyStore();
+    store.config.customSystemPrompt = 'Anima-only instruction';
+    store.config.mossCustomSystemPrompt = 'MOSS-only instruction';
+    useWorkflowStore().profile = 'moss';
+
+    await store.sendMessage('Hello');
+
+    const { system } = lastStreamCall();
+    expect(system).toContain('MOSS-only instruction');
+    expect(system).not.toContain('Anima-only instruction');
+    expect(system).not.toMatch(/\bAnima\b/u);
   });
 
   it('gives the model Animadex search and lookup tools', async () => {

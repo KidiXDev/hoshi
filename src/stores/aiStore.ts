@@ -8,7 +8,8 @@ import {
   fetchAvailableModels,
   generateChatTitle,
   getOpenRouterModel,
-  POPULAR_MODELS
+  POPULAR_MODELS,
+  profileInstructions
 } from '../services/aiService';
 import {
   searchArtists,
@@ -33,6 +34,7 @@ import { toModelMessages } from '../utils/aiHistory';
 import { supportsVision } from '../utils/aiMentions';
 import { downscaledDataUrl } from '../utils/imageFiles';
 import { searchCharacterEntries } from '../utils/librarySearch';
+import { mossLayoutToDraft } from '../utils/mossLayout';
 import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
 
@@ -484,7 +486,8 @@ export const useAiStore = defineStore('ai', () => {
     try {
       const model = getOpenRouterModel(config.value, selectedModelInfo.value);
       const systemPrompt = buildAssistantSystemPrompt(
-        config.value.customSystemPrompt
+        profileInstructions(config.value, workflowStore.profile).assistant,
+        workflowStore.profile
       );
 
       const getOrCreateInvocation = (
@@ -578,7 +581,8 @@ export const useAiStore = defineStore('ai', () => {
             throw new Error('Prompt text is required');
           if (
             name === 'inject_positive_prompt' &&
-            typeof input.prompt === 'string'
+            typeof input.prompt === 'string' &&
+            !workflowStore.applyLayoutDraft(input.prompt)
           )
             workflowStore.positivePrompt = input.prompt;
           if (
@@ -626,15 +630,19 @@ export const useAiStore = defineStore('ai', () => {
         }
       };
 
+      const isMoss = workflowStore.profile === 'moss';
       const tools = {
         inspect_current_prompt: tool({
-          description:
-            'Inspect the currently active positive and negative prompts in the studio.',
+          description: isMoss
+            ? 'Inspect the currently active positive and negative prompts in the studio. An active layout is returned as a Layout draft.'
+            : 'Inspect the currently active positive and negative prompts in the studio.',
           inputSchema: z.object({}),
           execute: async () => {
+            const layout = isMoss ? mossLayoutToDraft(workflowStore) : null;
             return {
               positivePrompt: workflowStore.positivePrompt || '',
-              negativePrompt: workflowStore.negativePrompt || ''
+              negativePrompt: workflowStore.negativePrompt || '',
+              ...(layout ? { layout } : {})
             };
           }
         }),
@@ -688,8 +696,7 @@ export const useAiStore = defineStore('ai', () => {
         }),
 
         inject_positive_prompt: tool({
-          description:
-            'Use this for requests to create an image or create, improve, replace, or apply the studio positive prompt. Writing prompt text in chat does not apply it. For edits, inspect the current prompt first. The UI displays the full prompt and handles approval; after success, confirm briefly without repeating it. Wait for this result before calling generation. Do not use for explicitly text-only drafts or explanations.',
+          description: `Use this for requests to create an image or create, improve, replace, or apply the studio positive prompt. Writing prompt text in chat does not apply it. For edits, inspect the current prompt first.${isMoss ? ' A Layout draft JSON object replaces the layout boxes, the scene caption, and the canvas size.' : ''} The UI displays the full prompt and handles approval; after success, confirm briefly without repeating it. Wait for this result before calling generation. Do not use for explicitly text-only drafts or explanations.`,
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced positive prompt text'),
             reason: z

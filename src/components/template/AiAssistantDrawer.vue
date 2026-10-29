@@ -54,6 +54,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useAiStore } from '../../stores/aiStore';
 import { useComfyStore } from '../../stores/comfyStore';
+import { useWorkflowStore } from '../../stores/workflowStore';
 import type { ChatMessage, ChatMessageAttachment } from '../../types/ai';
 import { supportsVision } from '@/utils/aiMentions';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
@@ -63,7 +64,54 @@ import { useConfirmDialog } from '@/composables/useConfirmDialog';
 
 const aiStore = useAiStore();
 const comfyStore = useComfyStore();
+const workflowStore = useWorkflowStore();
 const router = useRouter();
+
+const STARTERS = {
+  anima: {
+    intro:
+      'Ask Maya to brainstorm Anima prompts, detail anime character outfits, analyze image styles with Vision, or inspect and queue renders.',
+    prompts: [
+      {
+        label: 'Inspect & optimize for Anima',
+        prompt:
+          'Inspect my current studio prompt and optimize it with Anima tag ordering and quality scores.'
+      },
+      {
+        label: 'Fantasy mage with detailed outfit',
+        prompt:
+          'Create an Anima prompt for a fantasy mage girl with ornate layered robes, detached sleeves, and glowing runes.'
+      },
+      {
+        label: 'Create Anima aesthetic prompt',
+        prompt:
+          'Generate a high quality Anima aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting.'
+      }
+    ]
+  },
+  moss: {
+    intro:
+      'Ask Maya to write detailed MOSS-Image captions, design poster layouts with exact text, analyze image styles with Vision, or inspect and queue renders.',
+    prompts: [
+      {
+        label: 'Expand into a MOSS caption',
+        prompt:
+          'Inspect my current studio prompt and expand it into a detailed MOSS-Image caption.'
+      },
+      {
+        label: 'Design a poster layout',
+        prompt:
+          'Design a MOSS-Image Layout for a retro sci-fi movie poster titled "STARFALL" with a lone astronaut and a release date line at the bottom.'
+      },
+      {
+        label: 'Cinematic photo caption',
+        prompt:
+          'Write a MOSS-Image caption for a candid street photograph of a cyclist on a rainy neon-lit night in Tokyo.'
+      }
+    ]
+  }
+};
+const starters = computed(() => STARTERS[workflowStore.profile]);
 
 const messageInput = ref('');
 const attachments = ref<ChatMessageAttachment[]>([]);
@@ -698,48 +746,20 @@ function navigateToSettings() {
                 <div class="flex flex-col gap-1">
                   <h3 class="text-foreground text-sm font-semibold">Maya</h3>
                   <p class="text-muted-foreground max-w-sm text-sm">
-                    Ask Maya to brainstorm Anima prompts, detail anime character
-                    outfits, analyze image styles with Vision, or inspect and
-                    queue renders.
+                    {{ starters.intro }}
                   </p>
                 </div>
 
                 <!-- Starter Chips -->
                 <div class="flex w-full max-w-xs flex-col gap-1.5 pt-2">
                   <button
+                    v-for="starter in starters.prompts"
+                    :key="starter.label"
                     type="button"
                     class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors"
-                    @click="
-                      handleStarterClick(
-                        'Inspect my current studio prompt and optimize it with Anima tag ordering and quality scores.'
-                      )
-                    "
+                    @click="handleStarterClick(starter.prompt)"
                   >
-                    <span>Inspect & optimize for Anima</span>
-                    <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors"
-                    @click="
-                      handleStarterClick(
-                        'Create an Anima prompt for a fantasy mage girl with ornate layered robes, detached sleeves, and glowing runes.'
-                      )
-                    "
-                  >
-                    <span>Fantasy mage with detailed outfit</span>
-                    <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    class="border-border bg-card/60 hover:bg-accent hover:border-primary/40 text-foreground flex cursor-pointer items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors"
-                    @click="
-                      handleStarterClick(
-                        'Generate a high quality Anima aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting.'
-                      )
-                    "
-                  >
-                    <span>Create Anima aesthetic prompt</span>
+                    <span>{{ starter.label }}</span>
                     <ArrowUpRight class="text-muted-foreground h-3.5 w-3.5" />
                   </button>
                 </div>

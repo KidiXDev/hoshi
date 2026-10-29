@@ -28,11 +28,14 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   buildEnhancerSystemPrompt,
   buildEnhancerUserPrompt,
-  NEGATIVE_ENHANCE_PRESETS,
-  POSITIVE_ENHANCE_PRESETS
+  ENHANCE_PRESETS
 } from '../../data/aiPrompts';
-import { getOpenRouterModel } from '../../services/aiService';
+import {
+  getOpenRouterModel,
+  profileInstructions
+} from '../../services/aiService';
 import { useAiStore } from '../../stores/aiStore';
+import { useWorkflowStore } from '../../stores/workflowStore';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
 import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 
@@ -59,6 +62,7 @@ const emit = defineEmits<{
 }>();
 
 const aiStore = useAiStore();
+const workflowStore = useWorkflowStore();
 
 const selectedStyle = ref<string>('clothing');
 const styleContext = ref('');
@@ -78,18 +82,22 @@ watch(
   }
 );
 
-watch(promptTarget, (newTarget) => {
-  const presets =
-    newTarget === 'positive'
-      ? POSITIVE_ENHANCE_PRESETS
-      : NEGATIVE_ENHANCE_PRESETS;
+const currentPresets = computed(
+  () => ENHANCE_PRESETS[workflowStore.profile][promptTarget.value]
+);
+
+function selectValidStyle(reset = false) {
+  const presets = currentPresets.value;
   if (
-    selectedStyle.value !== 'custom' &&
-    !presets.some((p) => p.id === selectedStyle.value)
+    reset ||
+    (selectedStyle.value !== 'custom' &&
+      !presets.some((p) => p.id === selectedStyle.value))
   ) {
     selectedStyle.value = presets[0].id;
   }
-});
+}
+
+watch(promptTarget, () => selectValidStyle());
 
 watch(
   () => props.open,
@@ -99,19 +107,11 @@ watch(
       errorMsg.value = '';
       copied.value = false;
       promptTarget.value = props.target;
-      if (props.target === 'positive') {
-        selectedStyle.value = 'clothing';
-      }
+      selectValidStyle(props.target === 'positive');
     } else {
       stopEnhancement();
     }
   }
-);
-
-const currentPresets = computed(() =>
-  promptTarget.value === 'positive'
-    ? POSITIVE_ENHANCE_PRESETS
-    : NEGATIVE_ENHANCE_PRESETS
 );
 
 const isCustomMode = computed(() => selectedStyle.value === 'custom');
@@ -142,9 +142,7 @@ async function runEnhance() {
   abortController = new AbortController();
 
   const isPositive = promptTarget.value === 'positive';
-  const presets = isPositive
-    ? POSITIVE_ENHANCE_PRESETS
-    : NEGATIVE_ENHANCE_PRESETS;
+  const presets = currentPresets.value;
   const activePreset =
     presets.find((p) => p.id === selectedStyle.value) || presets[0];
   const styleInstruction = isCustomMode.value
@@ -170,9 +168,8 @@ async function runEnhance() {
     const result = streamText({
       model,
       system: buildEnhancerSystemPrompt(
-        aiStore.config.enhancerUsesAssistantInstruction
-          ? aiStore.config.customSystemPrompt
-          : aiStore.config.enhancerSystemPrompt
+        profileInstructions(aiStore.config, workflowStore.profile).enhancer,
+        workflowStore.profile
       ),
       prompt: userPrompt,
       temperature: aiStore.config.temperature,

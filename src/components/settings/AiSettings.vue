@@ -10,7 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { PROFILE_INSTRUCTION_KEYS } from '@/services/aiService';
 import { useAiStore } from '@/stores/aiStore';
+import { WORKFLOW_PROFILES, useWorkflowStore } from '@/stores/workflowStore';
+import type { WorkflowProfile } from '@/types/workflow';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
 import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 import SettingsSection from '@/components/layout/SettingsSection.vue';
@@ -20,6 +24,10 @@ function showSaved() {
   emit('saved');
 }
 const aiStore = useAiStore();
+const instructionProfile = ref<WorkflowProfile>(useWorkflowStore().profile);
+const instructionKeys = computed(
+  () => PROFILE_INSTRUCTION_KEYS[instructionProfile.value]
+);
 const aiTemperature = computed<number[]>({
   get: () => [aiStore.config.temperature],
   set: ([value]) => {
@@ -367,19 +375,52 @@ onMounted(loadAiSettings);
       />
     </div>
 
+    <!-- Custom Instructions Profile -->
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-col gap-0.5">
+        <span class="text-foreground text-xs font-medium">
+          Custom Instructions
+        </span>
+        <span class="text-muted-foreground text-xs">
+          Each model profile keeps its own assistant and enhancer instructions.
+        </span>
+      </div>
+      <ToggleGroup
+        :model-value="instructionProfile"
+        type="single"
+        variant="outline"
+        aria-label="Custom instructions profile"
+        class="border-border bg-muted/60 h-8 shrink-0 rounded-md border p-0.5"
+        @update:model-value="
+          (value) => {
+            if (value) instructionProfile = value as WorkflowProfile;
+          }
+        "
+      >
+        <ToggleGroupItem
+          v-for="option in WORKFLOW_PROFILES"
+          :key="option.value"
+          :value="option.value"
+          class="data-[state=on]:bg-background data-[state=on]:text-foreground h-7 px-2.5 text-xs data-[state=on]:shadow-xs"
+        >
+          {{ option.label }}
+        </ToggleGroupItem>
+      </ToggleGroup>
+    </div>
+
     <!-- Chatbot Assistant Custom Instructions -->
     <Field class="gap-1.5">
       <FieldLabel class="text-xs">
         Chatbot Assistant Instructions (Optional)
       </FieldLabel>
       <Textarea
-        :model-value="aiStore.config.customSystemPrompt"
+        :model-value="aiStore.config[instructionKeys.assistant]"
         rows="3"
         placeholder="Enter custom instructions..."
         class="max-h-96 min-h-32 resize-y font-mono text-xs leading-relaxed"
         @update:model-value="
           (val) => {
-            aiStore.config.customSystemPrompt = String(val);
+            aiStore.config[instructionKeys.assistant] = String(val);
             void aiStore.saveConfig();
           }
         "
@@ -411,7 +452,7 @@ onMounted(loadAiSettings);
         </Label>
       </div>
       <Textarea
-        :model-value="aiStore.config.enhancerSystemPrompt"
+        :model-value="aiStore.config[instructionKeys.enhancer]"
         :disabled="aiStore.config.enhancerUsesAssistantInstruction"
         rows="3"
         :placeholder="
@@ -422,7 +463,7 @@ onMounted(loadAiSettings);
         class="max-h-96 min-h-24 resize-y font-mono text-xs leading-relaxed"
         @update:model-value="
           (val) => {
-            aiStore.config.enhancerSystemPrompt = String(val);
+            aiStore.config[instructionKeys.enhancer] = String(val);
             void aiStore.saveConfig();
           }
         "
