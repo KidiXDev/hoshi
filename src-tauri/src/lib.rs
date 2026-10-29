@@ -13,6 +13,7 @@ mod network_cache;
 mod process_manager;
 mod prompt_suggestions;
 mod python;
+mod system_info;
 
 use comfy_paths::clean_path;
 use process_manager::ProcessManager;
@@ -325,6 +326,7 @@ pub fn run() {
         .manage(download_manager)
         .manage(gallery_files)
         .manage(model_index)
+        .manage(system_info::SystemMonitor::default())
         .register_asynchronous_uri_scheme_protocol(
             "koharu-model",
             move |_context, request, responder| {
@@ -475,7 +477,9 @@ pub fn run() {
             prompt_suggestions::open_prompt_suggestions_folder,
             animadex::animadex_request,
             network_cache::clear_network_cache,
-            network_cache::get_network_cache_stats
+            network_cache::get_network_cache_stats,
+            system_info::get_system_specs,
+            system_info::get_system_usage
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

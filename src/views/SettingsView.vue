@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BooruSettings from '@/components/settings/BooruSettings.vue';
 import AiSettings from '@/components/settings/AiSettings.vue';
+import SystemInfoSettings from '@/components/settings/SystemInfoSettings.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
 import { invoke } from '@tauri-apps/api/core';
@@ -22,6 +23,7 @@ import {
   Info,
   KeyRound,
   Loader2,
+  MonitorCog,
   Puzzle,
   RefreshCw,
   Settings,
@@ -84,7 +86,8 @@ const tabs = [
   { id: 'booru', label: 'Booru gallery', icon: ImageIcon },
   { id: 'civitai', label: 'Civitai', icon: KeyRound },
   { id: 'ai', label: 'AI assistant', icon: Bot },
-  { id: 'general', label: 'General', icon: AppWindow }
+  { id: 'general', label: 'General', icon: AppWindow },
+  { id: 'system', label: 'System Information', icon: MonitorCog }
 ] as const;
 type SettingsTab = (typeof tabs)[number]['id'];
 const activeTab = ref<SettingsTab>('comfyui');
@@ -975,6 +978,9 @@ void loadCacheStats();
 
           <!-- AI -->
           <AiSettings v-show="activeTab === 'ai'" @saved="showSaved" />
+
+          <!-- System information -->
+          <SystemInfoSettings v-if="activeTab === 'system'" />
 
           <!-- General -->
           <template v-if="activeTab === 'general'">

@@ -79,3 +79,4 @@ Vitest (`vitest.config.ts`, Node environment by default). Tests are TypeScript, 
 - Pinia: `setActivePinia(createPinia())` in `beforeEach`; prefer real stores with `vi.spyOn(store, 'action')` over mocking store modules.
 - DOM, composables with lifecycle hooks and components: add `/** @vitest-environment happy-dom */`, mount with `@vue/test-utils` (`enableAutoUnmount(afterEach)`), and await `nextTick`/`flushPromises`. Components using tooltips or portals need a `TooltipProvider` parent and an `#app-content` element, as `App.vue` provides.
 - Config already clears mock history, restores `vi.spyOn` spies and unstubs globals between tests.
+- Avoid real runtime test using real data, always use mock data or mock response in the test.
