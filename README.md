@@ -73,6 +73,18 @@ Intuitive controls for Anima and MOSS-Image generation, prompt autocomplete, LoR
 
 ![Workflow Generator](screenshot/generation.png)
 
+### MOSS-Image Layout Control
+
+Draw, move, and resize bounding boxes for characters, objects, and exact text with regional captions and scene conditioning.
+
+![MOSS-Image Layout Control](screenshot/layout.png)
+
+### MOSS-Image Generation Result
+
+Generation output adhering precisely to regional layout placements and prompt descriptions.
+
+![MOSS-Image Generation Result](screenshot/moss.png)
+
 ### Civitai Model Browser
 
 Browse models, inspect versions and preview samples, with background download management.
@@ -83,7 +95,7 @@ Browse models, inspect versions and preview samples, with background download ma
 
 ### ComfyUI
 
-- **[v0.33.1](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.33.1) or later.** Hoshi starts ComfyUI with `--enable-cors-header` and injects its bridge node (`custom_nodes/comfyui-koharu-bridge`) before every launch — no manual install needed.
+- **[v0.42.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.33.1) or later.** Hoshi starts ComfyUI with `--enable-cors-header` and injects its bridge node (`custom_nodes/comfyui-koharu-bridge`) before every launch — no manual install needed.
 
 ### Models
 
