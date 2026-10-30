@@ -8,14 +8,6 @@ const videoVisibility = new IntersectionObserver((entries) => {
     else video.pause();
   }
 });
-
-function previewUrl(url: string, width = 600) {
-  if (!url) return '';
-  if (url.includes('/original=true/')) {
-    return url.replace('/original=true/', `/width=${width}/`);
-  }
-  return url;
-}
 </script>
 
 <script setup lang="ts">
@@ -48,6 +40,7 @@ import {
   ContextMenuTrigger
 } from '@/components/ui/context-menu';
 import {
+  civitaiPreviewUrl,
   isVideoMedia,
   type CivitaiModel,
   type CivitaiVersion
@@ -72,7 +65,7 @@ const emit = defineEmits<{
 
 const images = computed(() => props.version?.images ?? []);
 const image = computed(() => images.value[props.imageIndex] ?? images.value[0]);
-const imageSrc = computed(() => previewUrl(image.value?.url ?? '', 450));
+const imageSrc = computed(() => civitaiPreviewUrl(image.value?.url ?? '', 450));
 const isVideo = computed(() => isVideoMedia(image.value));
 const hasCarousel = computed(() => images.value.length > 1);
 const civitaiUrl = computed(

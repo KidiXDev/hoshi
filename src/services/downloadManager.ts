@@ -40,6 +40,7 @@ export function clearDownloadHistory(gid?: string) {
 
 export function queueCivitaiDownload(options: {
   versionId: number;
+  fileId?: number;
   workingDir: string;
   apiKey: string;
 }) {

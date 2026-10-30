@@ -131,4 +131,49 @@ describe('useInstalledCivitaiVersions', () => {
 
     expect(isVersionInstalled(model, v1)).toBe(true);
   });
+
+  describe('file variants', () => {
+    const fp16 = { ...v1.files[0], id: 11, name: 'model_fp16.safetensors' };
+    const int8 = { ...v1.files[0], id: 12, name: 'model_int8.safetensors' };
+    const variants: CivitaiVersion = { ...v1, files: [fp16, int8] };
+
+    it('marks only the downloaded variant as installed', () => {
+      const { isFileInstalled } = useInstalledCivitaiVersions();
+
+      useDownloadStore().items = [
+        {
+          gid: 'gid',
+          versionId: 10,
+          name: 'Model',
+          fileName: 'model_fp16.safetensors',
+          modelType: 'LORA',
+          baseModel: '',
+          modelPath: '',
+          status: 'complete',
+          completedLength: 1,
+          totalLength: 1,
+          downloadSpeed: 0,
+          createdAt: 0,
+          fileExists: true
+        }
+      ];
+
+      expect(isFileInstalled(model, variants, fp16)).toBe(true);
+      expect(isFileInstalled(model, variants, int8)).toBe(false);
+    });
+
+    it('does not credit a version-linked local file to its sibling variant', () => {
+      indexModels(
+        localModel({
+          id: 'fp16',
+          filename: 'model_fp16.safetensors',
+          civitai: civitaiSummary({ versionId: 10 })
+        })
+      );
+      const { installedLocalModel } = useInstalledCivitaiVersions();
+
+      expect(installedLocalModel(model, variants, fp16)?.id).toBe('fp16');
+      expect(installedLocalModel(model, variants, int8)).toBeUndefined();
+    });
+  });
 });

@@ -58,7 +58,10 @@ const router = createRouter({
       path: '/civitai/model/:id',
       name: 'civitai-model-detail',
       component: CivitaiModelDetailView,
-      props: true
+      props: (route) => ({
+        id: String(route.params.id),
+        versionId: Number(route.query.modelVersionId) || null
+      })
     },
     {
       path: '/upscaler',

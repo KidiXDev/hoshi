@@ -45,6 +45,9 @@ const emit = defineEmits<{ close: [] }>();
         <div class="flex flex-col gap-5 lg:col-span-5">
           <slot name="sidebar" />
         </div>
+        <div v-if="$slots.footer" class="lg:col-span-12">
+          <slot name="footer" />
+        </div>
       </div>
     </div>
 

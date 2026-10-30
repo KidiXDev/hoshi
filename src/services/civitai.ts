@@ -54,6 +54,30 @@ export function civitaiImageId(image?: CivitaiImage | null) {
   return match ? Number(match[1]) : null;
 }
 
+export function civitaiPreviewUrl(url: string, width: number) {
+  return url.replace('/original=true/', `/width=${width}/`);
+}
+
+export interface CivitaiGalleryImage extends Omit<CivitaiImage, 'nsfwLevel'> {
+  id: number;
+  username?: string;
+  stats?: { likeCount?: number; heartCount?: number; commentCount?: number };
+}
+
+export interface CivitaiImagesResponse {
+  items: CivitaiGalleryImage[];
+  metadata: { nextCursor?: string };
+}
+
+export function fetchCivitaiModelImages(search: {
+  modelVersionId: number;
+  cursor?: string;
+  nsfw: boolean;
+  apiKey: string;
+}) {
+  return invoke<CivitaiImagesResponse>('model_images', { search });
+}
+
 export function fetchCivitaiImageMeta(id: number) {
   return invoke<Record<string, unknown> | null>('image_generation_data', {
     id
@@ -86,6 +110,30 @@ export interface CivitaiVersion {
   stats?: { downloadCount?: number; rating?: number; thumbsUpCount?: number };
 }
 
+const MODEL_FILE_TYPES = ['Model', 'Pruned Model'];
+
+export function modelVariantFiles(version?: CivitaiVersion): CivitaiFile[] {
+  const files = version?.files ?? [];
+  const models = files.filter((file) => MODEL_FILE_TYPES.includes(file.type));
+  if (models.length === 0) {
+    const fallback = files.find((file) => file.primary) ?? files[0];
+    return fallback ? [fallback] : [];
+  }
+  return [...models].sort(
+    (a, b) => Number(Boolean(b.primary)) - Number(Boolean(a.primary))
+  );
+}
+
+export function civitaiModelLink(url: URL) {
+  if (!/^(?:www\.)?civitai\.(?:com|red)$/u.test(url.hostname)) return null;
+  const match = /^\/models\/(\d+)(?:\/|$)/u.exec(url.pathname);
+  if (!match) return null;
+  return {
+    modelId: Number(match[1]),
+    versionId: Number(url.searchParams.get('modelVersionId')) || null
+  };
+}
+
 export function getComfyTargetFolder(
   modelType: string,
   baseModel = '',
@@ -108,6 +156,7 @@ export function getComfyTargetFolder(
       'ltxv',
       'lumina',
       'mochi',
+      'moss',
       'pixart',
       'qwen',
       'svd',

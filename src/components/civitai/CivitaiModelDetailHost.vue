@@ -18,6 +18,8 @@ import {
 import { useModelSyncDialog } from '@/composables/useModelSyncDialog';
 import {
   isVideoMedia,
+  modelVariantFiles,
+  type CivitaiFile,
   type CivitaiModel,
   type CivitaiVersion
 } from '@/services/civitai';
@@ -41,14 +43,20 @@ const router = useRouter();
 const civitaiStore = useCivitaiStore();
 const downloadStore = useDownloadStore();
 const launcherStore = useLauncherStore();
-const { progress, downloaded, installedLocalModel, isVersionInstalled } =
-  useInstalledCivitaiVersions();
+const {
+  fileProgress,
+  fileDownloaded,
+  installedLocalModel,
+  isVersionInstalled,
+  isFileInstalled
+} = useInstalledCivitaiVersions();
 const syncDialog = useModelSyncDialog();
 const checkUpdate = useCheckModelUpdateMutation();
 
 const apiKey = ref('');
 const selectedVersionId = ref('');
-const queueingVersions = ref(new Set<number>());
+const selectedFileId = ref(0);
+const queueingFiles = ref(new Set<number>());
 const errorMessage = ref('');
 
 watch(
@@ -69,14 +77,45 @@ const activeVersion = computed<CivitaiVersion | undefined>(
       (version) => version.id === Number(selectedVersionId.value)
     ) ?? props.model.modelVersions[0]
 );
-const activeVersionId = computed(() => activeVersion.value?.id ?? 0);
 const installedVersionIds = computed(() =>
   props.model.modelVersions
     .filter((version) => isVersionInstalled(props.model, version))
     .map((version) => version.id)
 );
+const variantFiles = computed(() => modelVariantFiles(activeVersion.value));
+
+watch(
+  () => activeVersion.value?.id,
+  () => {
+    selectedFileId.value = variantFiles.value[0]?.id ?? 0;
+  },
+  { immediate: true }
+);
+
+const activeFile = computed<CivitaiFile | undefined>(
+  () =>
+    variantFiles.value.find((file) => file.id === selectedFileId.value) ??
+    variantFiles.value[0]
+);
+const activeProgress = computed(() =>
+  activeVersion.value && activeFile.value
+    ? fileProgress(activeVersion.value, activeFile.value)
+    : undefined
+);
+const activeDownloaded = computed(() =>
+  activeVersion.value && activeFile.value
+    ? fileDownloaded(activeVersion.value, activeFile.value)
+    : undefined
+);
+const installedFileIds = computed(() => {
+  const version = activeVersion.value;
+  if (!version) return [];
+  return variantFiles.value
+    .filter((file) => isFileInstalled(props.model, version, file))
+    .map((file) => file.id);
+});
 const localModel = computed(() =>
-  installedLocalModel(props.model, activeVersion.value)
+  installedLocalModel(props.model, activeVersion.value, activeFile.value)
 );
 const summary = computed(() => localModel.value?.civitai ?? null);
 const activeSample = computed(() =>
@@ -95,15 +134,14 @@ function reportError(error: unknown) {
   errorMessage.value = error instanceof Error ? error.message : String(error);
 }
 
-async function downloadVersion(
-  _model?: CivitaiModel,
-  versionParam?: CivitaiVersion
-) {
-  const version = versionParam ?? activeVersion.value;
+async function downloadActiveFile() {
+  const version = activeVersion.value;
+  const file = activeFile.value;
   if (
     !version ||
-    progress.value[version.id] ||
-    queueingVersions.value.has(version.id)
+    !file ||
+    activeProgress.value ||
+    queueingFiles.value.has(file.id)
   )
     return;
   if (!launcherStore.hasComfyDirectory) {
@@ -111,24 +149,25 @@ async function downloadVersion(
     return;
   }
   errorMessage.value = '';
-  queueingVersions.value = new Set(queueingVersions.value).add(version.id);
+  queueingFiles.value = new Set(queueingFiles.value).add(file.id);
   try {
     await downloadStore.enqueueCivitai({
       versionId: version.id,
+      fileId: file.id,
       workingDir: launcherStore.config.workingDir,
       apiKey: apiKey.value
     });
   } catch (error) {
     reportError(error);
   } finally {
-    const next = new Set(queueingVersions.value);
-    next.delete(version.id);
-    queueingVersions.value = next;
+    const next = new Set(queueingFiles.value);
+    next.delete(file.id);
+    queueingFiles.value = next;
   }
 }
 
-async function toggleDownload(versionId: number) {
-  const item = progress.value[versionId];
+async function toggleDownload() {
+  const item = activeProgress.value;
   if (!item) return;
   errorMessage.value = '';
   try {
@@ -139,8 +178,8 @@ async function toggleDownload(versionId: number) {
   }
 }
 
-async function cancelDownload(versionId: number) {
-  const item = progress.value[versionId];
+async function cancelDownload() {
+  const item = activeProgress.value;
   if (!item) return;
   errorMessage.value = '';
   try {
@@ -160,12 +199,14 @@ onMounted(async () => {
   <CivitaiModelDetail
     :model="model"
     :selected-version-id="selectedVersionId"
-    :is-installed="installedVersionIds.includes(activeVersionId)"
+    :selected-file-id="activeFile?.id ?? 0"
+    :is-installed="!!activeFile && installedFileIds.includes(activeFile.id)"
     :installed-version-ids="installedVersionIds"
-    :is-downloading="!!progress[activeVersionId]"
-    :is-queueing="queueingVersions.has(activeVersionId)"
-    :progress-record="progress[activeVersionId]"
-    :downloaded-record="downloaded[activeVersionId]"
+    :installed-file-ids="installedFileIds"
+    :is-downloading="!!activeProgress"
+    :is-queueing="!!activeFile && queueingFiles.has(activeFile.id)"
+    :progress-record="activeProgress"
+    :downloaded-record="activeDownloaded"
     :download-disabled="!launcherStore.hasComfyDirectory"
     :download-message="
       !launcherStore.hasComfyDirectory ? launcherStore.localSetupMessage : ''
@@ -173,8 +214,9 @@ onMounted(async () => {
     :error-message="errorMessage || civitaiStore.discoveryError"
     :back-label="backLabel"
     @update:selected-version-id="(value) => (selectedVersionId = value)"
+    @update:selected-file-id="(value) => (selectedFileId = value)"
     @close="emit('close')"
-    @download="downloadVersion"
+    @download="downloadActiveFile"
     @pause="toggleDownload"
     @resume="toggleDownload"
     @cancel="cancelDownload"

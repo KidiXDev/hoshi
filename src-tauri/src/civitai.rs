@@ -168,6 +168,55 @@ pub async fn models(app_handle: AppHandle, search: ModelSearch) -> Result<Value,
         .map_err(|error| error.to_string())?
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageSearch {
+    model_version_id: u64,
+    cursor: Option<String>,
+    nsfw: bool,
+    api_key: String,
+}
+
+fn model_images_url(search: &ImageSearch) -> Result<reqwest::Url, String> {
+    let mut url =
+        reqwest::Url::parse(&format!("{API_BASE}/images")).map_err(|error| error.to_string())?;
+    {
+        let mut params = url.query_pairs_mut();
+        params.append_pair("modelVersionId", &search.model_version_id.to_string());
+        params.append_pair("limit", "24");
+        params.append_pair("sort", "Most Reactions");
+        if !search.nsfw {
+            params.append_pair("nsfw", "None");
+        }
+        if let Some(cursor) = search.cursor.as_deref().filter(|value| !value.is_empty()) {
+            params.append_pair("cursor", cursor);
+        }
+    }
+    Ok(url)
+}
+
+#[tauri::command]
+pub async fn model_images(app_handle: AppHandle, search: ImageSearch) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let url = model_images_url(&search)?;
+        let api_key = search.api_key;
+        cached_json(
+            &app_handle,
+            &format!("{url}|{api_key}"),
+            LIST_TTL_SECONDS,
+            || {
+                response_json(
+                    authorized(client()?.get(url), &api_key)
+                        .send()
+                        .map_err(|error| error.to_string())?,
+                )
+            },
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
 pub async fn enums(app_handle: AppHandle) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -347,6 +396,7 @@ fn is_diffusion_model(base_model: &str, file_type: &str) -> bool {
             "ltxv",
             "lumina",
             "mochi",
+            "moss",
             "pixart",
             "qwen",
             "svd",
@@ -437,10 +487,21 @@ pub(crate) fn is_image_item(item: &serde_json::Value) -> bool {
         && !clean_url.ends_with(".ogg")
 }
 
+fn select_file(files: &[serde_json::Value], file_id: Option<u64>) -> Option<&serde_json::Value> {
+    match file_id {
+        Some(id) => files.iter().find(|file| file["id"].as_u64() == Some(id)),
+        None => files
+            .iter()
+            .find(|file| file["primary"].as_bool() == Some(true))
+            .or_else(|| files.first()),
+    }
+}
+
 fn download_blocking(
     app_handle: AppHandle,
     manager: DownloadManager,
     version_id: u64,
+    file_id: Option<u64>,
     working_dir: String,
     api_key: String,
 ) -> Result<DownloadRecord, String> {
@@ -450,17 +511,16 @@ fn download_blocking(
     }
     let client = client()?;
     let metadata = fetch_model_version(&app_handle, &model_version_url(version_id), &api_key)?;
-    let primary_file = metadata["files"]
+    let selected_file = metadata["files"]
         .as_array()
-        .and_then(|files| {
-            files
-                .iter()
-                .find(|file| file["primary"].as_bool() == Some(true))
-                .or_else(|| files.first())
-        })
-        .ok_or("This model version has no downloadable files.")?;
-    if primary_file["virusScanResult"].as_str() == Some("Danger")
-        || primary_file["pickleScanResult"].as_str() == Some("Danger")
+        .and_then(|files| select_file(files, file_id))
+        .ok_or(if file_id.is_some() {
+            "The selected file is no longer available in this model version."
+        } else {
+            "This model version has no downloadable files."
+        })?;
+    if selected_file["virusScanResult"].as_str() == Some("Danger")
+        || selected_file["pickleScanResult"].as_str() == Some("Danger")
     {
         return Err("Civitai marked this file as unsafe; download blocked.".into());
     }
@@ -472,9 +532,13 @@ fn download_blocking(
         .unwrap_or("Civitai model");
     let version_name = metadata["name"].as_str().unwrap_or_default();
     let base_model = metadata["baseModel"].as_str().unwrap_or("Unknown");
-    let file_type = primary_file["type"].as_str().unwrap_or("Model");
-    let filename = safe_filename(primary_file["name"].as_str().unwrap_or("model.safetensors"));
-    let download_url = primary_file["downloadUrl"]
+    let file_type = selected_file["type"].as_str().unwrap_or("Model");
+    let filename = safe_filename(
+        selected_file["name"]
+            .as_str()
+            .unwrap_or("model.safetensors"),
+    );
+    let download_url = selected_file["downloadUrl"]
         .as_str()
         .or_else(|| metadata["downloadUrl"].as_str())
         .ok_or("Civitai did not return a download URL.")?;
@@ -525,7 +589,7 @@ fn download_blocking(
                 .map(str::to_string),
             url: download_url,
             source_url,
-            expected_sha256: primary_file["hashes"]["SHA256"]
+            expected_sha256: selected_file["hashes"]["SHA256"]
                 .as_str()
                 .map(str::to_ascii_lowercase),
         },
@@ -537,12 +601,20 @@ pub async fn download(
     app_handle: AppHandle,
     manager: State<'_, DownloadManager>,
     version_id: u64,
+    file_id: Option<u64>,
     working_dir: String,
     api_key: String,
 ) -> Result<DownloadRecord, String> {
     let manager = (*manager).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        download_blocking(app_handle, manager, version_id, working_dir, api_key)
+        download_blocking(
+            app_handle,
+            manager,
+            version_id,
+            file_id,
+            working_dir,
+            api_key,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -550,7 +622,10 @@ pub async fn download(
 
 #[cfg(test)]
 mod tests {
-    use super::{is_civitai_host, is_image_item, model_folder, preview_extension, safe_filename};
+    use super::{
+        is_civitai_host, is_image_item, model_folder, model_images_url, preview_extension,
+        safe_filename, select_file, ImageSearch,
+    };
 
     #[test]
     fn refreshes_forbidden_redirect_without_forwarding_credentials() {
@@ -637,6 +712,10 @@ mod tests {
             Ok("diffusion_models")
         );
         assert_eq!(
+            model_folder("Checkpoint", "MOSS Image", "Model"),
+            Ok("diffusion_models")
+        );
+        assert_eq!(
             safe_filename("../bad:model?.safetensors"),
             "bad_model_.safetensors"
         );
@@ -668,5 +747,35 @@ mod tests {
             "type": "image",
             "url": "https://image.civitai.com/video.mp4"
         })));
+    }
+
+    #[test]
+    fn selects_requested_file_or_falls_back_to_primary() {
+        let files = [
+            serde_json::json!({ "id": 1, "name": "int8.safetensors" }),
+            serde_json::json!({ "id": 2, "name": "fp16.safetensors", "primary": true }),
+        ];
+        assert_eq!(select_file(&files, Some(1)), Some(&files[0]));
+        assert_eq!(select_file(&files, None), Some(&files[1]));
+        assert_eq!(select_file(&files, Some(3)), None);
+        assert_eq!(select_file(&files[..1], None), Some(&files[0]));
+    }
+
+    #[test]
+    fn builds_version_gallery_url_with_safe_filter_by_default() {
+        let search = |nsfw, cursor: Option<&str>| ImageSearch {
+            model_version_id: 42,
+            cursor: cursor.map(str::to_string),
+            nsfw,
+            api_key: String::new(),
+        };
+        assert_eq!(
+            model_images_url(&search(false, None)).unwrap().as_str(),
+            "https://civitai.com/api/v1/images?modelVersionId=42&limit=24&sort=Most+Reactions&nsfw=None"
+        );
+        assert_eq!(
+            model_images_url(&search(true, Some("feed:1:2"))).unwrap().as_str(),
+            "https://civitai.com/api/v1/images?modelVersionId=42&limit=24&sort=Most+Reactions&cursor=feed%3A1%3A2"
+        );
     }
 }

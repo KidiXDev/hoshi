@@ -6,6 +6,8 @@ export const queryKeys = {
     modelDetail: (id: number | string) =>
       ['civitai', 'model', Number(id)] as const,
     imageMeta: (id: number) => ['civitai', 'imageMeta', id] as const,
+    modelImages: (versionId: number, nsfw: boolean) =>
+      ['civitai', 'modelImages', versionId, nsfw] as const,
     baseModels: () => ['civitai', 'baseModels'] as const
   },
   models: {

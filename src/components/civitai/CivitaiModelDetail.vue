@@ -1,8 +1,18 @@
 <script setup lang="ts">
+import CivitaiModelGallery from './CivitaiModelGallery.vue';
 import CivitaiRichText from './CivitaiRichText.vue';
 import CivitaiSampleMetadata from './CivitaiSampleMetadata.vue';
 import ModelDetailShell from '@/components/models/ModelDetailShell.vue';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch
+} from 'vue';
 import { useRouter } from 'vue-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -10,14 +20,11 @@ import {
   BookmarkCheck,
   Check,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Copy,
   Download,
   ExternalLink,
-  FileCode,
   FolderOpen,
   ImageOff,
   Layers,
@@ -45,6 +52,7 @@ import {
   type CarouselApi
 } from '@/components/ui/carousel';
 import { Progress } from '@/components/ui/progress';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -63,8 +71,10 @@ import ImageLightboxModal from '@/components/common/ImageLightboxModal.vue';
 import { useCivitaiImageMetaQuery } from '@/composables/useCivitaiQueries';
 import {
   civitaiImageId,
+  civitaiPreviewUrl,
   getComfyTargetFolder,
   isVideoMedia,
+  modelVariantFiles,
   type CivitaiFile,
   type CivitaiImage,
   type CivitaiModel,
@@ -78,8 +88,10 @@ import { appendPromptTerms } from '@/utils/promptTools';
 interface Props {
   model: CivitaiModel;
   selectedVersionId?: string;
+  selectedFileId?: number;
   isInstalled?: boolean;
   installedVersionIds?: number[];
+  installedFileIds?: number[];
   isDownloading?: boolean;
   isQueueing?: boolean;
   progressRecord?: DownloadRecord;
@@ -93,8 +105,10 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   selectedVersionId: '',
+  selectedFileId: 0,
   isInstalled: false,
   installedVersionIds: () => [],
+  installedFileIds: () => [],
   isDownloading: false,
   isQueueing: false,
   progressRecord: undefined,
@@ -104,11 +118,12 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'update:selectedVersionId', value: string): void;
+  (e: 'update:selectedFileId', value: number): void;
   (e: 'close'): void;
-  (e: 'download', model: CivitaiModel, version?: CivitaiVersion): void;
-  (e: 'pause', versionId: number): void;
-  (e: 'resume', versionId: number): void;
-  (e: 'cancel', versionId: number): void;
+  (e: 'download'): void;
+  (e: 'pause'): void;
+  (e: 'resume'): void;
+  (e: 'cancel'): void;
   (e: 'show-in-folder', path: string): void;
   (e: 'search', query: string): void;
 }>();
@@ -122,7 +137,6 @@ const isBookmarked = computed(() => civitaiStore.isBookmarked(props.model.id));
 const activeImageIndex = ref(0);
 const carouselApi = ref<CarouselApi>();
 const isLightboxOpen = ref(false);
-const showAllFiles = ref(false);
 
 // Copy & feedback states
 const copiedKey = ref<string | null>(null);
@@ -154,33 +168,56 @@ const carouselImage = computed<CivitaiImage | undefined>(() => {
   return currentImages.value[activeImageIndex.value] ?? currentImages.value[0];
 });
 
+const galleryImage = ref<CivitaiImage | null>(null);
+const inspectedImage = computed(
+  () => galleryImage.value ?? carouselImage.value
+);
+
+watch(isLightboxOpen, (open) => {
+  if (!open) galleryImage.value = null;
+});
+
+function openGalleryImage(image: CivitaiImage) {
+  galleryImage.value = image;
+  isLightboxOpen.value = true;
+}
+
 const imageMetaQuery = useCivitaiImageMetaQuery(() => {
-  const image = carouselImage.value;
+  const image = inspectedImage.value;
   return image && !image.meta && image.hasMeta !== false
     ? civitaiImageId(image)
     : null;
 });
 
 const activeImage = computed<CivitaiImage | undefined>(() => {
-  const image = carouselImage.value;
+  const image = inspectedImage.value;
   if (!image) return;
   return { ...image, meta: image.meta ?? imageMetaQuery.data.value ?? null };
 });
 
-const primaryModelFile = computed<CivitaiFile | undefined>(() => {
-  return (
-    currentVersion.value?.files.find((f) => f.primary) ??
-    currentVersion.value?.files[0]
-  );
-});
+const variantFiles = computed(() => modelVariantFiles(currentVersion.value));
+
+const selectedFile = computed<CivitaiFile | undefined>(
+  () =>
+    variantFiles.value.find((file) => file.id === props.selectedFileId) ??
+    variantFiles.value[0]
+);
 
 const targetDirectory = computed(() => {
   return getComfyTargetFolder(
     props.model.type,
     currentVersion.value?.baseModel ?? '',
-    primaryModelFile.value?.type ?? ''
+    selectedFile.value?.type ?? ''
   );
 });
+
+function variantLabel(file: CivitaiFile) {
+  return (
+    [file.metadata?.fp, file.metadata?.size, file.metadata?.format]
+      .filter(Boolean)
+      .join(' · ') || file.type
+  );
+}
 
 const downloadPercent = computed(() => {
   const record = props.progressRecord;
@@ -213,14 +250,6 @@ function onCarouselInit(api: CarouselApi) {
 function selectImage(index: number) {
   activeImageIndex.value = index;
   carouselApi.value?.scrollTo(index);
-}
-
-function previewUrl(url: string, width = 1024) {
-  if (!url) return '';
-  if (url.includes('/original=true/')) {
-    return url.replace('/original=true/', `/width=${width}/`);
-  }
-  return url;
 }
 
 function formatCount(value = 0) {
@@ -309,9 +338,9 @@ watch(
   }
 );
 
-onMounted(() => {
-  window.addEventListener('keydown', onKeyDown);
-});
+onMounted(() => window.addEventListener('keydown', onKeyDown));
+onActivated(() => window.addEventListener('keydown', onKeyDown));
+onDeactivated(() => window.removeEventListener('keydown', onKeyDown));
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown);
@@ -396,7 +425,7 @@ onUnmounted(() => {
               <video
                 v-if="isVideoMedia(img)"
                 :key="img.url"
-                :src="previewUrl(img.url, 1280)"
+                :src="civitaiPreviewUrl(img.url, 1280)"
                 autoplay
                 loop
                 muted
@@ -406,7 +435,7 @@ onUnmounted(() => {
               />
               <img
                 v-else
-                :src="previewUrl(img.url, 1280)"
+                :src="civitaiPreviewUrl(img.url, 1280)"
                 :alt="`${model.name} preview ${idx + 1}`"
                 class="h-full w-full object-contain select-none"
                 draggable="false"
@@ -499,7 +528,7 @@ onUnmounted(() => {
         >
           <video
             v-if="isVideoMedia(img)"
-            :src="previewUrl(img.url, 180)"
+            :src="civitaiPreviewUrl(img.url, 180)"
             muted
             loop
             autoplay
@@ -508,7 +537,7 @@ onUnmounted(() => {
           />
           <img
             v-else
-            :src="previewUrl(img.url, 180)"
+            :src="civitaiPreviewUrl(img.url, 180)"
             alt="thumbnail"
             class="h-full w-full object-cover"
             loading="lazy"
@@ -656,6 +685,60 @@ onUnmounted(() => {
           </Select>
         </div>
 
+        <div v-if="variantFiles.length > 1">
+          <div class="mb-1.5 flex items-center justify-between">
+            <span class="text-muted-foreground text-xs font-medium">
+              Variant
+            </span>
+            <span class="text-muted-foreground font-mono text-xs">
+              {{ variantFiles.length }} variants
+            </span>
+          </div>
+          <RadioGroup
+            :model-value="String(selectedFile?.id ?? '')"
+            class="gap-1.5"
+            @update:model-value="
+              (value) => emit('update:selectedFileId', Number(value))
+            "
+          >
+            <label
+              v-for="file in variantFiles"
+              :key="file.id"
+              class="border-border/50 bg-muted/30 hover:bg-muted/60 has-data-[state=checked]:border-primary/50 has-data-[state=checked]:bg-primary/5 flex cursor-pointer items-center gap-2.5 rounded-lg border p-2.5 text-xs transition-colors"
+            >
+              <RadioGroupItem :value="String(file.id)" />
+              <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-foreground font-semibold">
+                    {{ variantLabel(file) }}
+                  </span>
+                  <Badge
+                    v-if="file.primary"
+                    variant="secondary"
+                    class="py-0 text-xs"
+                  >
+                    Primary
+                  </Badge>
+                  <CheckCircle2
+                    v-if="props.installedFileIds.includes(file.id)"
+                    class="size-3.5 text-emerald-500"
+                    aria-label="Installed"
+                  />
+                </div>
+                <span
+                  class="text-muted-foreground truncate font-mono"
+                  :title="file.name"
+                >
+                  {{ file.name }}
+                </span>
+              </div>
+              <span class="text-muted-foreground shrink-0 font-mono">
+                {{ formatSize(file.sizeKB) }}
+              </span>
+            </label>
+          </RadioGroup>
+        </div>
+
         <!-- Destination Target Folder -->
         <div
           class="border-border/50 bg-muted/30 flex items-center justify-between rounded-lg border px-3 py-2 text-xs"
@@ -682,13 +765,13 @@ onUnmounted(() => {
           <div class="bg-muted/40 border-border/40 rounded-lg border p-2.5">
             <span class="text-muted-foreground block text-xs">File Size</span>
             <span class="text-xs font-semibold">{{
-              formatSize(primaryModelFile?.sizeKB)
+              formatSize(selectedFile?.sizeKB)
             }}</span>
           </div>
           <div class="bg-muted/40 border-border/40 rounded-lg border p-2.5">
             <span class="text-muted-foreground block text-xs">Format</span>
             <span class="text-xs font-semibold">{{
-              primaryModelFile?.metadata?.format || 'SafeTensor'
+              selectedFile?.metadata?.format || 'SafeTensor'
             }}</span>
           </div>
           <div class="bg-muted/40 border-border/40 rounded-lg border p-2.5">
@@ -697,7 +780,7 @@ onUnmounted(() => {
               class="flex items-center gap-1 text-xs font-semibold text-emerald-500"
             >
               <ShieldCheck class="h-3.5 w-3.5" />
-              {{ primaryModelFile?.virusScanResult || 'Clean' }}
+              {{ selectedFile?.virusScanResult || 'Clean' }}
             </span>
           </div>
         </div>
@@ -722,8 +805,8 @@ onUnmounted(() => {
                 class="h-8 flex-1 cursor-pointer text-xs"
                 @click="
                   props.progressRecord?.status === 'paused'
-                    ? emit('resume', currentVersion?.id || 0)
-                    : emit('pause', currentVersion?.id || 0)
+                    ? emit('resume')
+                    : emit('pause')
                 "
               >
                 <Play
@@ -739,7 +822,7 @@ onUnmounted(() => {
                 variant="destructive"
                 size="sm"
                 class="h-8 flex-1 cursor-pointer text-xs"
-                @click="emit('cancel', currentVersion?.id || 0)"
+                @click="emit('cancel')"
               >
                 <X class="mr-1.5 h-3.5 w-3.5" />
                 Cancel
@@ -753,12 +836,12 @@ onUnmounted(() => {
               size="default"
               :variant="props.isInstalled ? 'secondary' : 'default'"
               :disabled="
-                !primaryModelFile ||
+                !selectedFile ||
                 props.isQueueing ||
                 props.isInstalled ||
                 props.downloadDisabled
               "
-              @click="emit('download', model, currentVersion)"
+              @click="emit('download')"
             >
               <template v-if="props.isQueueing">
                 <Loader2 class="mr-2 h-4 w-4 animate-spin" />
@@ -768,14 +851,14 @@ onUnmounted(() => {
                 <CheckCircle2 class="mr-2 h-4 w-4 text-emerald-500" />
                 <span>Installed in ComfyUI</span>
               </template>
-              <template v-else-if="!primaryModelFile"
+              <template v-else-if="!selectedFile"
                 >No downloadable file</template
               >
               <template v-else>
                 <Download class="mr-2 h-4 w-4" />
                 <span
                   >Download to ComfyUI ({{
-                    formatSize(primaryModelFile?.sizeKB)
+                    formatSize(selectedFile?.sizeKB)
                   }})</span
                 >
               </template>
@@ -888,63 +971,20 @@ onUnmounted(() => {
         </ScrollArea>
       </div>
 
-      <div
-        v-if="currentVersion?.files?.length && currentVersion.files.length > 1"
-        class="border-border/70 bg-card/70 flex flex-col gap-2.5 rounded-xl border p-4 shadow-xs"
-      >
-        <button
-          type="button"
-          class="flex cursor-pointer items-center justify-between text-xs font-semibold"
-          @click="showAllFiles = !showAllFiles"
-        >
-          <div class="flex items-center gap-1.5">
-            <FileCode class="text-primary h-3.5 w-3.5" />
-            <span
-              >Files in this Version ({{ currentVersion.files.length }})</span
-            >
-          </div>
-          <ChevronUp
-            v-if="showAllFiles"
-            class="text-muted-foreground h-3.5 w-3.5"
-          />
-          <ChevronDown v-else class="text-muted-foreground h-3.5 w-3.5" />
-        </button>
-
-        <div v-if="showAllFiles" class="flex flex-col gap-2 pt-1">
-          <div
-            v-for="file in currentVersion.files"
-            :key="file.id"
-            class="border-border/50 bg-muted/30 flex items-center justify-between rounded-lg border p-2.5 text-xs"
-          >
-            <div class="flex min-w-0 flex-col gap-0.5">
-              <div class="flex items-center gap-1.5">
-                <span class="text-foreground truncate font-mono font-medium">
-                  {{ file.name }}
-                </span>
-                <Badge
-                  v-if="file.primary"
-                  variant="secondary"
-                  class="py-0 text-xs"
-                >
-                  Primary
-                </Badge>
-              </div>
-              <span class="text-muted-foreground text-xs">
-                {{ file.metadata?.format || file.type }} ·
-                {{ formatSize(file.sizeKB) }} ·
-                {{ file.metadata?.fp || 'fp16' }}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <slot name="sidebar-bottom" />
+    </template>
+
+    <template #footer>
+      <CivitaiModelGallery
+        v-if="currentVersion"
+        :version-id="currentVersion.id"
+        @open="openGalleryImage"
+      />
     </template>
 
     <ImageLightboxModal
       v-model:open="isLightboxOpen"
-      :src="activeImage ? previewUrl(activeImage.url, 2048) : ''"
+      :src="activeImage ? civitaiPreviewUrl(activeImage.url, 2048) : ''"
       :video="isVideoMedia(activeImage)"
       :alt="`${model.name} - Full Preview`"
       :title="`${model.name} (${activeImage?.width || 0} × ${activeImage?.height || 0})`"

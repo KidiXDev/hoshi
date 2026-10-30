@@ -1,6 +1,8 @@
 import { computed } from 'vue';
 import {
+  modelVariantFiles,
   normalizeModelFilename,
+  type CivitaiFile,
   type CivitaiModel,
   type CivitaiVersion
 } from '../services/civitai';
@@ -43,6 +45,14 @@ function foldersForType(type: string) {
   return TYPE_FOLDERS[type.toLowerCase()] ?? NO_FOLDERS;
 }
 
+function isRunningRecord(item: DownloadRecord) {
+  return ['active', 'waiting', 'paused'].includes(item.status);
+}
+
+function isDownloadedRecord(item: DownloadRecord) {
+  return item.status === 'complete' && item.fileExists !== false;
+}
+
 export function useInstalledCivitaiVersions() {
   const comfyStore = useComfyStore();
   const launcherStore = useLauncherStore();
@@ -53,7 +63,7 @@ export function useInstalledCivitaiVersions() {
   const progress = computed<Record<number, DownloadRecord>>(() =>
     Object.fromEntries(
       downloadStore.items
-        .filter((item) => ['active', 'waiting', 'paused'].includes(item.status))
+        .filter(isRunningRecord)
         .map((item) => [item.versionId, item])
     )
   );
@@ -61,12 +71,32 @@ export function useInstalledCivitaiVersions() {
   const downloaded = computed<Record<number, DownloadRecord>>(() =>
     Object.fromEntries(
       downloadStore.items
-        .filter(
-          (item) => item.status === 'complete' && item.fileExists !== false
-        )
+        .filter(isDownloadedRecord)
         .map((item) => [item.versionId, item])
     )
   );
+
+  function fileRecord(
+    version: CivitaiVersion,
+    file: CivitaiFile,
+    matches: (item: DownloadRecord) => boolean
+  ) {
+    const name = normalizeModelFilename(file.name);
+    return downloadStore.items.find(
+      (item) =>
+        item.versionId === version.id &&
+        normalizeModelFilename(item.fileName) === name &&
+        matches(item)
+    );
+  }
+
+  function fileProgress(version: CivitaiVersion, file: CivitaiFile) {
+    return fileRecord(version, file, isRunningRecord);
+  }
+
+  function fileDownloaded(version: CivitaiVersion, file: CivitaiFile) {
+    return fileRecord(version, file, isDownloadedRecord);
+  }
 
   const indexedModels = computed(() => indexQuery.data.value?.models ?? []);
 
@@ -116,26 +146,48 @@ export function useInstalledCivitaiVersions() {
 
   function installedLocalModel(
     model?: CivitaiModel | null,
-    version?: CivitaiVersion
+    version?: CivitaiVersion,
+    file?: CivitaiFile
   ): LocalModel | undefined {
     if (!model || !version) return;
     const { categories } = foldersForType(model.type);
+    const files = file ? [file] : version.files;
+    const byVersion =
+      file && modelVariantFiles(version).length > 1
+        ? undefined
+        : indexedByVersionId.value.get(version.id);
     return (
-      indexedByVersionId.value.get(version.id) ??
-      version.files
-        .map((file) =>
-          indexedBySha256.value.get(file.hashes?.SHA256?.toLowerCase() ?? '')
+      byVersion ??
+      files
+        .map((candidate) =>
+          indexedBySha256.value.get(
+            candidate.hashes?.SHA256?.toLowerCase() ?? ''
+          )
         )
         .find(Boolean) ??
       categories
         .flatMap((category) =>
-          version.files.map((file) =>
+          files.map((candidate) =>
             indexedByCategoryFile.value.get(
-              `${category}/${normalizeModelFilename(file.name)}`
+              `${category}/${normalizeModelFilename(candidate.name)}`
             )
           )
         )
         .find(Boolean)
+    );
+  }
+
+  function isFileInstalled(
+    model: CivitaiModel,
+    version: CivitaiVersion,
+    file: CivitaiFile
+  ) {
+    return (
+      !!fileDownloaded(version, file) ||
+      !!installedLocalModel(model, version, file) ||
+      !!bridgeFileNames.value[model.type.toLowerCase()]?.has(
+        normalizeModelFilename(file.name)
+      )
     );
   }
 
@@ -155,5 +207,13 @@ export function useInstalledCivitaiVersions() {
     );
   }
 
-  return { progress, downloaded, installedLocalModel, isVersionInstalled };
+  return {
+    progress,
+    downloaded,
+    fileProgress,
+    fileDownloaded,
+    installedLocalModel,
+    isVersionInstalled,
+    isFileInstalled
+  };
 }

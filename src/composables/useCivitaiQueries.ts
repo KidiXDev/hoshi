@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/vue-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/vue-query';
 import { computed, toValue, type MaybeRefOrGetter } from 'vue';
 import {
   fetchCivitaiBaseModels,
   fetchCivitaiImageMeta,
   fetchCivitaiModelById,
+  fetchCivitaiModelImages,
   fetchCivitaiModels
 } from '../services/civitai';
 import { queryKeys } from './queryKeys';
@@ -74,6 +75,33 @@ export function useCivitaiImageMetaQuery(
     queryFn: () => fetchCivitaiImageMeta(toValue(id) ?? 0),
     enabled: computed(() => Boolean(toValue(id))),
     staleTime: Number.POSITIVE_INFINITY
+  });
+}
+
+export function useCivitaiModelImagesQuery(
+  versionId: MaybeRefOrGetter<number | undefined>,
+  settings: MaybeRefOrGetter<{ apiKey: string; nsfw: boolean } | null>
+) {
+  return useInfiniteQuery({
+    queryKey: computed(() =>
+      queryKeys.civitai.modelImages(
+        toValue(versionId) ?? 0,
+        toValue(settings)?.nsfw ?? false
+      )
+    ),
+    queryFn: ({ pageParam }) =>
+      fetchCivitaiModelImages({
+        modelVersionId: toValue(versionId) ?? 0,
+        cursor: pageParam,
+        nsfw: toValue(settings)?.nsfw ?? false,
+        apiKey: toValue(settings)?.apiKey ?? ''
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.metadata.nextCursor || undefined,
+    enabled: computed(
+      () => Boolean(toValue(versionId)) && toValue(settings) !== null
+    ),
+    staleTime: 1000 * 60 * 5
   });
 }
 

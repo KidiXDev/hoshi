@@ -1,68 +1,58 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { ArrowLeft, ImageOff, RefreshCw } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import CivitaiModelDetailHost from '@/components/civitai/CivitaiModelDetailHost.vue';
 import { loadCivitaiApiKey } from '@/composables/useModelManagerQueries';
 import {
+  cacheCivitaiModel,
   fetchCivitaiModelById,
   getCachedCivitaiModel,
   type CivitaiModel
 } from '@/services/civitai';
+import { returnTo } from '@/utils/navigation';
 
 defineOptions({ name: 'CivitaiModelDetailView' });
 
-const route = useRoute();
+const props = defineProps<{ id: string; versionId: number | null }>();
+
 const router = useRouter();
 
-const modelId = computed(() => Number(route.params.id));
 const model = ref<CivitaiModel | null>(null);
 const loading = ref(false);
 const errorMessage = ref('');
 
 function goBack() {
-  if (window.history.length > 1) {
-    router.back();
-  } else {
-    router.push('/civitai');
-  }
+  returnTo(router, '/civitai');
 }
 
 async function loadModelData() {
-  const id = modelId.value;
+  const id = Number(props.id);
   if (!id || isNaN(id)) {
+    model.value = null;
     errorMessage.value = 'Invalid model ID';
     return;
   }
-  model.value = getCachedCivitaiModel(id) ?? null;
-  if (model.value) return;
-
-  loading.value = true;
+  const cached = getCachedCivitaiModel(id);
+  model.value = cached ?? null;
+  loading.value = !cached;
   errorMessage.value = '';
   try {
-    model.value = await fetchCivitaiModelById(id, await loadCivitaiApiKey());
+    const full = await fetchCivitaiModelById(id, await loadCivitaiApiKey());
+    if (Number(props.id) !== id) return;
+    cacheCivitaiModel(full);
+    model.value = full;
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
+    if (!cached)
+      errorMessage.value = err instanceof Error ? err.message : String(err);
   } finally {
-    loading.value = false;
+    if (Number(props.id) === id) loading.value = false;
   }
 }
 
-onMounted(() => {
-  void loadModelData();
-});
-
-watch(
-  () => route.params.id,
-  (newId) => {
-    if (newId) {
-      model.value = null;
-      void loadModelData();
-    }
-  }
-);
+watch(() => props.id, loadModelData, { immediate: true });
 </script>
 
 <template>
@@ -154,6 +144,12 @@ watch(
       </div>
     </div>
 
-    <CivitaiModelDetailHost v-else-if="model" :model="model" @close="goBack" />
+    <CivitaiModelDetailHost
+      v-else-if="model"
+      :key="model.id"
+      :model="model"
+      :preferred-version-id="versionId"
+      @close="goBack"
+    />
   </div>
 </template>

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useRouter } from 'vue-router';
 import DOMPurify from 'dompurify';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { civitaiModelLink } from '@/services/civitai';
 
+const router = useRouter();
 const props = defineProps<{ html?: string }>();
 function sanitizeCivitaiHtml(rawHtml?: string): string {
   if (!rawHtml) return '';
@@ -75,12 +78,26 @@ function sanitizeCivitaiHtml(rawHtml?: string): string {
   });
 }
 function handleDescriptionClick(event: MouseEvent) {
-  const target = (event.target as HTMLElement).closest('a');
-  if (target && target.href) {
-    event.preventDefault();
-    event.stopPropagation();
-    void openUrl(target.href);
+  const href = (event.target as HTMLElement).closest('a')?.getAttribute('href');
+  if (!href) return;
+  event.preventDefault();
+  event.stopPropagation();
+  let url: URL;
+  try {
+    url = new URL(href, 'https://civitai.com');
+  } catch {
+    return;
   }
+  const link = civitaiModelLink(url);
+  if (!link) {
+    void openUrl(url.href);
+    return;
+  }
+  void router.push({
+    name: 'civitai-model-detail',
+    params: { id: link.modelId },
+    query: link.versionId ? { modelVersionId: link.versionId } : {}
+  });
 }
 const sanitizedHtml = computed(() => sanitizeCivitaiHtml(props.html));
 </script>

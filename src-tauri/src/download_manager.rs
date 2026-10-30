@@ -448,6 +448,7 @@ impl DownloadManager {
             load_history(&mut inner, app)?;
             if let Some(pos) = inner.records.iter().position(|record| {
                 record.version_id == download.version_id
+                    && record.file_name == download.file_name
                     && !matches!(record.status.as_str(), "error" | "removed")
             }) {
                 let existing = &inner.records[pos];

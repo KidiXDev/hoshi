@@ -91,6 +91,7 @@ export const useDownloadStore = defineStore('downloads', () => {
 
   async function enqueueCivitai(options: {
     versionId: number;
+    fileId?: number;
     workingDir: string;
     apiKey: string;
   }) {

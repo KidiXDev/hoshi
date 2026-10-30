@@ -432,6 +432,7 @@ pub fn run() {
             civitai::models,
             civitai::model_by_id,
             civitai::image_generation_data,
+            civitai::model_images,
             civitai::model_version_by_id,
             civitai::model_version_by_hash,
             civitai::enums,
