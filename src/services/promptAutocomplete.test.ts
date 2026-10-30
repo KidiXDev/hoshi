@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   getPromptTokenRange,
+  getPromptWordRange,
   replacePromptToken,
+  replacePromptWord,
   type PromptTokenRange
 } from './promptAutocomplete';
 
@@ -136,5 +138,48 @@ describe('replacePromptToken', () => {
         })
       ).toEqual({ text: '1girl, hatsune_miku_(vocaloid), ', cursor: 32 });
     });
+  });
+});
+
+describe('getPromptWordRange', () => {
+  it('takes only the last word of a sentence', () => {
+    const text = 'A girl on the bea';
+    expect(getPromptWordRange(text, text.length)).toEqual({
+      start: 14,
+      end: 17,
+      query: 'bea'
+    });
+  });
+
+  it('spans the rest of the word when the cursor is inside it', () => {
+    expect(getPromptWordRange('the beach.', 6)).toEqual({
+      start: 4,
+      end: 9,
+      query: 'be'
+    });
+  });
+
+  it('keeps apostrophes inside a word', () => {
+    expect(getPromptWordRange("she isn'", 8)?.query).toBe("isn'");
+  });
+
+  it('ignores a single letter', () => {
+    expect(getPromptWordRange('a b', 3)).toBeNull();
+  });
+
+  it('ignores a cursor after punctuation', () => {
+    expect(getPromptWordRange('the beach,', 10)).toBeNull();
+  });
+});
+
+describe('replacePromptWord', () => {
+  it('replaces the whole word and moves the cursor after it', () => {
+    expect(
+      replacePromptWord(
+        'on the bea, at dusk',
+        { start: 7, end: 10, query: 'bea' },
+        'beach'
+      )
+    ).toEqual({ text: 'on the beach, at dusk', cursor: 12 });
   });
 });

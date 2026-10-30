@@ -30,6 +30,7 @@ import {
   Sparkles,
   Terminal,
   Trash2,
+  WholeWord,
   Wifi,
   Wrench,
   XCircle
@@ -63,6 +64,7 @@ import {
   getGalleryCacheStats,
   type GalleryCacheStats
 } from '../services/imageGallery';
+import { WordAutocomplete } from '../services/wordAutocomplete';
 import { useComfyStore } from '../stores/comfyStore';
 import { useGalleryCacheStore } from '../stores/galleryCacheStore';
 import {
@@ -110,7 +112,14 @@ const autocompleteIncludeArtistPrefix = ref(
 const autocompleteEscapeParentheses = ref(
   launcherStore.config.autocompleteEscapeParentheses
 );
+const wordAutocompleteEnabled = ref(
+  launcherStore.config.wordAutocompleteEnabled
+);
 const promptEditorMode = ref(launcherStore.config.promptEditorMode);
+const WORDFREQ_DATA_URL =
+  'https://github.com/rspeer/wordfreq/tree/master/wordfreq/data';
+const wordListStatus = ref<{ ok: boolean; message: string } | null>(null);
+const isLoadingWordList = ref(false);
 const civitaiApiKey = ref('');
 const savedCivitaiApiKey = ref('');
 const hasCivitaiApiKey = ref(false);
@@ -174,8 +183,31 @@ async function clearCivitaiApiKey() {
   }
 }
 
+async function refreshWordList() {
+  isLoadingWordList.value = true;
+  try {
+    const words = await WordAutocomplete.reload();
+    wordListStatus.value = {
+      ok: true,
+      message: `${words.length.toLocaleString()} words loaded`
+    };
+  } catch (error) {
+    wordListStatus.value = {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error)
+    };
+  } finally {
+    isLoadingWordList.value = false;
+  }
+}
+
+function openWordListFolder() {
+  void WordAutocomplete.openFolder().catch(console.error);
+}
+
 onMounted(() => {
   void loadCivitaiSettings();
+  void refreshWordList();
 });
 let saveSuccessTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -241,6 +273,7 @@ async function saveApplicationSettings() {
     autocompleteReplaceUnderscores: autocompleteReplaceUnderscores.value,
     autocompleteIncludeArtistPrefix: autocompleteIncludeArtistPrefix.value,
     autocompleteEscapeParentheses: autocompleteEscapeParentheses.value,
+    wordAutocompleteEnabled: wordAutocompleteEnabled.value,
     promptEditorMode: promptEditorMode.value
   });
   if (!serverChanged && autocompleteEnabled.value && autocompleteReady.value) {
@@ -294,6 +327,7 @@ watch(
     autocompleteReplaceUnderscores,
     autocompleteIncludeArtistPrefix,
     autocompleteEscapeParentheses,
+    wordAutocompleteEnabled,
     promptEditorMode
   ],
   () => autosaveApplicationSettings(),
@@ -367,6 +401,8 @@ function handleResetDefaults() {
     DEFAULT_LAUNCHER_CONFIG.autocompleteIncludeArtistPrefix;
   autocompleteEscapeParentheses.value =
     DEFAULT_LAUNCHER_CONFIG.autocompleteEscapeParentheses;
+  wordAutocompleteEnabled.value =
+    DEFAULT_LAUNCHER_CONFIG.wordAutocompleteEnabled;
   promptEditorMode.value = DEFAULT_LAUNCHER_CONFIG.promptEditorMode;
   civitaiApiKey.value = '';
   civitaiNsfw.value = false;
@@ -1002,7 +1038,7 @@ void loadCacheStats();
             <!-- Autocomplete -->
             <SettingsSection
               title="Tag autocomplete"
-              description="Danbooru tag suggestions while typing prompts. Requires the yet_essential custom node."
+              description="Danbooru tag suggestions for Anima prompts, prompt chips and tag fields. Requires the yet_essential custom node."
               icon-class="text-amber-400"
             >
               <template #icon>
@@ -1114,6 +1150,96 @@ void loadCacheStats();
                 description="Insert “miku_\(vocaloid\)” so ComfyUI does not read a tag's parentheses as emphasis."
                 :disabled="!autocompleteEnabled || !autocompleteReady"
               />
+            </SettingsSection>
+
+            <!-- Word autocomplete -->
+            <SettingsSection
+              title="Word autocomplete"
+              description="English word suggestions for MOSS-Image prompts, ranked by how common each word is. Enter or Tab accepts; Shift+Enter adds a new line, Esc dismisses."
+              icon-class="text-teal-400"
+            >
+              <template #icon>
+                <WholeWord class="h-3.5 w-3.5" />
+              </template>
+              <template #actions>
+                <Label
+                  class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
+                >
+                  <Switch v-model="wordAutocompleteEnabled" />
+                  <span>Enabled</span>
+                </Label>
+              </template>
+
+              <div
+                class="border-border/60 bg-muted/20 flex items-center justify-between gap-4 rounded-lg border p-3"
+              >
+                <div class="min-w-0">
+                  <p class="text-foreground text-xs font-medium">Word list</p>
+                  <p class="mt-1.5 font-mono text-sm font-semibold">
+                    <span
+                      v-if="wordListStatus"
+                      :class="{ 'text-muted-foreground': !wordListStatus.ok }"
+                    >
+                      {{ wordListStatus.message }}
+                    </span>
+                    <span v-else class="text-muted-foreground">Loading…</span>
+                  </p>
+                </div>
+                <div class="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="openWordListFolder"
+                  >
+                    <FolderOpen class="h-3.5 w-3.5" />
+                    Open folder
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    :disabled="isLoadingWordList"
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="refreshWordList"
+                  >
+                    <Loader2
+                      v-if="isLoadingWordList"
+                      class="h-3.5 w-3.5 animate-spin"
+                    />
+                    <RefreshCw v-else class="h-3.5 w-3.5" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              <NoticeBanner v-if="wordListStatus && !wordListStatus.ok">
+                <span>
+                  Download
+                  <code class="font-mono font-semibold"
+                    >small_en.msgpack.gz</code
+                  >
+                  or
+                  <code class="font-mono font-semibold"
+                    >large_en.msgpack.gz</code
+                  >
+                  from the
+                  <button
+                    type="button"
+                    class="font-semibold underline underline-offset-2"
+                    @click="openUrl(WORDFREQ_DATA_URL)"
+                  >
+                    wordfreq repository
+                  </button>
+                  and put it in the word list folder, then click Refresh.
+                </span>
+              </NoticeBanner>
+
+              <p class="text-muted-foreground text-xs">
+                Word frequencies from wordfreq by Robyn Speer, licensed CC-BY-SA
+                4.0.
+              </p>
             </SettingsSection>
 
             <!-- Disk cache -->

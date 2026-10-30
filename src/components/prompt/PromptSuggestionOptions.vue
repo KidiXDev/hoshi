@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { Dices, Tag, Palette, Copyright, User, Code2 } from '@lucide/vue';
+import {
+  Dices,
+  Tag,
+  Palette,
+  Copyright,
+  User,
+  Code2,
+  WholeWord
+} from '@lucide/vue';
 import type { AutocompleteItem } from '@/services/comfyApi';
 
 defineProps<{ suggestions: AutocompleteItem[]; activeIndex: number }>();
@@ -20,6 +28,7 @@ const categoryBadgeStyles: Record<number, string> = {
 };
 function getCategoryIcon(item: AutocompleteItem) {
   if (item.kind === 'wildcard') return Dices;
+  if (item.kind === 'word') return WholeWord;
   switch (Number(item.category)) {
     case 0:
       return Tag;
@@ -37,11 +46,15 @@ function getCategoryIcon(item: AutocompleteItem) {
 }
 function getCategoryName(item: AutocompleteItem) {
   if (item.kind === 'wildcard') return 'Wildcard';
+  if (item.kind === 'word') return 'Word';
   return categoryNames[Number(item.category)] ?? 'Tag';
 }
 function getCategoryBadgeStyle(item: AutocompleteItem) {
   if (item.kind === 'wildcard') {
     return 'bg-pink-500/10 text-pink-400 border-pink-500/30';
+  }
+  if (item.kind === 'word') {
+    return 'bg-teal-500/10 text-teal-400 border-teal-500/30';
   }
   return (
     categoryBadgeStyles[Number(item.category)] ||
@@ -54,6 +67,7 @@ function formatPostCount(count: number) {
     : count;
 }
 function autocompleteMeta(item: AutocompleteItem) {
+  if (item.kind === 'word') return '';
   const count = formatPostCount(item.total_post);
   return item.kind === 'wildcard' ? `${count} entries` : `${count} posts`;
 }

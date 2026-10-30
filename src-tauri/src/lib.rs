@@ -14,6 +14,7 @@ mod process_manager;
 mod prompt_suggestions;
 mod python;
 mod system_info;
+mod word_frequency;
 
 use comfy_paths::clean_path;
 use process_manager::ProcessManager;
@@ -476,6 +477,8 @@ pub fn run() {
             library_manager::library_open_folder,
             prompt_suggestions::load_prompt_suggestions,
             prompt_suggestions::open_prompt_suggestions_folder,
+            word_frequency::load_word_frequency_data,
+            word_frequency::open_word_frequency_folder,
             animadex::animadex_request,
             network_cache::clear_network_cache,
             network_cache::get_network_cache_stats,

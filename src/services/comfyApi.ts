@@ -57,7 +57,7 @@ export interface AutocompleteItem {
   insert_text: string;
   category: number | string;
   total_post: number;
-  kind?: 'wildcard';
+  kind?: 'wildcard' | 'word';
 }
 
 export type AutocompleteSearchMode = 'tag' | 'artist' | 'wildcard';

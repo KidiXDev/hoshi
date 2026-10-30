@@ -1,9 +1,11 @@
 import { ComfyApi, type AutocompleteItem } from '@/services/comfyApi';
 import {
   getPromptTokenRange,
+  getPromptWordRange,
   replacePromptToken,
-  type PromptTokenRange
+  replacePromptWord
 } from '@/services/promptAutocomplete';
+import { suggestWords, WordAutocomplete } from '@/services/wordAutocomplete';
 import { useComfyStore } from '@/stores/comfyStore';
 import { useLauncherStore } from '@/stores/launcherStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
@@ -12,6 +14,14 @@ import { adjustPromptWeight } from '@/utils/promptTools';
 import { computed, nextTick, onUnmounted, ref, watch, type Ref } from 'vue';
 export type PromptField = 'positive' | 'negative';
 export type TextareaRef = { $el: HTMLTextAreaElement };
+type ApplySuggestion = (
+  text: string,
+  value: string
+) => { text: string; cursor: number };
+interface AutocompleteSearch {
+  apply: ApplySuggestion;
+  fetch: (signal: AbortSignal) => Promise<AutocompleteItem[]>;
+}
 export function usePromptTextEditing(
   isPositiveChipsMode: Ref<boolean>,
   isNegativeChipsMode: Ref<boolean>
@@ -26,7 +36,7 @@ export function usePromptTextEditing(
   const activeIndex = ref(0);
   const activeField = ref<PromptField>();
   const autocompleteListRef = ref<HTMLElement | null>(null);
-  let activeRange: PromptTokenRange | null = null;
+  let applySuggestion: ApplySuggestion | null = null;
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let searchController: AbortController | undefined;
   function getTextareaElement(field: PromptField): HTMLTextAreaElement | null {
@@ -119,33 +129,64 @@ export function usePromptTextEditing(
   function closeAutocompleteAfterBlur() {
     setTimeout(closeAutocomplete, 150);
   }
-  function scheduleAutocomplete(field: PromptField, event: Event) {
-    clearTimeout(searchTimer);
-    searchController?.abort();
+  function findTagSearch(
+    input: HTMLTextAreaElement
+  ): AutocompleteSearch | null {
     if (
       !launcherStore.config.autocompleteEnabled ||
       !comfyStore.isConnected ||
       !comfyStore.isYetEssentialAvailable
     ) {
-      return closeAutocomplete();
+      return null;
     }
-
-    const input = event.target as HTMLTextAreaElement;
-    caretCoords.value = getCaretCoordinates(input, input.selectionStart);
     const range = getPromptTokenRange(input.value, input.selectionStart);
-    if (!range) return closeAutocomplete();
-    activeRange = range;
-    searchTimer = setTimeout(async () => {
-      const controller = new AbortController();
-      searchController = controller;
-      try {
-        const items = await ComfyApi.searchTags(
+    if (!range) return null;
+    return {
+      apply: (text, value) =>
+        replacePromptToken(text, range, value, launcherStore.config),
+      fetch: (signal) =>
+        ComfyApi.searchTags(
           launcherStore.config.serverUrl,
           range.query,
           launcherStore.config.autocompleteLimit,
           range.mode,
-          controller.signal
-        );
+          signal
+        )
+    };
+  }
+  function findWordSearch(
+    input: HTMLTextAreaElement
+  ): AutocompleteSearch | null {
+    if (!launcherStore.config.wordAutocompleteEnabled) return null;
+    const range = getPromptWordRange(input.value, input.selectionStart);
+    if (!range) return null;
+    return {
+      apply: (text, value) => replacePromptWord(text, range, value),
+      fetch: async () =>
+        suggestWords(
+          await WordAutocomplete.load(),
+          range.query,
+          launcherStore.config.autocompleteLimit
+        )
+    };
+  }
+  function scheduleAutocomplete(field: PromptField, event: Event) {
+    clearTimeout(searchTimer);
+    searchController?.abort();
+    const input = event.target as HTMLTextAreaElement;
+    const search =
+      workflowStore.profile === 'moss'
+        ? findWordSearch(input)
+        : findTagSearch(input);
+    if (!search) return closeAutocomplete();
+
+    caretCoords.value = getCaretCoordinates(input, input.selectionStart);
+    applySuggestion = search.apply;
+    searchTimer = setTimeout(async () => {
+      const controller = new AbortController();
+      searchController = controller;
+      try {
+        const items = await search.fetch(controller.signal);
         if (controller.signal.aborted) return;
         suggestions.value = items;
         activeIndex.value = 0;
@@ -158,19 +199,14 @@ export function usePromptTextEditing(
     }, 140);
   }
   function selectSuggestion(field: PromptField, item: AutocompleteItem) {
-    if (!activeRange) return;
+    if (!applySuggestion) return;
     const input = getTextareaElement(field);
     if (!input) return;
     const current =
       field === 'positive'
         ? workflowStore.positivePrompt
         : workflowStore.negativePrompt;
-    const result = replacePromptToken(
-      current,
-      activeRange,
-      item.insert_text,
-      launcherStore.config
-    );
+    const result = applySuggestion(current, item.insert_text);
     const { scrollTop } = input;
     input.select();
     document.execCommand('insertText', false, result.text);

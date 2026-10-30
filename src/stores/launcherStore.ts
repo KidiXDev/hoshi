@@ -26,6 +26,7 @@ export const DEFAULT_LAUNCHER_CONFIG: LauncherConfig = {
   autocompleteReplaceUnderscores: false,
   autocompleteIncludeArtistPrefix: true,
   autocompleteEscapeParentheses: true,
+  wordAutocompleteEnabled: true,
   promptEditorMode: false
 };
 
