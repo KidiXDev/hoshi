@@ -173,6 +173,9 @@ export const DEFAULT_FACE_DETAILER: FaceDetailerSettings = {
 
 const DEFAULT_MOSS: MossSettings = {
   skipLayerGuidance: true,
+  slgSingleLayers: '22',
+  slgStartPercent: 0,
+  slgEndPercent: 0.5,
   layoutEnabled: false,
   layoutBoxes: []
 };

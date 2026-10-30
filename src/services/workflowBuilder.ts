@@ -190,9 +190,9 @@ export function buildWorkflowPrompt(
     prompt['moss_slg'] = {
       inputs: {
         double_layers: '',
-        single_layers: '22',
-        start_percent: 0,
-        end_percent: 0.5,
+        single_layers: state.moss.slgSingleLayers,
+        start_percent: state.moss.slgStartPercent,
+        end_percent: state.moss.slgEndPercent,
         model: [lastModelNodeId, 0]
       },
       class_type: 'SkipLayerGuidanceDiTSimple',

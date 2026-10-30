@@ -128,26 +128,66 @@ const renormCfgModel = computed({
           <!-- MOSS Skip Layer Guidance -->
           <div
             v-if="!isAnima"
-            class="border-border bg-card flex items-center justify-between rounded-lg border p-3"
+            class="border-border bg-card flex flex-col gap-3 rounded-lg border p-3"
           >
-            <div class="flex flex-col gap-0.5">
-              <Label
-                for="moss-slg-enabled"
-                class="text-foreground text-xs font-medium"
-                :class="{ 'cursor-pointer': comfyStore.isConnected }"
-              >
-                Skip Layer Guidance
-              </Label>
-              <p class="text-muted-foreground text-xs">
-                Official MOSS-Image guidance on layer 22. Turn off for a more
-                photographic look at the cost of fine detail.
-              </p>
+            <div class="flex items-center justify-between">
+              <div class="flex flex-col gap-0.5">
+                <Label
+                  for="moss-slg-enabled"
+                  class="text-foreground text-xs font-medium"
+                  :class="{ 'cursor-pointer': comfyStore.isConnected }"
+                >
+                  Skip Layer Guidance
+                </Label>
+                <p class="text-muted-foreground text-xs">
+                  Official MOSS-Image default is layer 22 from 0 to 0.5. Turn
+                  off for a more photographic look at the cost of fine detail.
+                </p>
+              </div>
+              <Switch
+                id="moss-slg-enabled"
+                v-model="workflowStore.moss.skipLayerGuidance"
+                :disabled="!comfyStore.isConnected"
+              />
             </div>
-            <Switch
-              id="moss-slg-enabled"
-              v-model="workflowStore.moss.skipLayerGuidance"
-              :disabled="!comfyStore.isConnected"
-            />
+
+            <div
+              v-if="workflowStore.moss.skipLayerGuidance"
+              class="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-3"
+            >
+              <WorkflowField label="Single Layers">
+                <Input
+                  v-model="workflowStore.moss.slgSingleLayers"
+                  placeholder="22"
+                  class="font-mono text-xs"
+                  :disabled="!comfyStore.isConnected"
+                />
+              </WorkflowField>
+
+              <WorkflowField label="Start Percent">
+                <Input
+                  v-model.number="workflowStore.moss.slgStartPercent"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.001"
+                  class="font-mono text-xs"
+                  :disabled="!comfyStore.isConnected"
+                />
+              </WorkflowField>
+
+              <WorkflowField label="End Percent">
+                <Input
+                  v-model.number="workflowStore.moss.slgEndPercent"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.001"
+                  class="font-mono text-xs"
+                  :disabled="!comfyStore.isConnected"
+                />
+              </WorkflowField>
+            </div>
           </div>
 
           <!-- 1. AuraFlow Shift Group -->

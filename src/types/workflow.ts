@@ -186,6 +186,9 @@ export interface LayoutBox {
 
 export interface MossSettings {
   skipLayerGuidance: boolean;
+  slgSingleLayers: string;
+  slgStartPercent: number;
+  slgEndPercent: number;
   layoutEnabled: boolean;
   layoutBoxes: LayoutBox[];
 }

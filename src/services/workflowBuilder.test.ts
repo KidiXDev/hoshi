@@ -15,7 +15,14 @@ type Graph = Record<
 
 const BASE_STATE: WorkflowState = {
   profile: 'anima',
-  moss: { skipLayerGuidance: true, layoutEnabled: false, layoutBoxes: [] },
+  moss: {
+    skipLayerGuidance: true,
+    slgSingleLayers: '22',
+    slgStartPercent: 0,
+    slgEndPercent: 0.5,
+    layoutEnabled: false,
+    layoutBoxes: []
+  },
   positivePrompt: 'test',
   negativePrompt: 'bad',
   models: {
@@ -520,6 +527,23 @@ describe('MOSS profile', () => {
     expect(graph['13']).toBeUndefined();
     expect(graph.renorm_cfg).toBeUndefined();
     expect(graph['9']?.inputs.model).toEqual(['moss_slg', 0]);
+  });
+
+  it('passes the configured skip layer guidance layers and range', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.slgSingleLayers = '7, 8, 9';
+        s.moss.slgStartPercent = 0.01;
+        s.moss.slgEndPercent = 0.8;
+      })
+    );
+
+    expect(graph.moss_slg?.inputs).toMatchObject({
+      double_layers: '',
+      single_layers: '7, 8, 9',
+      start_percent: 0.01,
+      end_percent: 0.8
+    });
   });
 
   it('leaves skip layer guidance out when it is off', () => {
