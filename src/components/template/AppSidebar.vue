@@ -30,11 +30,12 @@ import { useLauncherStore } from '../../stores/launcherStore';
 
 const route = useRoute();
 const router = useRouter();
-const lastWikiPath = ref('/danbooru-wiki');
+const currentSection = computed(() => `/${route.path.split('/')[1]}`);
+const lastPaths = ref<Record<string, string>>({});
 watch(
   () => route.fullPath,
   (path) => {
-    if (route.name === 'danbooru-wiki') lastWikiPath.value = path;
+    lastPaths.value[currentSection.value] = path;
   },
   { immediate: true }
 );
@@ -160,8 +161,12 @@ const navGroups = computed(() =>
   )
 );
 
-function navigate(path: string) {
-  router.push(path);
+function navigate(section: string) {
+  router.push(
+    currentSection.value === section
+      ? section
+      : (lastPaths.value[section] ?? section)
+  );
 }
 </script>
 
@@ -275,7 +280,7 @@ function navigate(path: string) {
                 ? 'border-primary/30 bg-accent text-primary border shadow-xs'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground'
             "
-            @click="navigate(lastWikiPath)"
+            @click="navigate('/danbooru-wiki')"
           >
             <BookOpen class="h-4 w-4" />
           </button>

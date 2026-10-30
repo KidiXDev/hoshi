@@ -10,7 +10,8 @@ import {
   ref,
   watch
 } from 'vue';
-import { RouterView, useRoute } from 'vue-router';
+import { useEventListener } from '@vueuse/core';
+import { RouterView, useRoute, useRouter } from 'vue-router';
 import ConfirmDialogProvider from '@/components/common/ConfirmDialogProvider.vue';
 import GalleryRebuildDialog from '@/components/gallery/GalleryRebuildDialog.vue';
 import AppSidebar from '@/components/template/AppSidebar.vue';
@@ -44,6 +45,13 @@ useWorkflowStore();
 const promptSuggestionStore = usePromptSuggestionStore();
 const civitaiStore = useCivitaiStore();
 const route = useRoute();
+const router = useRouter();
+useEventListener(window, 'mouseup', (event: MouseEvent) => {
+  if (event.button !== 3 && event.button !== 4) return;
+  event.preventDefault();
+  if (event.button === 3) router.back();
+  else router.forward();
+});
 const ComfyUiWorkspace = defineAsyncComponent(
   () => import('@/components/template/ComfyUiWorkspace.vue')
 );
@@ -148,7 +156,7 @@ onUnmounted(() => {
             <ComfyUiWorkspace v-if="comfyUiVisited" v-show="isComfyUi" />
             <RouterView v-slot="{ Component }">
               <KeepAlive
-                include="BooruGalleryView,CivitaiBrowserView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView,AnimadexExploreView,DanbooruWikiView,ModelManagerView"
+                include="BooruGalleryView,CivitaiBrowserView,CivitaiModelDetailView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView,AnimadexExploreView,DanbooruWikiView,ModelManagerView"
                 :max="10"
               >
                 <component :is="Component" />

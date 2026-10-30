@@ -27,6 +27,7 @@ import {
 } from '@/composables/useModelManagerQueries';
 import { useModelSyncDialog } from '@/composables/useModelSyncDialog';
 import { modelCategoryLabel, type LocalModel } from '@/services/modelManager';
+import { returnTo } from '@/utils/navigation';
 
 const props = defineProps<{ id: string }>();
 
@@ -53,8 +54,7 @@ const localBaseModel = computed(
 const syncDialog = useModelSyncDialog();
 
 function goBack() {
-  if (window.history.length > 1) router.back();
-  else router.push('/models');
+  returnTo(router, '/models');
 }
 
 async function runSync() {
