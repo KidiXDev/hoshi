@@ -171,6 +171,7 @@ export function usePromptTextEditing(
       item.insert_text,
       launcherStore.config
     );
+    const { scrollTop } = input;
     input.select();
     document.execCommand('insertText', false, result.text);
     if (field === 'positive') lastPositiveCursorPos.value = result.cursor;
@@ -179,6 +180,7 @@ export function usePromptTextEditing(
     void nextTick(() => {
       input.focus();
       input.setSelectionRange(result.cursor, result.cursor);
+      input.scrollTop = scrollTop;
     });
   }
   function handleKeydown(field: PromptField, event: KeyboardEvent) {
@@ -258,7 +260,10 @@ export function usePromptTextEditing(
       } else if (event.key === 'End') {
         event.preventDefault();
         activeIndex.value = suggestions.value.length - 1;
-      } else if (event.key === 'Enter' || event.key === 'Tab') {
+      } else if (
+        (event.key === 'Enter' && !event.shiftKey) ||
+        event.key === 'Tab'
+      ) {
         const chosen = suggestions.value[activeIndex.value];
         if (chosen) {
           event.preventDefault();
