@@ -49,7 +49,8 @@ export function firstOutputImage(
   const candidates = nodeId
     ? [outputs?.[nodeId]]
     : Object.values(outputs ?? {});
-  return candidates.find((output) => output?.images?.length)?.images?.[0];
+  const images = candidates.flatMap((output) => output?.images ?? []);
+  return images.find((image) => image.type === 'output') ?? images[0];
 }
 
 export interface AutocompleteItem {

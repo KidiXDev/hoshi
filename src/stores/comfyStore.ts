@@ -420,7 +420,7 @@ export const useComfyStore = defineStore('comfy', () => {
       const execdMsg = msg as ComfyWsExecutedMessage;
       const entry = pendingGenerations.get(execdMsg.data.prompt_id);
       const image = execdMsg.data.output?.images?.[0];
-      if (entry && image) entry.image = image;
+      if (entry && image && entry.image?.type !== 'output') entry.image = image;
     } else if (msg.type === 'execution_error') {
       const errorMsg = msg as ComfyWsExecutionError;
       if (pendingGenerations.has(errorMsg.data.prompt_id)) {

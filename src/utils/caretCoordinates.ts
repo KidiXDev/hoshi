@@ -75,9 +75,9 @@ export function getCaretCoordinates(
   const coordinates = {
     top: span.offsetTop - element.scrollTop,
     left: span.offsetLeft - element.scrollLeft,
-    height:
-      span.offsetHeight ||
-      (Number.isNaN(parsedLineHeight) ? 18 : parsedLineHeight)
+    height: Number.isNaN(parsedLineHeight)
+      ? (span.getClientRects()[0]?.height ?? 18)
+      : parsedLineHeight
   };
 
   return coordinates;
