@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.33.1"><img src="https://img.shields.io/badge/ComfyUI-%3E%3D%20v0.33.1-blue.svg?style=flat-square" alt="ComfyUI >= v0.33.1"/></a>
+  <a href="https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.43.0"><img src="https://img.shields.io/badge/ComfyUI-%3E%3D%20v0.43.0-blue.svg?style=flat-square" alt="ComfyUI >= v0.43.0"/></a>
   <img src="https://img.shields.io/badge/Tauri-v2-orange.svg?style=flat-square" alt="Tauri v2"/>
   <img src="https://img.shields.io/badge/Vue-v3-emerald.svg?style=flat-square" alt="Vue 3"/>
   <img src="https://img.shields.io/badge/TailwindCSS-v4-38bdf8.svg?style=flat-square" alt="Tailwind CSS v4"/>
@@ -95,7 +95,7 @@ Browse models, inspect versions and preview samples, with background download ma
 
 ### ComfyUI
 
-- **[v0.42.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.33.1) or later.** Hoshi starts ComfyUI with `--enable-cors-header` and injects its bridge node (`custom_nodes/comfyui-koharu-bridge`) before every launch — no manual install needed.
+- **[v0.43.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.43.0) or later.** Hoshi starts ComfyUI with `--enable-cors-header` and injects its bridge node (`custom_nodes/comfyui-koharu-bridge`) before every launch — no manual install needed.
 
 ### Models
 
