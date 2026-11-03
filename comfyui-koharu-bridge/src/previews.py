@@ -16,10 +16,6 @@ BRIDGE_THUMB_DIR = BRIDGE_CACHE_DIR / "thumbnails"
 with suppress(OSError):
     BRIDGE_THUMB_DIR.mkdir(parents=True, exist_ok=True)
 
-# Check yet_essential custom_node thumbnails if present to share disk cache
-CUSTOM_NODES_DIR = BRIDGE_DIR.parent
-YE_THUMB_DIR = CUSTOM_NODES_DIR / "yet_essential" / "cache" / "thumbnails"
-
 
 def find_model_preview(category: str, filename: str) -> str | None:
     categories = [category]
@@ -83,8 +79,7 @@ def find_model_preview(category: str, filename: str) -> str | None:
 
 def get_or_create_thumbnail(orig_path: str, size: int = 300) -> str:
     """
-    Returns an optimized WebP thumbnail path.
-    Reuses existing yet_essential thumbnails if found, or generates and caches one.
+    Returns an optimized WebP thumbnail path, generating and caching it if needed.
     """
     try:
         orig_p = Path(orig_path)
@@ -94,11 +89,6 @@ def get_or_create_thumbnail(orig_path: str, size: int = 300) -> str:
         mtime_ns = orig_p.stat().st_mtime_ns
         path_hash = hashlib.sha1(str(orig_p).encode("utf-8")).hexdigest()[:12]
         thumb_name = f"{orig_p.stem}_{path_hash}_{mtime_ns}_{size}.webp"
-
-        if YE_THUMB_DIR.exists():
-            ye_thumb = YE_THUMB_DIR / thumb_name
-            if ye_thumb.is_file():
-                return str(ye_thumb)
 
         bridge_thumb = BRIDGE_THUMB_DIR / thumb_name
         if bridge_thumb.is_file():

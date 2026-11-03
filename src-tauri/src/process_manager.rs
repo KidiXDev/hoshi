@@ -21,6 +21,14 @@ const BRIDGE_FILES: &[(&str, &str)] = &[
         include_str!("../../comfyui-koharu-bridge/src/models.py"),
     ),
     (
+        "src/nodes.py",
+        include_str!("../../comfyui-koharu-bridge/src/nodes.py"),
+    ),
+    (
+        "src/postfx.py",
+        include_str!("../../comfyui-koharu-bridge/src/postfx.py"),
+    ),
+    (
         "src/previews.py",
         include_str!("../../comfyui-koharu-bridge/src/previews.py"),
     ),

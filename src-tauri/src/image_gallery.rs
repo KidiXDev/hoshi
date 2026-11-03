@@ -937,6 +937,10 @@ fn extract_comfy_metadata(raw: &str, metadata: &mut ImageMetadata) {
                 metadata.prompt = prompt;
             }
         }
+        if class == "koharusaveimage" {
+            metadata.prompt = input_text(inputs, "positive");
+            metadata.negative_prompt = input_text(inputs, "negative");
+        }
         if class == "yeimagemetadataconnector" {
             metadata.prompt = referenced_input(nodes, &inputs["positive"], "prompt");
             metadata.negative_prompt = referenced_input(nodes, &inputs["negative"], "prompt");
@@ -1035,6 +1039,20 @@ mod tests {
     fn extracts_comfy_prompt_fields() {
         let raw = r#"{"21":{"inputs":{"prompt":"blue hair"},"class_type":"YEPrompt","_meta":{"title":"Positive"}},"17":{"inputs":{"prompt":"bad hands"},"class_type":"YEPrompt","_meta":{"title":"Negative"}},"9":{"inputs":{"steps":20,"cfg":4,"sampler_name":"euler","scheduler":"simple","seed":42},"class_type":"KSampler"}}"#;
         let mut metadata = ImageMetadata::default();
+        extract_comfy_metadata(raw, &mut metadata);
+        assert_eq!(metadata.prompt, "blue hair");
+        assert_eq!(metadata.negative_prompt, "bad hands");
+        assert_eq!(metadata.sampler, "euler");
+        assert_eq!(metadata.seed, "42");
+    }
+
+    #[test]
+    fn extracts_prompts_from_koharu_save_image() {
+        let raw = r#"{"21":{"inputs":{"text":"blue hair","clip":["28",0]},"class_type":"CLIPTextEncode","_meta":{"title":"Positive Prompt"}},"9":{"inputs":{"steps":20,"cfg":4,"sampler_name":"euler","scheduler":"simple","seed":42,"variation_seed":7},"class_type":"KoharuKSampler"},"5":{"inputs":{"positive":"blue hair","negative":"bad hands","seed":42},"class_type":"KoharuSaveImage"}}"#;
+        let mut metadata = ImageMetadata {
+            prompt: "blue hair\nNegative prompt: bad hands\nSteps: 20".to_string(),
+            ..ImageMetadata::default()
+        };
         extract_comfy_metadata(raw, &mut metadata);
         assert_eq!(metadata.prompt, "blue hair");
         assert_eq!(metadata.negative_prompt, "bad hands");
