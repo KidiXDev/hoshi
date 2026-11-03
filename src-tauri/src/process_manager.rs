@@ -11,8 +11,32 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::comfy_paths::{clean_path, comfy_root};
 use crate::python;
 
-const BRIDGE_NODE_INIT: &str = include_str!("../../comfyui-koharu-bridge/__init__.py");
-const BRIDGE_WORKSPACE_JS: &str = include_str!("../../comfyui-koharu-bridge/web/workspace.js");
+const BRIDGE_FILES: &[(&str, &str)] = &[
+    (
+        "src/__init__.py",
+        include_str!("../../comfyui-koharu-bridge/src/__init__.py"),
+    ),
+    (
+        "src/models.py",
+        include_str!("../../comfyui-koharu-bridge/src/models.py"),
+    ),
+    (
+        "src/previews.py",
+        include_str!("../../comfyui-koharu-bridge/src/previews.py"),
+    ),
+    (
+        "src/routes.py",
+        include_str!("../../comfyui-koharu-bridge/src/routes.py"),
+    ),
+    (
+        "web/workspace.js",
+        include_str!("../../comfyui-koharu-bridge/web/workspace.js"),
+    ),
+    (
+        "__init__.py",
+        include_str!("../../comfyui-koharu-bridge/__init__.py"),
+    ),
+];
 const BRIDGE_DIR_NAME: &str = "comfyui-koharu-bridge";
 const LEGACY_BRIDGE_DIR_NAME: &str = "comfyui-comfygui-bridge";
 
@@ -53,62 +77,33 @@ fn auto_inject_bridge_node(comfy_dir: &Path, app_handle: &AppHandle) {
 
     let _ = fs::remove_dir_all(custom_nodes_dir.join(LEGACY_BRIDGE_DIR_NAME));
     let target_bridge_dir = custom_nodes_dir.join(BRIDGE_DIR_NAME);
-    if let Err(err) = fs::create_dir_all(&target_bridge_dir) {
-        emit_sys_log(
-            app_handle,
-            format!("Failed to create bridge node directory: {}", err),
-        );
-        return;
-    }
-
-    let target_init_py = target_bridge_dir.join("__init__.py");
-
-    let web_dir = target_bridge_dir.join("web");
-    if let Err(err) = fs::create_dir_all(&web_dir).and_then(|_| {
-        let target = web_dir.join("workspace.js");
-        if fs::read_to_string(&target).ok().as_deref() != Some(BRIDGE_WORKSPACE_JS) {
-            fs::write(target, BRIDGE_WORKSPACE_JS)?;
+    let mut updated = false;
+    for (relative_path, contents) in BRIDGE_FILES {
+        let target = target_bridge_dir.join(relative_path);
+        if fs::read_to_string(&target).ok().as_deref() == Some(*contents) {
+            continue;
         }
-        Ok(())
-    }) {
-        emit_sys_log(
-            app_handle,
-            format!("Failed to inject ComfyUI workspace extension: {}", err),
-        );
-    }
-
-    let should_write = match fs::read_to_string(&target_init_py) {
-        Ok(existing) => existing != BRIDGE_NODE_INIT,
-        Err(_) => true,
-    };
-
-    if should_write {
-        match fs::write(&target_init_py, BRIDGE_NODE_INIT) {
-            Ok(_) => {
-                emit_sys_log(
-                    app_handle,
-                    format!(
-                        "Injected Koharu Bridge custom node -> {}",
-                        target_init_py.display()
-                    ),
-                );
-            }
-            Err(err) => {
-                emit_sys_log(
-                    app_handle,
-                    format!("Failed to inject bridge node __init__.py: {}", err),
-                );
-            }
+        if let Err(err) = fs::create_dir_all(target.parent().unwrap_or(&target_bridge_dir))
+            .and_then(|_| fs::write(&target, contents))
+        {
+            emit_sys_log(
+                app_handle,
+                format!("Failed to inject bridge file {}: {}", target.display(), err),
+            );
+            return;
         }
-    } else {
-        emit_sys_log(
-            app_handle,
-            format!(
-                "Koharu Bridge custom node verified -> {}",
-                target_bridge_dir.display()
-            ),
-        );
+        updated = true;
     }
+
+    let status = if updated { "injected" } else { "verified" };
+    emit_sys_log(
+        app_handle,
+        format!(
+            "Koharu Bridge custom node {} -> {}",
+            status,
+            target_bridge_dir.display()
+        ),
+    );
 }
 
 pub fn inject_bridge(working_dir: &str, app_handle: &AppHandle) -> Result<String, String> {

@@ -49,7 +49,8 @@ Context and guidelines for AI agents working on **Hoshi** (codename **Koharu**),
 ```
 koharu/
 ├── comfyui-koharu-bridge/        # Bridge custom node, compiled into the Rust binary and injected into ComfyUI
-│   ├── __init__.py               # /koharu/models, /koharu/system, /koharu/health, /koharu/refresh, /koharu/shutdown, /koharu/model_preview
+│   ├── __init__.py               # ComfyUI custom node entry point
+│   ├── src/                      # HTTP routes, model discovery, and thumbnail caching
 │   └── web/workspace.js          # Runs inside the embedded ComfyUI iframe; postMessage bridge for workflow import
 ├── src/
 │   ├── assets/                   # app-logo.png, maya-mascot.png
@@ -95,7 +96,7 @@ koharu/
 
 1. **Process manager (`src-tauri/src/process_manager.rs`)** — spawns ComfyUI with the configured Python, resolves relative paths against the ComfyUI directory, forces `PYTHONUNBUFFERED=1` / `PYTHONIOENCODING=utf-8` and `--enable-cors-header=<app origin>` (a bare flag is narrowed to the webview origin; an explicit value is kept), streams `comfyui-log` / `comfyui-status` events, and writes the bridge custom node into `custom_nodes/comfyui-koharu-bridge/` before every launch (removing the pre-rebrand `comfyui-comfygui-bridge/` folder if present).
 
-2. **Bridge custom node (`comfyui-koharu-bridge/`)** — `__init__.py` and `web/workspace.js` are embedded with `include_str!`; editing them changes what gets injected. Endpoints: `GET /koharu/models`, `GET /koharu/system`, `GET /koharu/health`, `POST /koharu/refresh`, `POST /koharu/shutdown`, `GET /koharu/model_preview`, plus an origin-guard middleware that rejects cross-site requests. `workspace.js` registers the `Koharu.Workspace` extension and bridges `postMessage` (channel `koharu-workspace`, query param `koharuSession`) to `src/composables/useComfyUiWorkspace.ts`.
+2. **Bridge custom node (`comfyui-koharu-bridge/`)** — The entry point, Python modules under `src/`, and `web/workspace.js` are embedded with `include_str!` and injected together. Endpoints: `GET /koharu/models`, `GET /koharu/system`, `GET /koharu/health`, `POST /koharu/refresh`, `POST /koharu/shutdown`, `GET /koharu/model_preview`, plus an origin-guard middleware that rejects cross-site requests. `workspace.js` registers the `Koharu.Workspace` extension and bridges `postMessage` (channel `koharu-workspace`, query param `koharuSession`) to `src/composables/useComfyUiWorkspace.ts`.
 
 3. **Frontend ↔ Rust** — every `#[tauri::command]` must be listed in `generate_handler![...]` in `lib.rs`. Components never call `invoke` directly; each Rust module has a client in `src/services/`. Persistent key/value data goes through `src/services/appStorage.ts`. Custom URI schemes `koharu-image`, `koharu-model`, `koharu-library`, `booru-image`, `danbooru-image` serve local/cached media to the webview.
 

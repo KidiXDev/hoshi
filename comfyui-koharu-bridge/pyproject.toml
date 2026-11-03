@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-koharu-bridge"
+version = "1.0.0"
+description = "ComfyUI custom node bridge for Koharu"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.3",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF100"]
+ignore = ["E501"]
