@@ -21,7 +21,14 @@ const BASE_STATE: WorkflowState = {
     slgStartPercent: 0,
     slgEndPercent: 0.5,
     layoutEnabled: false,
-    layoutBoxes: []
+    layoutBoxes: [],
+    controlEnabled: false,
+    controlAdapter: '',
+    controlColorMap: '',
+    controlDepthMap: '',
+    controlStrength: 1,
+    controlStartPercent: 0,
+    controlEndPercent: 1
   },
   positivePrompt: 'test',
   negativePrompt: 'bad',
@@ -190,6 +197,16 @@ function enableUpscale(state: WorkflowState) {
   state.postfx.upscale.enabled = true;
   state.postfx.upscale.upscaleModel = 'up.safetensors';
   state.postfx.upscale.upscaleBy = 6;
+}
+
+function withControl(state: WorkflowState) {
+  state.moss.controlEnabled = true;
+  state.moss.controlAdapter = 'moss-control.safetensors';
+  state.moss.controlColorMap = 'color.png';
+  state.moss.controlDepthMap = 'depth.png';
+  state.moss.controlStrength = 0.8;
+  state.moss.controlStartPercent = 0.1;
+  state.moss.controlEndPercent = 0.6;
 }
 
 const graphOf = (state: WorkflowState) => buildWorkflowPrompt(state) as Graph;
@@ -620,6 +637,94 @@ describe('MOSS profile', () => {
     expect(graph.moss_positive?.inputs.text).toBe('test');
   });
 
+  describe('color/depth control', () => {
+    it('loads the adapter and both maps into the control conditioning', () => {
+      const graph = graphOf(mossState(withControl));
+
+      expect(graph.moss_control_adapter?.inputs).toEqual({
+        lora_name: 'moss-control.safetensors',
+        strength_model: 1,
+        model: ['moss_slg', 0]
+      });
+      expect(graph.moss_color_map?.inputs).toEqual({ image: 'color.png' });
+      expect(graph.moss_depth_map?.inputs).toEqual({ image: 'depth.png' });
+      expect(graph.moss_control?.class_type).toBe('MOSSImageControl');
+      expect(graph.moss_control?.inputs).toEqual({
+        positive: ['moss_positive', 0],
+        negative: ['moss_negative', 0],
+        vae: ['27', 0],
+        color_map: ['moss_color_map', 0],
+        depth_map: ['moss_depth_map', 0],
+        strength: 0.8,
+        start_percent: 0.1,
+        end_percent: 0.6
+      });
+      expect(graph['9']?.inputs).toMatchObject({
+        model: ['moss_control_adapter', 0],
+        positive: ['moss_control', 0],
+        negative: ['moss_control', 1]
+      });
+    });
+
+    it('keeps the face detailer and upscaler on the uncontrolled model', () => {
+      const graph = graphOf(
+        mossState((s) => {
+          withControl(s);
+          enableUpscale(s);
+          s.postfx.upscale.ultimate.enabled = true;
+          s.faceDetailer.enabled = true;
+        })
+      );
+
+      expect(graph.face_detailer_apply?.inputs.model).toEqual(['moss_slg', 0]);
+      expect(graph['8']?.inputs).toMatchObject({
+        model: ['moss_slg', 0],
+        positive: ['moss_positive', 0],
+        negative: ['moss_negative', 0]
+      });
+    });
+
+    it('leaves out a missing map', () => {
+      const graph = graphOf(
+        mossState((s) => {
+          withControl(s);
+          s.moss.controlColorMap = '';
+        })
+      );
+
+      expect(graph.moss_color_map).toBeUndefined();
+      expect(graph.moss_control?.inputs).not.toHaveProperty('color_map');
+      expect(graph.moss_control?.inputs.depth_map).toEqual([
+        'moss_depth_map',
+        0
+      ]);
+    });
+
+    it('skips the control without maps', () => {
+      const graph = graphOf(
+        mossState((s) => {
+          withControl(s);
+          s.moss.controlAdapter = '';
+          s.moss.controlColorMap = '';
+          s.moss.controlDepthMap = '';
+        })
+      );
+
+      expect(graph.moss_control_adapter).toBeUndefined();
+      expect(graph.moss_control).toBeUndefined();
+      expect(graph['9']?.inputs.positive).toEqual(['moss_positive', 0]);
+    });
+
+    it('requires an adapter when maps are set', () => {
+      const state = mossState((s) => {
+        withControl(s);
+        s.moss.controlAdapter = '';
+      });
+
+      expect(() => buildWorkflowPrompt(state)).toThrow('control adapter');
+    });
+  });
+
   it.each(['text2img', 'img2img'] as const)(
     'connects every input to an emitted node (%s)',
     (mode) => {
@@ -629,6 +734,7 @@ describe('MOSS profile', () => {
           enableTurboFaceDetailer(s);
           enableUpscale(s);
           withLayout(s);
+          withControl(s);
           s.imageInput.mode = mode;
           s.sampler.variationEnabled = true;
         })

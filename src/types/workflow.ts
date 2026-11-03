@@ -191,6 +191,13 @@ export interface MossSettings {
   slgEndPercent: number;
   layoutEnabled: boolean;
   layoutBoxes: LayoutBox[];
+  controlEnabled: boolean;
+  controlAdapter: string;
+  controlColorMap: string;
+  controlDepthMap: string;
+  controlStrength: number;
+  controlStartPercent: number;
+  controlEndPercent: number;
 }
 
 export interface WorkflowState {

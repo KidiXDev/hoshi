@@ -116,6 +116,73 @@ function appendMossLayoutStage(
   return ['moss_layout', 0];
 }
 
+interface SamplerInputs {
+  model: WorkflowNodeRef;
+  positive: WorkflowNodeRef;
+  negative: WorkflowNodeRef;
+}
+
+function appendMossControlStage(
+  prompt: Record<string, unknown>,
+  state: WorkflowState,
+  sampler: SamplerInputs
+): SamplerInputs {
+  const { moss } = state;
+  const maps = {
+    color_map: moss.controlColorMap,
+    depth_map: moss.controlDepthMap
+  };
+  if (!moss.controlEnabled || (!maps.color_map && !maps.depth_map)) {
+    return sampler;
+  }
+  if (!moss.controlAdapter) {
+    throw new Error(
+      'Select a MOSS color/depth control adapter before generating.'
+    );
+  }
+
+  prompt['moss_control_adapter'] = {
+    inputs: {
+      lora_name: moss.controlAdapter,
+      strength_model: 1,
+      model: sampler.model
+    },
+    class_type: 'LoraLoaderModelOnly',
+    _meta: { title: 'Load MOSS Color/Depth Control Adapter' }
+  };
+
+  const mapInputs: Record<string, WorkflowNodeRef> = {};
+  for (const [input, image] of Object.entries(maps)) {
+    if (!image) continue;
+    prompt[`moss_${input}`] = {
+      inputs: { image },
+      class_type: 'LoadImage',
+      _meta: { title: `Load MOSS ${input.replace('_', ' ')}` }
+    };
+    mapInputs[input] = [`moss_${input}`, 0];
+  }
+
+  prompt['moss_control'] = {
+    inputs: {
+      positive: sampler.positive,
+      negative: sampler.negative,
+      vae: ['27', 0],
+      ...mapInputs,
+      strength: moss.controlStrength,
+      start_percent: moss.controlStartPercent,
+      end_percent: moss.controlEndPercent
+    },
+    class_type: 'MOSSImageControl',
+    _meta: { title: 'MOSS-Image Color/Depth Control' }
+  };
+
+  return {
+    model: ['moss_control_adapter', 0],
+    positive: ['moss_control', 0],
+    negative: ['moss_control', 1]
+  };
+}
+
 export function buildWorkflowPrompt(
   state: WorkflowState
 ): Record<string, unknown> {
@@ -352,6 +419,11 @@ export function buildWorkflowPrompt(
   }
 
   // 11. KSampler (Node 9)
+  const samplerInputs: SamplerInputs = {
+    model: [lastModelNodeId, 0],
+    positive: positiveConditioning,
+    negative: negativeConditioning
+  };
   prompt['9'] = {
     inputs: {
       seed: ['14', 0],
@@ -360,9 +432,9 @@ export function buildWorkflowPrompt(
       sampler_name: state.sampler.samplerName,
       scheduler: state.sampler.scheduler,
       denoise: state.sampler.denoise,
-      model: [lastModelNodeId, 0],
-      positive: positiveConditioning,
-      negative: negativeConditioning,
+      ...(isMoss
+        ? appendMossControlStage(prompt, state, samplerInputs)
+        : samplerInputs),
       latent_image: ['19', 0],
       ...variationInputs(state)
     },

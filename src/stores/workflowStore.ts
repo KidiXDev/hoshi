@@ -177,7 +177,14 @@ const DEFAULT_MOSS: MossSettings = {
   slgStartPercent: 0,
   slgEndPercent: 0.5,
   layoutEnabled: false,
-  layoutBoxes: []
+  layoutBoxes: [],
+  controlEnabled: false,
+  controlAdapter: '',
+  controlColorMap: '',
+  controlDepthMap: '',
+  controlStrength: 1,
+  controlStartPercent: 0,
+  controlEndPercent: 1
 };
 
 interface ProfileDefaults {
