@@ -16,6 +16,7 @@
     "react/react-in-jsx-scope": "off",
     "require-await": "off",
     "react/rules-of-hooks": "error",
+    "react/purity": "off",
     "max-lines-per-function": "off",
     "no-underscore-dangle": "off",
     "unicorn/prefer-add-event-listener": "off",

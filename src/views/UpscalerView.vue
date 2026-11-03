@@ -255,13 +255,15 @@ const targetDimensions = computed(() => {
   };
 });
 
+function estimateUpscaled(size?: number) {
+  return size ? Math.round(size * upscaleBy.value) : '?';
+}
+
 const resultSize = computed(() => {
   const item = activeItem.value;
-  const estimate = (size?: number) =>
-    size ? Math.round(size * upscaleBy.value) : '?';
   return {
-    width: item?.resultWidth || estimate(item?.width),
-    height: item?.resultHeight || estimate(item?.height)
+    width: item?.resultWidth || estimateUpscaled(item?.width),
+    height: item?.resultHeight || estimateUpscaled(item?.height)
   };
 });
 

@@ -105,24 +105,24 @@ describe('layoutDraftToMoss', () => {
   });
 });
 
-describe('mossLayoutToDraft', () => {
-  const stateFor = (layoutEnabled: boolean) => {
-    const layout = validLayout();
-    return {
-      positivePrompt: layout.caption,
-      moss: {
-        skipLayerGuidance: true,
-        layoutEnabled,
-        layoutBoxes: layout.boxes
-      },
-      imageInput: { mode: 'text2img', imageWidth: 0, imageHeight: 0 },
-      resolution: { preset: 'Custom', batchSize: 1, width: 1024, height: 512 }
-    } as Pick<
-      WorkflowState,
-      'moss' | 'positivePrompt' | 'imageInput' | 'resolution'
-    >;
-  };
+const stateFor = (layoutEnabled: boolean) => {
+  const layout = validLayout();
+  return {
+    positivePrompt: layout.caption,
+    moss: {
+      skipLayerGuidance: true,
+      layoutEnabled,
+      layoutBoxes: layout.boxes
+    },
+    imageInput: { mode: 'text2img', imageWidth: 0, imageHeight: 0 },
+    resolution: { preset: 'Custom', batchSize: 1, width: 1024, height: 512 }
+  } as Pick<
+    WorkflowState,
+    'moss' | 'positivePrompt' | 'imageInput' | 'resolution'
+  >;
+};
 
+describe('mossLayoutToDraft', () => {
   it('round-trips the editor boxes back to a draft', () => {
     expect(mossLayoutToDraft(stateFor(true))).toEqual(draft());
   });

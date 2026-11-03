@@ -77,14 +77,16 @@ pub struct GpuUsage {
 
 #[derive(Clone)]
 pub struct SystemMonitor {
-    system: Arc<Mutex<System>>,
+    system: Arc<Mutex<Option<System>>>,
     nvidia_smi_available: Arc<AtomicBool>,
 }
 
 impl Default for SystemMonitor {
     fn default() -> Self {
         Self {
-            system: Arc::new(Mutex::new(System::new_with_specifics(usage_refresh_kind()))),
+            system: Arc::new(Mutex::new(
+                System::new_with_specifics(usage_refresh_kind()).ok(),
+            )),
             nvidia_smi_available: Arc::new(AtomicBool::new(true)),
         }
     }
@@ -92,29 +94,32 @@ impl Default for SystemMonitor {
 
 fn usage_refresh_kind() -> RefreshKind {
     RefreshKind::nothing()
-        .with_cpu(CpuRefreshKind::nothing().with_cpu_usage().with_frequency())
+        .with_cpu(CpuRefreshKind::nothing().with_usage().with_frequency())
         .with_memory(MemoryRefreshKind::everything())
 }
 
 impl SystemMonitor {
     fn usage(&self) -> Result<SystemUsage, String> {
         let gpus = self.nvidia_usage();
-        let mut system = self
+        let mut guard = self
             .system
             .lock()
             .map_err(|_| "System monitor lock is unavailable")?;
+        let system = guard
+            .as_mut()
+            .ok_or("System monitoring is unsupported on this platform")?;
         system.refresh_specifics(usage_refresh_kind());
         let cpus = system.cpus();
         Ok(SystemUsage {
             cpu_usage: system.global_cpu_usage(),
-            core_usage: cpus.iter().map(|cpu| cpu.cpu_usage()).collect(),
+            core_usage: cpus.iter().map(|cpu| cpu.usage()).collect(),
             cpu_frequency_mhz: cpus.iter().map(|cpu| cpu.frequency()).max().unwrap_or(0),
             total_memory: system.total_memory(),
             used_memory: system.used_memory(),
             available_memory: system.available_memory(),
             total_swap: system.total_swap(),
             used_swap: system.used_swap(),
-            uptime: System::uptime(),
+            uptime: System::uptime().unwrap_or_default(),
             gpus,
         })
     }
@@ -161,35 +166,36 @@ fn parse_nvidia_smi_line(line: &str) -> Option<GpuUsage> {
     })
 }
 
-fn system_specs() -> SystemSpecs {
+fn system_specs() -> Result<SystemSpecs, String> {
     let system = System::new_with_specifics(
         RefreshKind::nothing()
             .with_cpu(CpuRefreshKind::nothing())
             .with_memory(MemoryRefreshKind::everything()),
-    );
+    )
+    .map_err(|error| error.to_string())?;
+    let disks = Disks::new_with_refreshed_list().map_err(|error| error.to_string())?;
     let first_cpu = system.cpus().first();
-    SystemSpecs {
+    Ok(SystemSpecs {
         os_name: System::long_os_version()
-            .or_else(System::name)
+            .or_else(|_| System::name())
             .unwrap_or_default(),
         os_version: System::os_version().unwrap_or_default(),
-        kernel_version: System::kernel_long_version(),
+        kernel_version: System::kernel_long_version().unwrap_or_default(),
         host_name: System::host_name().unwrap_or_default(),
         architecture: System::cpu_arch(),
-        boot_time: System::boot_time(),
+        boot_time: System::boot_time().unwrap_or_default(),
         cpu_brand: first_cpu
             .map(|cpu| cpu.brand().trim().to_string())
             .unwrap_or_default(),
         cpu_vendor: first_cpu
             .map(|cpu| cpu.vendor_id().to_string())
             .unwrap_or_default(),
-        physical_cores: System::physical_core_count(),
+        physical_cores: System::physical_core_count().ok(),
         logical_cores: system.cpus().len(),
         total_memory: system.total_memory(),
         total_swap: system.total_swap(),
         gpus: list_gpus(),
-        disks: Disks::new_with_refreshed_list()
-            .list()
+        disks: disks
             .iter()
             .map(|disk| DiskSpecs {
                 name: disk.name().to_string_lossy().into_owned(),
@@ -201,7 +207,7 @@ fn system_specs() -> SystemSpecs {
                 removable: disk.is_removable(),
             })
             .collect(),
-    }
+    })
 }
 
 fn gpu_vendor(vendor_id: u32) -> &'static str {
@@ -272,7 +278,7 @@ fn list_gpus() -> Vec<GpuSpecs> {
 pub async fn get_system_specs() -> Result<SystemSpecs, String> {
     tauri::async_runtime::spawn_blocking(system_specs)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -320,7 +326,7 @@ mod tests {
         std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
         println!(
             "{}\n{}",
-            serde_json::to_string_pretty(&system_specs()).unwrap(),
+            serde_json::to_string_pretty(&system_specs().unwrap()).unwrap(),
             serde_json::to_string_pretty(&monitor.usage().unwrap()).unwrap()
         );
     }

@@ -1,6 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
-import path from 'path';
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vueDevTools from 'vite-plugin-vue-devtools';
 
@@ -16,7 +16,7 @@ export default defineConfig(async () => ({
   clearScreen: false,
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
   // 2. tauri expects a fixed port, fail if that port is not available

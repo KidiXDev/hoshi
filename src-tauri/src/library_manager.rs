@@ -83,7 +83,7 @@ fn generate_id(name: &str, category: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(format!("{name}{category}{ts}").as_bytes());
     let hash = hasher.finalize();
-    format!("{:x}", hash)[..16].to_string()
+    hex::encode(hash)[..16].to_string()
 }
 
 fn item_path(app_handle: &AppHandle, category: &str, id: &str) -> Result<PathBuf, String> {

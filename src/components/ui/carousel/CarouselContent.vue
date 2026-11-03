@@ -10,11 +10,15 @@ defineOptions({
 const props = defineProps<WithClassAsProps>();
 
 const { carouselRef, orientation } = useCarousel();
+
+function bindCarousel(element: unknown) {
+  carouselRef.value = element instanceof HTMLElement ? element : undefined;
+}
 </script>
 
 <template>
   <div
-    ref="carouselRef"
+    :ref="bindCarousel"
     data-slot="carousel-content"
     class="h-full overflow-hidden"
   >

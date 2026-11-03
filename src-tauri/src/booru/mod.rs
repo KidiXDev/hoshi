@@ -1355,7 +1355,7 @@ fn media_root(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn media_paths(app: &AppHandle, url: &str) -> Result<(PathBuf, PathBuf), String> {
-    let digest = format!("{:x}", Sha256::digest(url.as_bytes()));
+    let digest = hex::encode(Sha256::digest(url.as_bytes()));
     let root = media_root(app)?;
     Ok((
         root.join(format!("{digest}.bin")),

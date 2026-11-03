@@ -323,6 +323,12 @@ async function migrateLegacyLoraPresets() {
   await deleteAppData(LEGACY_PRESETS_STORAGE_KEY);
 }
 
+function saveActiveProfile(target: WorkflowProfile) {
+  return saveAppData(PROFILE_STORAGE_KEY, target).catch((err) =>
+    console.error('Failed to save workflow profile:', err)
+  );
+}
+
 export const useWorkflowStore = defineStore('workflow', () => {
   const isLoaded = ref(false);
   const initial = normalizeWorkflowState({});
@@ -384,12 +390,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
     } catch (err) {
       console.error('Failed to save workflow session state:', err);
     }
-  }
-
-  function saveActiveProfile(target: WorkflowProfile) {
-    return saveAppData(PROFILE_STORAGE_KEY, target).catch((err) =>
-      console.error('Failed to save workflow profile:', err)
-    );
   }
 
   let profileSwitch = Promise.resolve();

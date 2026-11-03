@@ -80,16 +80,18 @@ function setDrawerHeight(height: number) {
   );
 }
 
+function resizeToPointer(move: PointerEvent) {
+  setDrawerHeight(window.innerHeight - move.clientY);
+}
+
 function startResize(event: PointerEvent) {
   event.preventDefault();
   const handle = event.currentTarget as HTMLElement;
   handle.setPointerCapture(event.pointerId);
-  const onMove = (move: PointerEvent) =>
-    setDrawerHeight(window.innerHeight - move.clientY);
-  handle.addEventListener('pointermove', onMove);
+  handle.addEventListener('pointermove', resizeToPointer);
   handle.addEventListener(
     'lostpointercapture',
-    () => handle.removeEventListener('pointermove', onMove),
+    () => handle.removeEventListener('pointermove', resizeToPointer),
     { once: true }
   );
 }

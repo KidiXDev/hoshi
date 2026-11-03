@@ -21,7 +21,7 @@ fn stable_id(path: &Path, modified_ms: u64) -> String {
     let mut hasher = Sha256::new();
     hasher.update(path.to_string_lossy().as_bytes());
     hasher.update(modified_ms.to_le_bytes());
-    format!("{:x}", hasher.finalize())[..20].to_owned()
+    hex::encode(hasher.finalize())[..20].to_owned()
 }
 
 fn modified_ms(metadata: &fs::Metadata) -> u64 {

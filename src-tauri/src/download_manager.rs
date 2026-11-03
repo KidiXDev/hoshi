@@ -291,10 +291,18 @@ impl DownloadManager {
             .unwrap_or(0);
         let mut response = Some(first);
         let mut hasher = Sha256::new();
+        let mut buffer = [0_u8; 256 * 1024];
         if completed > 0 {
-            let mut partial = File::open(&partial_path).map_err(|e| e.to_string())?;
-            std::io::copy(&mut (&mut partial).take(completed), &mut hasher)
-                .map_err(|e| e.to_string())?;
+            let mut partial = File::open(&partial_path)
+                .map_err(|e| e.to_string())?
+                .take(completed);
+            loop {
+                let read = partial.read(&mut buffer).map_err(|e| e.to_string())?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buffer[..read]);
+            }
         }
         let mut file = OpenOptions::new()
             .create(true)
@@ -320,7 +328,6 @@ impl DownloadManager {
             true,
         );
 
-        let mut buffer = [0_u8; 256 * 1024];
         let mut speed_bytes = 0_u64;
         let mut speed_at = Instant::now();
         let mut retries = 0;
@@ -407,7 +414,7 @@ impl DownloadManager {
         }
         file.sync_all().map_err(|e| e.to_string())?;
         drop(file);
-        let sha256 = format!("{:x}", hasher.finalize());
+        let sha256 = hex::encode(hasher.finalize());
         if record
             .expected_sha256
             .as_deref()

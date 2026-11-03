@@ -218,6 +218,21 @@ function withControl(state: WorkflowState) {
   state.moss.controlEndPercent = 0.6;
 }
 
+const inpaintState = (turbo: boolean) =>
+  createState((s) => {
+    enableModelPatches(s);
+    enableInpaint(s);
+    s.sampler.variationEnabled = true;
+    s.imageInput.turboEnabled = turbo;
+  });
+
+const mossState = (configure?: (state: WorkflowState) => void) =>
+  createState((s) => {
+    s.profile = 'moss';
+    s.imageInput.mode = 'text2img';
+    configure?.(s);
+  });
+
 const graphOf = (state: WorkflowState) => buildWorkflowPrompt(state) as Graph;
 
 function connections(graph: Graph) {
@@ -449,14 +464,6 @@ describe('buildWorkflowPrompt', () => {
   });
 
   describe('inpaint', () => {
-    const inpaintState = (turbo: boolean) =>
-      createState((s) => {
-        enableModelPatches(s);
-        enableInpaint(s);
-        s.sampler.variationEnabled = true;
-        s.imageInput.turboEnabled = turbo;
-      });
-
     it('patches the model with LLLite and the turbo LoRA, bypassing model patches', () => {
       const graph = graphOf(inpaintState(true));
 
@@ -604,13 +611,6 @@ describe('MOSS profile', () => {
       text: 'ignored'
     }
   ];
-
-  const mossState = (configure?: (state: WorkflowState) => void) =>
-    createState((s) => {
-      s.profile = 'moss';
-      s.imageInput.mode = 'text2img';
-      configure?.(s);
-    });
 
   const withLayout = (s: WorkflowState) => {
     s.resolution.width = 1024;
