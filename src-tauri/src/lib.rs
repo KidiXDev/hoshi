@@ -14,6 +14,8 @@ mod process_manager;
 mod prompt_suggestions;
 mod python;
 mod system_info;
+mod tag_autocomplete;
+mod wildcards;
 mod word_frequency;
 
 use comfy_paths::clean_path;
@@ -479,6 +481,10 @@ pub fn run() {
             prompt_suggestions::open_prompt_suggestions_folder,
             word_frequency::load_word_frequency_data,
             word_frequency::open_word_frequency_folder,
+            tag_autocomplete::load_tag_autocomplete_data,
+            tag_autocomplete::open_tag_autocomplete_folder,
+            wildcards::load_wildcards,
+            wildcards::open_wildcards_folder,
             animadex::animadex_request,
             network_cache::clear_network_cache,
             network_cache::get_network_cache_stats,

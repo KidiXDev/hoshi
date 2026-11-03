@@ -34,6 +34,7 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { useLocalModelsIndexQuery } from '../../composables/useModelManagerQueries';
 import { ComfyApi } from '../../services/comfyApi';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useLauncherStore } from '../../stores/launcherStore';
@@ -64,7 +65,7 @@ const launcherStore = useLauncherStore();
 const searchQuery = ref('');
 const activeFolderTab = ref('All');
 const activeModelType = ref('All');
-const modelTypeByName = ref(new Map<string, string>());
+const indexQuery = useLocalModelsIndexQuery({ enabled: () => props.open });
 const viewMode = ref<'grid' | 'list'>('grid');
 // Plain Set on purpose: a reactive one re-rendered the whole (unvirtualized)
 // grid on every img load/error, which stalled the dialog's open animation.
@@ -77,30 +78,32 @@ watch(
       searchQuery.value = '';
       activeFolderTab.value = 'All';
       activeModelType.value = 'All';
-      void loadModelMetadata();
     }
   }
 );
 
-async function loadModelMetadata() {
-  const categories =
-    props.category === 'unet'
-      ? ['unet', 'diffusion_models']
-      : props.category === 'clip'
-        ? ['clip', 'text_encoders']
-        : [props.category];
-  const rows = (
-    await Promise.all(
-      categories.map((category) =>
-        ComfyApi.fetchModelMetadata(launcherStore.config.serverUrl, category)
-      )
-    )
-  ).flat();
-  const metadata = new Map<string, string>();
-  for (const row of rows) {
-    if (row.base_model) metadata.set(row.name, row.base_model);
+const INDEX_CATEGORY: Record<string, string> = {
+  unet: 'diffusion_models',
+  clip: 'text_encoders'
+};
+
+function modelKey(name: string): string {
+  return name.replaceAll('\\', '/').toLowerCase();
+}
+
+const baseModelByKey = computed(() => {
+  const category = INDEX_CATEGORY[props.category] ?? props.category;
+  const baseModels = new Map<string, string>();
+  for (const model of indexQuery.data.value?.models ?? []) {
+    if (model.category === category && model.civitai?.baseModel) {
+      baseModels.set(modelKey(model.relativeName), model.civitai.baseModel);
+    }
   }
-  modelTypeByName.value = metadata;
+  return baseModels;
+});
+
+function baseModelOf(name: string): string | undefined {
+  return baseModelByKey.value.get(modelKey(name));
 }
 
 function handleImageError(modelName: string, event: Event) {
@@ -136,7 +139,9 @@ const folderTabs = computed(() => {
 
 const modelTypes = computed(() => [
   'All',
-  ...new Set(modelTypeByName.value.values())
+  ...new Set(
+    props.models.map(baseModelOf).filter((type): type is string => !!type)
+  )
 ]);
 
 const filteredModels = computed(() => {
@@ -148,7 +153,7 @@ const filteredModels = computed(() => {
     }
     if (
       activeModelType.value !== 'All' &&
-      modelTypeByName.value.get(m) !== activeModelType.value
+      baseModelOf(m) !== activeModelType.value
     ) {
       return false;
     }

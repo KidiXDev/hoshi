@@ -5,13 +5,12 @@ import { vDraggable } from 'vue-draggable-plus';
 import { Button } from '@/components/ui/button';
 import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
 import { usePromptChips } from '@/composables/usePromptChips';
-import { ComfyApi, type AutocompleteItem } from '@/services/comfyApi';
 import {
   getPromptTokenRange,
   replacePromptToken,
   type PromptTokenRange
 } from '@/services/promptAutocomplete';
-import { useComfyStore } from '@/stores/comfyStore';
+import { searchTags, type AutocompleteItem } from '@/services/tagAutocomplete';
 import { useLauncherStore } from '@/stores/launcherStore';
 
 defineProps<{ negative?: boolean }>();
@@ -19,7 +18,6 @@ const prompt = defineModel<string>({ required: true });
 const { chips, newTag, sync, toggle, remove, add } = usePromptChips(prompt);
 
 const launcherStore = useLauncherStore();
-const comfyStore = useComfyStore();
 const tagInput = ref<HTMLInputElement | null>(null);
 const suggestionList = ref<HTMLElement | null>(null);
 const suggestions = ref<AutocompleteItem[]>([]);
@@ -80,12 +78,7 @@ function scheduleSuggestions() {
   clearTimeout(searchTimer);
   searchController?.abort();
   const input = tagInput.value;
-  if (
-    !input ||
-    !launcherStore.config.autocompleteEnabled ||
-    !comfyStore.isConnected ||
-    !comfyStore.isYetEssentialAvailable
-  ) {
+  if (!input || !launcherStore.config.autocompleteEnabled) {
     return closeSuggestions();
   }
   const range = getPromptTokenRange(input.value, input.selectionStart ?? 0);
@@ -96,12 +89,11 @@ function scheduleSuggestions() {
     const controller = new AbortController();
     searchController = controller;
     try {
-      const items = await ComfyApi.searchTags(
-        launcherStore.config.serverUrl,
+      const items = await searchTags(
         range.query,
         launcherStore.config.autocompleteLimit,
         range.mode,
-        controller.signal
+        launcherStore.config.autocompleteAlgorithm
       );
       if (controller.signal.aborted) return;
       suggestions.value = items;

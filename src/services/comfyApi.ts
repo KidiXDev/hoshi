@@ -53,26 +53,6 @@ export function firstOutputImage(
   return images.find((image) => image.type === 'output') ?? images[0];
 }
 
-export interface AutocompleteItem {
-  label: string;
-  insert_text: string;
-  category: number | string;
-  total_post: number;
-  kind?: 'wildcard' | 'word';
-}
-
-export type AutocompleteSearchMode = 'tag' | 'artist' | 'wildcard';
-
-export interface TagAutocompleteSettings {
-  search_algorithm: 'fuzzy' | 'contains' | 'prefix';
-  search_limit: number;
-}
-
-export interface ModelMetadata {
-  name: string;
-  base_model: string | null;
-}
-
 export interface UploadedImage {
   name: string;
   subfolder: string;
@@ -295,87 +275,6 @@ export const ComfyApi = {
       return true;
     } catch {
       return false;
-    }
-  },
-
-  async searchTags(
-    serverUrl: string,
-    query: string,
-    limit: number,
-    mode: AutocompleteSearchMode = 'tag',
-    signal?: AbortSignal
-  ): Promise<AutocompleteItem[]> {
-    const base = this.cleanUrl(serverUrl);
-    const params = new URLSearchParams({ q: query, limit: String(limit) });
-    if (mode === 'artist') params.set('category', '1');
-    if (mode === 'wildcard') params.set('mode', 'wildcard');
-    try {
-      const payload = await http.get<{ items?: AutocompleteItem[] }>(
-        `${base}/yet_essential/autocomplete/search?${params.toString()}`,
-        { signal }
-      );
-      return payload.items ?? [];
-    } catch {
-      return [];
-    }
-  },
-
-  async updateTagAutocompleteSettings(
-    serverUrl: string,
-    algorithm: 'fuzzy' | 'contains' | 'prefix',
-    limit: number
-  ): Promise<boolean> {
-    try {
-      await http.post(
-        `${this.cleanUrl(serverUrl)}/yet_essential/settings/update`,
-        {
-          search_algorithm: algorithm,
-          search_limit: limit
-        }
-      );
-      return true;
-    } catch {
-      return false;
-    }
-  },
-
-  async fetchTagAutocompleteSettings(
-    serverUrl: string
-  ): Promise<TagAutocompleteSettings | null> {
-    try {
-      const settings = await http.get<Partial<TagAutocompleteSettings>>(
-        `${this.cleanUrl(serverUrl)}/yet_essential/settings/get`,
-        { timeout: 2500 }
-      );
-      if (
-        !['fuzzy', 'contains', 'prefix'].includes(
-          settings.search_algorithm ?? ''
-        ) ||
-        !Number.isFinite(settings.search_limit)
-      ) {
-        return null;
-      }
-      return settings as TagAutocompleteSettings;
-    } catch {
-      return null;
-    }
-  },
-
-  async checkTagAutocomplete(serverUrl: string): Promise<boolean> {
-    return (await this.fetchTagAutocompleteSettings(serverUrl)) !== null;
-  },
-
-  async fetchModelMetadata(
-    serverUrl: string,
-    folderType: string
-  ): Promise<ModelMetadata[]> {
-    try {
-      const params = new URLSearchParams({ type: folderType });
-      return await http.get<ModelMetadata[]>(
-        `${this.cleanUrl(serverUrl)}/yet_essential/model/metadata?${params}`
-      );
-    } catch {
-      return [];
     }
   },
 

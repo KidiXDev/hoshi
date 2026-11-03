@@ -191,14 +191,55 @@ export function resolveDynamicPrompt(
   return tidy(resolveNodes(nodes, random));
 }
 
+/** Wildcard name (lowercase, `/`-separated, no extension) → its options. */
+export type WildcardMap = Record<string, string[]>;
+
+const WILDCARD_TOKEN = /__([A-Za-z0-9_./\\-]+?)__/u;
+const WILDCARD_TOKENS = new RegExp(WILDCARD_TOKEN.source, 'gu');
+const MAX_WILDCARD_DEPTH = 10;
+
+export function wildcardKey(name: string): string {
+  return name.trim().replaceAll('\\', '/').toLowerCase();
+}
+
+export function hasWildcards(text: string): boolean {
+  return WILDCARD_TOKEN.test(text);
+}
+
+/** Replaces `__name__` tokens (recursively) with a random option; unknown names stay. */
+export function expandWildcards(
+  text: string,
+  wildcards: WildcardMap,
+  random: () => number
+): string {
+  let expanded = text;
+  for (let depth = 0; depth < MAX_WILDCARD_DEPTH; depth++) {
+    const next = expanded.replaceAll(WILDCARD_TOKENS, (token, name: string) => {
+      const options = wildcards[wildcardKey(name)] ?? [];
+      return options[Math.floor(random() * options.length)] ?? token;
+    });
+    if (next === expanded) break;
+    expanded = next;
+  }
+  return expanded;
+}
+
 /** Seed-tied resolution; `salt` separates streams (positive vs negative). */
 export function resolveDynamicPromptWithSeed(
   text: string,
   seed: number,
-  salt = ''
+  salt = '',
+  wildcards: WildcardMap = {}
 ): string {
-  if (!hasDynamicPrompt(text)) return text;
-  return resolveDynamicPrompt(text, createSeededRandom(seed, salt));
+  const expanded = hasWildcards(text)
+    ? expandWildcards(
+        text,
+        wildcards,
+        createSeededRandom(seed, `${salt}:wildcards`)
+      )
+    : text;
+  if (!hasDynamicPrompt(expanded)) return expanded;
+  return resolveDynamicPrompt(expanded, createSeededRandom(seed, salt));
 }
 
 function countNodes(nodes: PromptNode[]): number {

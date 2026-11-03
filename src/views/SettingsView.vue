@@ -64,6 +64,8 @@ import {
   getGalleryCacheStats,
   type GalleryCacheStats
 } from '../services/imageGallery';
+import { TagAutocomplete } from '../services/tagAutocomplete';
+import { Wildcards } from '../services/wildcards';
 import { WordAutocomplete } from '../services/wordAutocomplete';
 import { useComfyStore } from '../stores/comfyStore';
 import { useGalleryCacheStore } from '../stores/galleryCacheStore';
@@ -140,9 +142,9 @@ const isInstallDialogOpen = ref(false);
 const repositoryUrl = ref('');
 const isInstallingCustomNode = ref(false);
 const installResult = ref<{ ok: boolean; message: string } | null>(null);
-const autocompleteReady = computed(
-  () => comfyStore.isConnected && comfyStore.isYetEssentialAvailable
-);
+const tagListStatus = ref<{ ok: boolean; message: string } | null>(null);
+const wildcardStatus = ref<{ ok: boolean; message: string } | null>(null);
+const isLoadingTagData = ref(false);
 const comfyUpdate = ref<ComfyUpdateStatus | null>(null);
 const comfyUpdateError = ref('');
 const isCheckingComfyUpdate = ref(false);
@@ -205,25 +207,44 @@ function openWordListFolder() {
   void WordAutocomplete.openFolder().catch(console.error);
 }
 
+function loadStatus(
+  result: PromiseSettledResult<number>,
+  noun: string,
+  emptyMessage: string
+) {
+  if (result.status === 'rejected') {
+    const reason: unknown = result.reason;
+    return {
+      ok: false,
+      message: reason instanceof Error ? reason.message : String(reason)
+    };
+  }
+  return result.value > 0
+    ? { ok: true, message: `${result.value.toLocaleString()} ${noun} loaded` }
+    : { ok: false, message: emptyMessage };
+}
+
+async function refreshTagData() {
+  isLoadingTagData.value = true;
+  const [tags, wildcards] = await Promise.allSettled([
+    TagAutocomplete.reload().then((entries) => entries.length),
+    Wildcards.reload().then((map) => Object.keys(map).length)
+  ]);
+  tagListStatus.value = loadStatus(tags, 'tags', 'No tag CSV found');
+  wildcardStatus.value = loadStatus(
+    wildcards,
+    'wildcards',
+    'No wildcard files found'
+  );
+  isLoadingTagData.value = false;
+}
+
 onMounted(() => {
   void loadCivitaiSettings();
   void refreshWordList();
+  void refreshTagData();
 });
 let saveSuccessTimer: ReturnType<typeof setTimeout> | undefined;
-
-watch(
-  autocompleteReady,
-  async (ready) => {
-    if (!ready) return;
-    const settings = await ComfyApi.fetchTagAutocompleteSettings(
-      serverUrl.value
-    );
-    if (!settings) return;
-    autocompleteAlgorithm.value = settings.search_algorithm;
-    autocompleteLimit.value = settings.search_limit;
-  },
-  { immediate: true }
-);
 
 async function handleBrowseComfyDir() {
   const dir = await launcherStore.selectComfyDir();
@@ -276,13 +297,6 @@ async function saveApplicationSettings() {
     wordAutocompleteEnabled: wordAutocompleteEnabled.value,
     promptEditorMode: promptEditorMode.value
   });
-  if (!serverChanged && autocompleteEnabled.value && autocompleteReady.value) {
-    await ComfyApi.updateTagAutocompleteSettings(
-      cleanedServerUrl,
-      autocompleteAlgorithm.value,
-      autocompleteLimit.value
-    );
-  }
   showSaved();
   if (serverChanged) comfyStore.init();
 }
@@ -414,9 +428,6 @@ async function testConnection() {
   const start = Date.now();
   const ok = await ComfyApi.checkHealth(serverUrl.value);
   comfyStore.isConnected = ok;
-  comfyStore.isYetEssentialAvailable = ok
-    ? await ComfyApi.checkTagAutocomplete(serverUrl.value)
-    : false;
   const latency = Date.now() - start;
   isTesting.value = false;
 
@@ -1038,7 +1049,7 @@ void loadCacheStats();
             <!-- Autocomplete -->
             <SettingsSection
               title="Tag autocomplete"
-              description="Danbooru tag suggestions for Anima prompts, prompt chips and tag fields. Requires the yet_essential custom node."
+              description="Danbooru tag suggestions for Anima prompts, prompt chips and tag fields. Type @ for artists and $ for wildcards."
               icon-class="text-amber-400"
             >
               <template #icon>
@@ -1047,34 +1058,93 @@ void loadCacheStats();
               <template #actions>
                 <Label
                   class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
-                  :class="{ 'opacity-50': !autocompleteReady }"
                 >
-                  <Switch
-                    v-model="autocompleteEnabled"
-                    :disabled="!autocompleteReady"
-                  />
+                  <Switch v-model="autocompleteEnabled" />
                   <span>Enabled</span>
                 </Label>
               </template>
 
-              <NoticeBanner v-if="!autocompleteReady">
-                <span v-if="!comfyStore.isConnected">
-                  Start the ComfyUI server to detect autocomplete support.
-                </span>
-                <span v-else>
-                  The
-                  <code class="font-mono font-semibold">yet_essential</code>
-                  custom node is not detected. Install it into
-                  <code class="font-mono">custom_nodes</code> and restart
-                  ComfyUI.
+              <div
+                class="border-border/60 bg-muted/20 flex flex-wrap items-center justify-between gap-4 rounded-lg border p-3"
+              >
+                <div class="min-w-0 space-y-1.5">
+                  <p class="text-foreground text-xs font-medium">
+                    Tag list and wildcards
+                  </p>
+                  <p
+                    v-for="(status, index) in [tagListStatus, wildcardStatus]"
+                    :key="index"
+                    class="font-mono text-sm font-semibold"
+                  >
+                    <span
+                      v-if="status"
+                      :class="{ 'text-muted-foreground': !status.ok }"
+                    >
+                      {{ status.message }}
+                    </span>
+                    <span v-else class="text-muted-foreground">Loading…</span>
+                  </p>
+                </div>
+                <div class="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="TagAutocomplete.openFolder().catch(console.error)"
+                  >
+                    <FolderOpen class="h-3.5 w-3.5" />
+                    Tags folder
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="Wildcards.openFolder().catch(console.error)"
+                  >
+                    <FolderOpen class="h-3.5 w-3.5" />
+                    Wildcards folder
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    :disabled="isLoadingTagData"
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="refreshTagData"
+                  >
+                    <Loader2
+                      v-if="isLoadingTagData"
+                      class="h-3.5 w-3.5 animate-spin"
+                    />
+                    <RefreshCw v-else class="h-3.5 w-3.5" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              <NoticeBanner
+                v-if="
+                  (tagListStatus && !tagListStatus.ok) ||
+                  (wildcardStatus && !wildcardStatus.ok)
+                "
+              >
+                <span>
+                  Put a Danbooru tag CSV (<code class="font-mono font-semibold"
+                    >tag,category,post_count,aliases</code
+                  >) in the tags folder, and wildcard
+                  <code class="font-mono font-semibold">.txt</code> files (one
+                  option per line, used as
+                  <code class="font-mono font-semibold">__name__</code>) in the
+                  wildcards folder, then click Refresh.
                 </span>
               </NoticeBanner>
 
               <div
                 class="grid grid-cols-1 gap-4 sm:grid-cols-2"
                 :class="{
-                  'pointer-events-none opacity-50':
-                    !autocompleteEnabled || !autocompleteReady
+                  'pointer-events-none opacity-50': !autocompleteEnabled
                 }"
               >
                 <Field class="gap-1.5">
@@ -1083,7 +1153,7 @@ void loadCacheStats();
                   </FieldLabel>
                   <Select
                     v-model="autocompleteAlgorithm"
-                    :disabled="!autocompleteEnabled || !autocompleteReady"
+                    :disabled="!autocompleteEnabled"
                   >
                     <SelectTrigger class="w-full text-xs">
                       <SelectValue placeholder="Search mode">
@@ -1123,7 +1193,7 @@ void loadCacheStats();
                     type="number"
                     min="5"
                     max="50"
-                    :disabled="!autocompleteEnabled || !autocompleteReady"
+                    :disabled="!autocompleteEnabled"
                     class="font-mono text-xs"
                   />
                   <FieldDescription class="text-xs">5 – 50</FieldDescription>
@@ -1134,21 +1204,21 @@ void loadCacheStats();
                 v-model="autocompleteReplaceUnderscores"
                 label="Replace underscores with spaces"
                 description="Insert “long hair” instead of “long_hair”."
-                :disabled="!autocompleteEnabled || !autocompleteReady"
+                :disabled="!autocompleteEnabled"
               />
 
               <SettingsSwitchRow
                 v-model="autocompleteIncludeArtistPrefix"
                 label="Keep @ on artist tags"
                 description="Prefix inserted artist tags with @ so Anima treats them as artists."
-                :disabled="!autocompleteEnabled || !autocompleteReady"
+                :disabled="!autocompleteEnabled"
               />
 
               <SettingsSwitchRow
                 v-model="autocompleteEscapeParentheses"
                 label="Escape parentheses"
                 description="Insert “miku_\(vocaloid\)” so ComfyUI does not read a tag's parentheses as emphasis."
-                :disabled="!autocompleteEnabled || !autocompleteReady"
+                :disabled="!autocompleteEnabled"
               />
             </SettingsSection>
 

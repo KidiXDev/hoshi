@@ -1,12 +1,11 @@
-import { ComfyApi, type AutocompleteItem } from '@/services/comfyApi';
 import {
   getPromptTokenRange,
   getPromptWordRange,
   replacePromptToken,
   replacePromptWord
 } from '@/services/promptAutocomplete';
+import { searchTags, type AutocompleteItem } from '@/services/tagAutocomplete';
 import { suggestWords, WordAutocomplete } from '@/services/wordAutocomplete';
-import { useComfyStore } from '@/stores/comfyStore';
 import { useLauncherStore } from '@/stores/launcherStore';
 import { useWorkflowStore } from '@/stores/workflowStore';
 import { getCaretCoordinates } from '@/utils/caretCoordinates';
@@ -27,7 +26,6 @@ export function usePromptTextEditing(
   isNegativeChipsMode: Ref<boolean>
 ) {
   const launcherStore = useLauncherStore();
-  const comfyStore = useComfyStore();
   const workflowStore = useWorkflowStore();
 
   const positiveTextarea = ref<TextareaRef>();
@@ -132,25 +130,18 @@ export function usePromptTextEditing(
   function findTagSearch(
     input: HTMLTextAreaElement
   ): AutocompleteSearch | null {
-    if (
-      !launcherStore.config.autocompleteEnabled ||
-      !comfyStore.isConnected ||
-      !comfyStore.isYetEssentialAvailable
-    ) {
-      return null;
-    }
+    if (!launcherStore.config.autocompleteEnabled) return null;
     const range = getPromptTokenRange(input.value, input.selectionStart);
     if (!range) return null;
     return {
       apply: (text, value) =>
         replacePromptToken(text, range, value, launcherStore.config),
-      fetch: (signal) =>
-        ComfyApi.searchTags(
-          launcherStore.config.serverUrl,
+      fetch: () =>
+        searchTags(
           range.query,
           launcherStore.config.autocompleteLimit,
           range.mode,
-          signal
+          launcherStore.config.autocompleteAlgorithm
         )
     };
   }

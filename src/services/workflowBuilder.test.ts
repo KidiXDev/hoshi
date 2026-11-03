@@ -240,6 +240,20 @@ describe('prepareWorkflowForQueue', () => {
     ).toBeUndefined();
   });
 
+  it('expands wildcards from the seed and keeps the template', () => {
+    const state = createState((s) => {
+      s.positivePrompt = '1girl, __Hair/Color__';
+    });
+    const wildcards = { 'hair/color': ['red hair', 'blue hair'] };
+
+    const first = prepareWorkflowForQueue(state, wildcards);
+    const second = prepareWorkflowForQueue(state, wildcards);
+
+    expect(first.positivePrompt).toMatch(/^1girl, (red|blue) hair$/u);
+    expect(second.positivePrompt).toBe(first.positivePrompt);
+    expect(first.promptTemplates?.positivePrompt).toBe('1girl, __Hair/Color__');
+  });
+
   describe('dynamic prompts', () => {
     const positive = '{red|blue|green} hair, {a|{b|c}}';
     const negative = 'bad, {blurry|lowres}';

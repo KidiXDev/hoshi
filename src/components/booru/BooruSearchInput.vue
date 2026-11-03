@@ -2,14 +2,12 @@
 import { nextTick, onMounted, onDeactivated, onUnmounted, ref } from 'vue';
 import { Search, X, Sparkles } from '@lucide/vue';
 import { Input } from '@/components/ui/input';
-import { ComfyApi } from '@/services/comfyApi';
-import { useComfyStore } from '@/stores/comfyStore';
+import { searchTags } from '@/services/tagAutocomplete';
 import { useLauncherStore } from '@/stores/launcherStore';
 import { usePromptSuggestionStore } from '@/stores/promptSuggestionStore';
 
 defineProps<{ disabled: boolean }>();
 const query = defineModel<string>({ required: true });
-const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
 const promptSuggestionStore = usePromptSuggestionStore();
 interface BooruTokenRange {
@@ -161,8 +159,7 @@ function highlightMatch(
 }
 
 async function searchAutocompleteSuggestions(
-  searchQuery: string,
-  signal?: AbortSignal
+  searchQuery: string
 ): Promise<BooruSuggestionItem[]> {
   const normalized = searchQuery.trim().toLowerCase().replaceAll(' ', '_');
   if (!normalized) return [];
@@ -170,38 +167,33 @@ async function searchAutocompleteSuggestions(
   const results: BooruSuggestionItem[] = [];
   const seenLabels = new Set<string>();
 
-  if (comfyStore.isConnected) {
-    try {
-      const remoteItems = await ComfyApi.searchTags(
-        launcherStore.config.serverUrl,
-        normalized,
-        30,
-        'tag',
-        signal
-      );
-      for (const item of remoteItems) {
-        const formattedTag = (item.insert_text || item.label)
-          .trim()
-          .replaceAll(' ', '_');
-        const key = formattedTag.toLowerCase();
-        if (!seenLabels.has(key)) {
-          seenLabels.add(key);
-          const category = Number(item.category);
-          const catInfo = categoryMetaMap[category] ?? {
-            name: 'General',
-            class: 'border-blue-500/30 bg-blue-500/10 text-blue-300'
-          };
-          results.push({
-            label: formattedTag,
-            insertText: formattedTag,
-            category,
-            categoryName: catInfo.name,
-            categoryClass: catInfo.class,
-            postCount: item.total_post
-          });
-        }
-      }
-    } catch {}
+  const tagItems = await searchTags(
+    normalized,
+    30,
+    'tag',
+    launcherStore.config.autocompleteAlgorithm
+  );
+  for (const item of tagItems) {
+    const formattedTag = (item.insert_text || item.label)
+      .trim()
+      .replaceAll(' ', '_');
+    const key = formattedTag.toLowerCase();
+    if (!seenLabels.has(key)) {
+      seenLabels.add(key);
+      const category = Number(item.category);
+      const catInfo = categoryMetaMap[category] ?? {
+        name: 'General',
+        class: 'border-blue-500/30 bg-blue-500/10 text-blue-300'
+      };
+      results.push({
+        label: formattedTag,
+        insertText: formattedTag,
+        category,
+        categoryName: catInfo.name,
+        categoryClass: catInfo.class,
+        postCount: item.total_post
+      });
+    }
   }
 
   const localCats = promptSuggestionStore.categories;
@@ -303,10 +295,7 @@ function scheduleAutocomplete(text: string, cursor: number) {
     const controller = new AbortController();
     autocompleteController = controller;
     try {
-      const items = await searchAutocompleteSuggestions(
-        range.query,
-        controller.signal
-      );
+      const items = await searchAutocompleteSuggestions(range.query);
       if (controller.signal.aborted) return;
       if (items.length > 0) {
         autocompleteSuggestions.value = items;

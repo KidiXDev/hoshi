@@ -1,7 +1,9 @@
 import type { WorkflowState } from '../types/workflow';
 import {
   hasDynamicPrompt,
-  resolveDynamicPromptWithSeed
+  hasWildcards,
+  resolveDynamicPromptWithSeed,
+  type WildcardMap
 } from '../utils/dynamicPrompt';
 import { boxPixels, layoutCanvasSize } from '../utils/mossLayout';
 import { randomSeed } from '../utils/seed';
@@ -22,27 +24,34 @@ function variationInputs(state: WorkflowState) {
   };
 }
 
-export function prepareWorkflowForQueue(state: WorkflowState): WorkflowState {
+export function prepareWorkflowForQueue(
+  state: WorkflowState,
+  wildcards: WildcardMap = {}
+): WorkflowState {
   const queuedState = structuredClone(state);
   if (queuedState.sampler.randomizeSeed || queuedState.sampler.seed < 0) {
     queuedState.sampler.seed = randomSeed();
   }
-  resolveDynamicPrompts(queuedState);
+  resolveDynamicPrompts(queuedState, wildcards);
   return queuedState;
 }
 
 /**
- * Resolves `{a|b}` groups in every prompt field using the (now concrete) seed,
- * remembering the templates so history can restore them.
+ * Resolves `__wildcards__` and `{a|b}` groups in every prompt field using the
+ * (now concrete) seed, remembering the templates so history can restore them.
  */
-function resolveDynamicPrompts(state: WorkflowState) {
+function resolveDynamicPrompts(state: WorkflowState, wildcards: WildcardMap) {
   const templates = {
     positivePrompt: state.positivePrompt,
     negativePrompt: state.negativePrompt,
     faceDetailerPositivePrompt: state.faceDetailer?.positivePrompt ?? '',
     faceDetailerNegativePrompt: state.faceDetailer?.negativePrompt ?? ''
   };
-  if (!Object.values(templates).some((text) => hasDynamicPrompt(text))) {
+  if (
+    !Object.values(templates).some(
+      (text) => hasDynamicPrompt(text) || hasWildcards(text)
+    )
+  ) {
     delete state.promptTemplates;
     return;
   }
@@ -51,23 +60,27 @@ function resolveDynamicPrompts(state: WorkflowState) {
   state.positivePrompt = resolveDynamicPromptWithSeed(
     templates.positivePrompt,
     seed,
-    'positive'
+    'positive',
+    wildcards
   );
   state.negativePrompt = resolveDynamicPromptWithSeed(
     templates.negativePrompt,
     seed,
-    'negative'
+    'negative',
+    wildcards
   );
   if (state.faceDetailer) {
     state.faceDetailer.positivePrompt = resolveDynamicPromptWithSeed(
       templates.faceDetailerPositivePrompt,
       seed,
-      'fd-positive'
+      'fd-positive',
+      wildcards
     );
     state.faceDetailer.negativePrompt = resolveDynamicPromptWithSeed(
       templates.faceDetailerNegativePrompt,
       seed,
-      'fd-negative'
+      'fd-negative',
+      wildcards
     );
   }
 }

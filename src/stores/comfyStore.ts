@@ -6,6 +6,7 @@ import {
   historyEntryError
 } from '../services/comfyApi';
 import { ComfyWsClient } from '../services/comfyWs';
+import { Wildcards } from '../services/wildcards';
 import {
   buildWorkflowPrompt,
   prepareWorkflowForQueue
@@ -151,7 +152,6 @@ export const useComfyStore = defineStore('comfy', () => {
 
   const clientId = ref(`koharu-${Math.random().toString(36).slice(2, 10)}`);
   const isConnected = ref(false);
-  const isYetEssentialAvailable = ref(false);
   const isChecking = ref(false);
   const objectInfo = shallowRef<ComfyObjectInfo | null>(null);
   const bridgeModels = shallowRef<BridgeModelsResponse | null>(null);
@@ -436,7 +436,6 @@ export const useComfyStore = defineStore('comfy', () => {
   }
 
   function resetCapabilities() {
-    isYetEssentialAvailable.value = false;
     isFaceDetailerAvailable.value = false;
     isCacheDiTAvailable.value = false;
     isUltimateUpscaleAvailable.value = false;
@@ -485,10 +484,6 @@ export const useComfyStore = defineStore('comfy', () => {
       if (!isConnected.value)
         wsClient?.connect(launcherStore.config.serverUrl, clientId.value);
       setConnected(true);
-      if (!isYetEssentialAvailable.value)
-        isYetEssentialAvailable.value = await ComfyApi.checkTagAutocomplete(
-          launcherStore.config.serverUrl
-        );
       return true;
     })().finally(() => {
       healthCheck = null;
@@ -615,7 +610,11 @@ export const useComfyStore = defineStore('comfy', () => {
     executionError.value = null;
 
     try {
-      const queuedWorkflowState = prepareWorkflowForQueue(workflowState);
+      const wildcards = await Wildcards.load().catch(() => ({}));
+      const queuedWorkflowState = prepareWorkflowForQueue(
+        workflowState,
+        wildcards
+      );
       const promptPayload = buildWorkflowPrompt(queuedWorkflowState);
       const res = await ComfyApi.queuePrompt(
         launcherStore.config.serverUrl,
@@ -661,7 +660,6 @@ export const useComfyStore = defineStore('comfy', () => {
   return {
     clientId,
     isConnected,
-    isYetEssentialAvailable,
     isChecking,
     objectInfo,
     bridgeModels,

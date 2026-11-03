@@ -8,7 +8,7 @@ import {
   Code2,
   WholeWord
 } from '@lucide/vue';
-import type { AutocompleteItem } from '@/services/comfyApi';
+import type { AutocompleteItem } from '@/services/tagAutocomplete';
 
 defineProps<{ suggestions: AutocompleteItem[]; activeIndex: number }>();
 const emit = defineEmits<{ select: [item: AutocompleteItem] }>();
