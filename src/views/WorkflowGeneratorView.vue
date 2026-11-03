@@ -16,6 +16,7 @@ import FaceDetailerSection from '@/components/template/FaceDetailerSection.vue';
 import GenerationHistoryPanel from '@/components/template/GenerationHistoryPanel.vue';
 import GenerationPreview from '@/components/template/GenerationPreview.vue';
 import MossLayoutSection from '@/components/template/MossLayoutSection.vue';
+import MossControlSection from '@/components/template/MossControlSection.vue';
 import {
   ResizableHandle,
   ResizablePanel,
@@ -225,12 +226,14 @@ async function viewWorkflow() {
             class="border-border bg-card hover:border-primary/40 flex flex-col gap-3 rounded-xl border p-3.5 shadow-2xs transition-colors"
           >
             <PromptSection />
-            <div
-              v-if="workflowStore.profile === 'moss'"
-              class="border-border border-t pt-2"
-            >
-              <MossLayoutSection />
-            </div>
+            <template v-if="workflowStore.profile === 'moss'">
+              <div class="border-border border-t pt-2">
+                <MossLayoutSection />
+              </div>
+              <div class="border-border border-t pt-2">
+                <MossControlSection />
+              </div>
+            </template>
             <div class="border-border border-t pt-2">
               <ImageInputSection />
             </div>
