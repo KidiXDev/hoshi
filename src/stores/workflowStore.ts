@@ -184,7 +184,16 @@ const DEFAULT_MOSS: MossSettings = {
   controlDepthMap: '',
   controlStrength: 1,
   controlStartPercent: 0,
-  controlEndPercent: 1
+  controlEndPercent: 1,
+  spectrumEnabled: false,
+  spectrumMode: 'adaptive',
+  spectrumWarmupSteps: 8,
+  spectrumTailActualSteps: 1,
+  spectrumCacheDevice: 'main_device',
+  spectrumDetailGuardSteps: 8,
+  spectrumPostGuardHorizonCap: 6,
+  spectrumErrorTolerance: 1,
+  spectrumMaxConsecutiveForecasts: 2
 };
 
 interface ProfileDefaults {

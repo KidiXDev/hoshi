@@ -198,6 +198,15 @@ export interface MossSettings {
   controlStrength: number;
   controlStartPercent: number;
   controlEndPercent: number;
+  spectrumEnabled: boolean;
+  spectrumMode: 'adaptive' | 'manual';
+  spectrumWarmupSteps: number;
+  spectrumTailActualSteps: number;
+  spectrumCacheDevice: 'main_device' | 'offload_device' | 'cpu';
+  spectrumDetailGuardSteps: number;
+  spectrumPostGuardHorizonCap: number;
+  spectrumErrorTolerance: number;
+  spectrumMaxConsecutiveForecasts: number;
 }
 
 export interface WorkflowState {

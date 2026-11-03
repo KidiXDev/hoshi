@@ -1,4 +1,4 @@
-import type { WorkflowState } from '../types/workflow';
+import type { MossSettings, WorkflowState } from '../types/workflow';
 import {
   hasDynamicPrompt,
   hasWildcards,
@@ -212,6 +212,45 @@ function appendMossControlStage(
   };
 }
 
+function mossSpectrumNode(moss: MossSettings, model: WorkflowNodeRef) {
+  const shared = {
+    model,
+    warmup_steps: moss.spectrumWarmupSteps,
+    tail_actual_steps: moss.spectrumTailActualSteps,
+    window_size: 2,
+    cache_device: moss.spectrumCacheDevice,
+    debug: false,
+    warn_unverified_sampler: true
+  };
+  if (moss.spectrumMode === 'manual') {
+    return {
+      inputs: {
+        ...shared,
+        flex_window: 0.75,
+        max_consecutive_forecasts: moss.spectrumMaxConsecutiveForecasts,
+        history_points: 8,
+        chebyshev_degree: 4,
+        ridge_lambda: 0.1,
+        blend_weight: 0.5,
+        force_actual_on_control: true
+      },
+      class_type: 'SpectrumMOSSImageManual',
+      _meta: { title: 'Spectrum MOSS-Image (Manual)' }
+    };
+  }
+  return {
+    inputs: {
+      ...shared,
+      flex_window: 0.5,
+      detail_guard_steps: moss.spectrumDetailGuardSteps,
+      post_guard_horizon_cap: moss.spectrumPostGuardHorizonCap,
+      error_tolerance: moss.spectrumErrorTolerance
+    },
+    class_type: 'SpectrumMOSSImageAdaptive',
+    _meta: { title: 'Spectrum MOSS-Image (Adaptive)' }
+  };
+}
+
 export function buildWorkflowPrompt(
   state: WorkflowState
 ): Record<string, unknown> {
@@ -283,18 +322,27 @@ export function buildWorkflowPrompt(
   }
 
   if (isMoss && state.moss.skipLayerGuidance) {
+    const fullRange = state.moss.spectrumEnabled;
     prompt['moss_slg'] = {
       inputs: {
         double_layers: '',
         single_layers: state.moss.slgSingleLayers,
-        start_percent: state.moss.slgStartPercent,
-        end_percent: state.moss.slgEndPercent,
+        start_percent: fullRange ? 0 : state.moss.slgStartPercent,
+        end_percent: fullRange ? 1 : state.moss.slgEndPercent,
         model: [lastModelNodeId, 0]
       },
       class_type: 'SkipLayerGuidanceDiTSimple',
       _meta: { title: 'MOSS Skip Layer Guidance' }
     };
     lastModelNodeId = 'moss_slg';
+  }
+
+  if (isMoss && state.moss.spectrumEnabled) {
+    prompt['moss_spectrum'] = mossSpectrumNode(state.moss, [
+      lastModelNodeId,
+      0
+    ]);
+    lastModelNodeId = 'moss_spectrum';
   }
 
   if (!isMoss && state.advanced.auraFlowEnabled) {

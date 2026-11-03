@@ -28,7 +28,16 @@ const BASE_STATE: WorkflowState = {
     controlDepthMap: '',
     controlStrength: 1,
     controlStartPercent: 0,
-    controlEndPercent: 1
+    controlEndPercent: 1,
+    spectrumEnabled: false,
+    spectrumMode: 'adaptive',
+    spectrumWarmupSteps: 8,
+    spectrumTailActualSteps: 1,
+    spectrumCacheDevice: 'main_device',
+    spectrumDetailGuardSteps: 8,
+    spectrumPostGuardHorizonCap: 6,
+    spectrumErrorTolerance: 1,
+    spectrumMaxConsecutiveForecasts: 2
   },
   positivePrompt: 'test',
   negativePrompt: 'bad',
@@ -678,6 +687,85 @@ describe('MOSS profile', () => {
 
     expect(graph.moss_slg).toBeUndefined();
     expect(graph['9']?.inputs.model).toEqual(['29', 0]);
+  });
+
+  it('chains adaptive Spectrum after skip layer guidance into the sampler', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.spectrumEnabled = true;
+        s.moss.spectrumErrorTolerance = 1.2;
+      })
+    );
+
+    expect(graph.moss_spectrum?.class_type).toBe('SpectrumMOSSImageAdaptive');
+    expect(graph.moss_spectrum?.inputs).toEqual({
+      model: ['moss_slg', 0],
+      warmup_steps: 8,
+      detail_guard_steps: 8,
+      tail_actual_steps: 1,
+      post_guard_horizon_cap: 6,
+      window_size: 2,
+      flex_window: 0.5,
+      cache_device: 'main_device',
+      error_tolerance: 1.2,
+      debug: false,
+      warn_unverified_sampler: true
+    });
+    expect(graph['9']?.inputs.model).toEqual(['moss_spectrum', 0]);
+  });
+
+  it('builds the manual Spectrum node with its predictor defaults', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.spectrumEnabled = true;
+        s.moss.spectrumMode = 'manual';
+        s.moss.spectrumMaxConsecutiveForecasts = 3;
+        s.moss.spectrumCacheDevice = 'cpu';
+      })
+    );
+
+    expect(graph.moss_spectrum?.class_type).toBe('SpectrumMOSSImageManual');
+    expect(graph.moss_spectrum?.inputs).toEqual({
+      model: ['moss_slg', 0],
+      warmup_steps: 8,
+      tail_actual_steps: 1,
+      window_size: 2,
+      flex_window: 0.75,
+      max_consecutive_forecasts: 3,
+      history_points: 8,
+      chebyshev_degree: 4,
+      ridge_lambda: 0.1,
+      blend_weight: 0.5,
+      cache_device: 'cpu',
+      force_actual_on_control: true,
+      debug: false,
+      warn_unverified_sampler: true
+    });
+  });
+
+  it('forces the full skip layer guidance range while Spectrum is on', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.spectrumEnabled = true;
+        s.moss.slgStartPercent = 0.1;
+        s.moss.slgEndPercent = 0.5;
+      })
+    );
+
+    expect(graph.moss_slg?.inputs).toMatchObject({
+      start_percent: 0,
+      end_percent: 1
+    });
+  });
+
+  it('ignores Spectrum on the Anima profile', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.moss.spectrumEnabled = true;
+      })
+    );
+
+    expect(graph.moss_spectrum).toBeUndefined();
   });
 
   it('treats inpaint mode as img2img instead of the Anima LLLite graph', () => {
