@@ -51,6 +51,7 @@ import UltimateUpscaleSection from '@/components/template/UltimateUpscaleSection
 import WorkflowField from '@/components/template/WorkflowField.vue';
 import { useUltimateUpscaleStore } from '@/stores/ultimateUpscaleStore';
 import {
+  appendModelUpscaleStage,
   buildUltimateUpscalePrompt,
   ULTIMATE_UPSCALE_MAX_SCALE
 } from '../services/ultimateUpscaleWorkflow';
@@ -176,24 +177,22 @@ function buildPrompt(imageName: string, scale: number) {
       filenamePrefix: prefix
     });
   }
-  return {
+  const prompt: Record<string, unknown> = {
     '1': {
       inputs: { image: imageName },
       class_type: 'LoadImage'
-    },
-    '2': {
-      inputs: {
-        image: ['1', 0],
-        upscale_model: upscaleModel.value,
-        upscale_by: scale
-      },
-      class_type: 'YEImageUpscale'
-    },
-    '3': {
-      inputs: { images: ['2', 0], filename_prefix: prefix },
-      class_type: 'SaveImage'
     }
   };
+  const upscaled = appendModelUpscaleStage(
+    prompt,
+    { image: ['1', 0], upscaleModel: upscaleModel.value, upscaleBy: scale },
+    '2'
+  );
+  prompt['3'] = {
+    inputs: { images: upscaled, filename_prefix: prefix },
+    class_type: 'SaveImage'
+  };
+  return prompt;
 }
 
 const { isSubmitting, queueBatch, retryItem } = useBatchRunner(batch, {
@@ -402,7 +401,8 @@ function downloadResult() {
                 :disabled="!comfyStore.isConnected || isSubmitting"
               />
               <FieldDescription class="text-xs">
-                Model algorithm applied via yet_essential super-resolution.
+                The upscale model runs in ComfyUI, then the result is resized to
+                the chosen factor.
               </FieldDescription>
             </Field>
 

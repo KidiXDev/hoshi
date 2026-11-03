@@ -6,21 +6,31 @@ import {
   type WildcardMap
 } from '../utils/dynamicPrompt';
 import { boxPixels, layoutCanvasSize } from '../utils/mossLayout';
+import { formatPrompt, removeNegativeOverlap } from '../utils/promptFormat';
 import { randomSeed } from '../utils/seed';
 import {
   appendFaceDetailerStage,
   type WorkflowNodeRef
 } from './faceDetailerWorkflow';
-import { appendUltimateUpscaleStage } from './ultimateUpscaleWorkflow';
+import {
+  appendModelUpscaleStage,
+  appendUltimateUpscaleStage
+} from './ultimateUpscaleWorkflow';
 
-function variationInputs(state: WorkflowState) {
-  if (!state.sampler.variationEnabled) return {};
+function samplerNode(state: WorkflowState) {
+  if (!state.sampler.variationEnabled) {
+    return { inputs: {}, class_type: 'KSampler', _meta: { title: 'KSampler' } };
+  }
   return {
-    variation_seed: Math.max(-1, Math.trunc(state.sampler.variationSeed)),
-    variation_strength: Math.min(
-      1,
-      Math.max(0, state.sampler.variationStrength || 0)
-    )
+    inputs: {
+      variation_seed: Math.max(0, Math.trunc(state.sampler.variationSeed)),
+      variation_strength: Math.min(
+        1,
+        Math.max(0, state.sampler.variationStrength || 0)
+      )
+    },
+    class_type: 'KoharuKSampler',
+    _meta: { title: 'KSampler (Variation)' }
   };
 }
 
@@ -31,6 +41,12 @@ export function prepareWorkflowForQueue(
   const queuedState = structuredClone(state);
   if (queuedState.sampler.randomizeSeed || queuedState.sampler.seed < 0) {
     queuedState.sampler.seed = randomSeed();
+  }
+  if (
+    queuedState.sampler.variationEnabled &&
+    queuedState.sampler.variationSeed < 0
+  ) {
+    queuedState.sampler.variationSeed = randomSeed();
   }
   resolveDynamicPrompts(queuedState, wildcards);
   return queuedState;
@@ -241,8 +257,8 @@ export function buildWorkflowPrompt(
         strength_model: lora.strength,
         model: [lastModelNodeId, 0]
       },
-      class_type: 'YELoadLoraModel',
-      _meta: { title: `YE Load LoRA (${lora.name})` }
+      class_type: 'LoraLoaderModelOnly',
+      _meta: { title: `Load LoRA (${lora.name})` }
     };
     lastModelNodeId = loraNodeId;
   });
@@ -326,71 +342,47 @@ export function buildWorkflowPrompt(
     _meta: { title: 'Load VAE' }
   };
 
-  // 6. Positive Prompt (Node 21)
-  prompt['21'] = {
-    inputs: {
-      prompt: state.positivePrompt
-    },
-    class_type: 'YEPrompt',
-    _meta: { title: 'YE Positive Prompt' }
-  };
+  // 6. Prompts
+  const positiveText = isMoss
+    ? state.positivePrompt
+    : formatPrompt(state.positivePrompt);
+  const negativeText = isMoss
+    ? state.negativePrompt
+    : removeNegativeOverlap(positiveText, formatPrompt(state.negativePrompt));
 
-  // 7. Negative Prompt (Node 17)
-  prompt['17'] = {
-    inputs: {
-      prompt: state.negativePrompt
-    },
-    class_type: 'YEPrompt',
-    _meta: { title: 'YE Negative Prompt' }
-  };
-
-  // 8. Conditioning
-  let positiveConditioning: WorkflowNodeRef = ['18', 0];
-  let negativeConditioning: WorkflowNodeRef = ['18', 1];
+  // 7. Conditioning (Nodes 21, 17)
+  let positiveConditioning: WorkflowNodeRef = ['21', 0];
+  let negativeConditioning: WorkflowNodeRef = ['17', 0];
   if (isMoss) {
     prompt['moss_positive'] = {
       inputs: {
-        text: appendMossLayoutStage(prompt, state) ?? state.positivePrompt,
+        text: appendMossLayoutStage(prompt, state) ?? positiveText,
         clip: ['28', 0]
       },
       class_type: 'CLIPTextEncode',
       _meta: { title: 'Positive Prompt' }
     };
     prompt['moss_negative'] = {
-      inputs: { text: state.negativePrompt, clip: ['28', 0] },
+      inputs: { text: negativeText, clip: ['28', 0] },
       class_type: 'CLIPTextEncode',
       _meta: { title: 'Negative Prompt' }
     };
     positiveConditioning = ['moss_positive', 0];
     negativeConditioning = ['moss_negative', 0];
   } else {
-    prompt['18'] = {
-      inputs: {
-        format_prompt: true,
-        clip: ['28', 0],
-        positive: ['21', 1],
-        negative: ['17', 1]
-      },
-      class_type: 'YEClipTextUtil',
-      _meta: { title: 'YE Clip Text Util' }
+    prompt['21'] = {
+      inputs: { text: positiveText, clip: ['28', 0] },
+      class_type: 'CLIPTextEncode',
+      _meta: { title: 'Positive Prompt' }
+    };
+    prompt['17'] = {
+      inputs: { text: negativeText, clip: ['28', 0] },
+      class_type: 'CLIPTextEncode',
+      _meta: { title: 'Negative Prompt' }
     };
   }
 
-  // 9. Seed Generator (Node 14)
-  prompt['14'] = {
-    inputs: {
-      seed: state.sampler.seed
-    },
-    class_type: 'YESeedGenerator',
-    _meta: { title: 'YE Seed Generator' }
-  };
-
-  // 10. Empty Latent Image (Node 19)
-  const isCustomResolution =
-    state.resolution.preset === 'Custom' ||
-    state.resolution.preset.toLowerCase().startsWith('custom') ||
-    state.resolution.isCustom;
-
+  // 8. Empty Latent Image (Node 19)
   if (usesInputImage) {
     prompt['19'] = {
       inputs: {
@@ -410,7 +402,7 @@ export function buildWorkflowPrompt(
       class_type: 'EmptyFlux2LatentImage',
       _meta: { title: 'Empty Flux 2 Latent' }
     };
-  } else if (isCustomResolution) {
+  } else {
     prompt['19'] = {
       inputs: {
         width: state.resolution.width || 1024,
@@ -420,26 +412,19 @@ export function buildWorkflowPrompt(
       class_type: 'EmptyLatentImage',
       _meta: { title: 'Empty Latent Image' }
     };
-  } else {
-    prompt['19'] = {
-      inputs: {
-        preset: state.resolution.preset,
-        batch_size: state.resolution.batchSize
-      },
-      class_type: 'YEEmptyLatentImage',
-      _meta: { title: 'YE Empty Latent Image' }
-    };
   }
 
-  // 11. KSampler (Node 9)
+  // 9. KSampler (Node 9)
   const samplerInputs: SamplerInputs = {
     model: [lastModelNodeId, 0],
     positive: positiveConditioning,
     negative: negativeConditioning
   };
+  const sampler = samplerNode(state);
   prompt['9'] = {
+    ...sampler,
     inputs: {
-      seed: ['14', 0],
+      seed: state.sampler.seed,
       steps: state.sampler.steps,
       cfg: state.sampler.cfg,
       sampler_name: state.sampler.samplerName,
@@ -449,15 +434,11 @@ export function buildWorkflowPrompt(
         ? appendMossControlStage(prompt, state, samplerInputs)
         : samplerInputs),
       latent_image: ['19', 0],
-      ...variationInputs(state)
-    },
-    class_type: state.sampler.variationEnabled ? 'YEKSampler' : 'KSampler',
-    _meta: {
-      title: state.sampler.variationEnabled ? 'YE KSampler' : 'KSampler'
+      ...sampler.inputs
     }
   };
 
-  // 12. VAE Decode (Node 6)
+  // 10. VAE Decode (Node 6)
   prompt['6'] = {
     inputs: {
       samples: ['9', 0],
@@ -478,7 +459,7 @@ export function buildWorkflowPrompt(
     });
   }
 
-  // 13. Preview Image (Node 7)
+  // 11. Preview Image (Node 7)
   prompt['7'] = {
     inputs: {
       images: decodedImageSource
@@ -487,7 +468,7 @@ export function buildWorkflowPrompt(
     _meta: { title: 'Preview Image' }
   };
 
-  // 14. Upscale (Node 8)
+  // 12. Upscale (Node 8)
   let imageSourceForPostFx: WorkflowNodeRef = decodedImageSource;
   if (
     state.postfx.upscale.enabled &&
@@ -505,7 +486,7 @@ export function buildWorkflowPrompt(
         vae: ['27', 0],
         upscaleModel: state.postfx.upscale.upscaleModel,
         upscaleBy: state.postfx.upscale.upscaleBy,
-        seed: ['14', 0]
+        seed: state.sampler.seed
       },
       '8'
     );
@@ -513,90 +494,65 @@ export function buildWorkflowPrompt(
     state.postfx.upscale.enabled &&
     state.postfx.upscale.upscaleModel
   ) {
-    prompt['8'] = {
-      inputs: {
-        upscale_model: state.postfx.upscale.upscaleModel,
-        upscale_by: state.postfx.upscale.upscaleBy,
-        image: decodedImageSource
+    imageSourceForPostFx = appendModelUpscaleStage(
+      prompt,
+      {
+        image: decodedImageSource,
+        upscaleModel: state.postfx.upscale.upscaleModel,
+        upscaleBy: state.postfx.upscale.upscaleBy
       },
-      class_type: 'YEImageUpscale',
-      _meta: { title: 'YE Image Upscale' }
-    };
-    imageSourceForPostFx = ['8', 0];
+      '8'
+    );
   }
 
-  // 15. PostFX Pipeline
+  // 13. PostFX (Node 4)
   let finalImageSource = imageSourceForPostFx;
 
   if (state.postfx.enabled) {
-    prompt['3'] = {
-      inputs: {
-        enabled: state.postfx.styleStage.enabled,
-        vignette_strength: state.postfx.styleStage.vignetteStrength,
-        vignette_softness: state.postfx.styleStage.vignetteSoftness,
-        film_grain: state.postfx.styleStage.filmGrain,
-        grain_seed: 0,
-        chromatic_aberration: state.postfx.styleStage.chromaticAberration,
-        ca_angle: 0,
-        bloom_strength: state.postfx.styleStage.bloomStrength,
-        bloom_radius: state.postfx.styleStage.bloomRadius,
-        bloom_threshold: state.postfx.styleStage.bloomThreshold
-      },
-      class_type: 'YEPostFXAddStyleStage',
-      _meta: { title: 'YE PostFX - Add Style Stage' }
-    };
-
-    prompt['11'] = {
-      inputs: {
-        enabled: state.postfx.adjustStage.enabled,
-        brightness: state.postfx.adjustStage.brightness,
-        contrast: state.postfx.adjustStage.contrast,
-        saturation: state.postfx.adjustStage.saturation,
-        sharpness: state.postfx.adjustStage.sharpness,
-        pipeline: ['3', 0]
-      },
-      class_type: 'YEPostFXAddAdjustStage',
-      _meta: { title: 'YE PostFX - Add Adjust Stage' }
-    };
-
+    const { styleStage, adjustStage } = state.postfx;
     prompt['4'] = {
       inputs: {
         image: imageSourceForPostFx,
-        pipeline: ['11', 0]
+        style_enabled: styleStage.enabled,
+        vignette_strength: styleStage.vignetteStrength,
+        vignette_softness: styleStage.vignetteSoftness,
+        film_grain: styleStage.filmGrain,
+        grain_seed: 0,
+        chromatic_aberration: styleStage.chromaticAberration,
+        ca_angle: 0,
+        bloom_strength: styleStage.bloomStrength,
+        bloom_radius: styleStage.bloomRadius,
+        bloom_threshold: styleStage.bloomThreshold,
+        adjust_enabled: adjustStage.enabled,
+        brightness: adjustStage.brightness,
+        contrast: adjustStage.contrast,
+        saturation: adjustStage.saturation,
+        sharpness: adjustStage.sharpness
       },
-      class_type: 'YEPostFXApplyPipeline',
-      _meta: { title: 'YE PostFX - Apply Pipeline' }
+      class_type: 'KoharuPostFX',
+      _meta: { title: 'PostFX' }
     };
 
     finalImageSource = ['4', 0];
   }
 
-  // 16. Metadata Connector (Node 1)
-  prompt['1'] = {
+  // 14. Save Image With Metadata (Node 5)
+  prompt['5'] = {
     inputs: {
-      positive: ['21', 0],
-      negative: ['17', 0],
-      seed: ['14', 0],
+      filename_prefix: 'ComfyUI',
+      images: finalImageSource,
+      positive: positiveText,
+      negative: negativeText,
+      seed: state.sampler.seed,
       steps: state.sampler.steps,
       cfg: state.sampler.cfg,
       sampler_name: state.sampler.samplerName,
       scheduler: state.sampler.scheduler,
       denoise: state.sampler.denoise,
-      model: ['29', 0]
+      model_name: state.models.unetName
     },
-    class_type: 'YEImageMetadataConnector',
-    _meta: { title: 'YE Image Metadata Connector' }
-  };
-
-  // 17. Save Image (Node 5)
-  prompt['5'] = {
-    inputs: {
-      filename_prefix: 'ComfyUI',
-      images: finalImageSource,
-      metadata_pipe: ['1', 0]
-    },
-    class_type: 'YEImageSave',
-    _meta: { title: 'YE Save Image' }
+    class_type: 'KoharuSaveImage',
+    _meta: { title: 'Save Image' }
   };
 
   return prompt;
@@ -617,6 +573,7 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
   const cfg = state.imageInput.turboEnabled
     ? state.imageInput.turboCfg
     : state.imageInput.inpaintCfg;
+  const sampler = samplerNode(state);
   const prompt: Record<string, unknown> = {
     '29': {
       inputs: { unet_name: state.models.unetName, weight_dtype: 'default' },
@@ -666,22 +623,14 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
       _meta: { title: 'Apply Anima LLLite Inpainting' }
     },
     '21': {
-      inputs: {
-        prompt: state.positivePrompt,
-        clip: ['28', 0],
-        format_prompt: true
-      },
-      class_type: 'YEClipTextEncodePrompt',
-      _meta: { title: 'YE Clip Text Encode (Positive Prompt)' }
+      inputs: { text: formatPrompt(state.positivePrompt), clip: ['28', 0] },
+      class_type: 'CLIPTextEncode',
+      _meta: { title: 'Positive Prompt' }
     },
     '17': {
-      inputs: {
-        prompt: state.negativePrompt,
-        clip: ['28', 0],
-        format_prompt: true
-      },
-      class_type: 'YEClipTextEncodePrompt',
-      _meta: { title: 'YE Clip Text Encode (Negative Prompt)' }
+      inputs: { text: formatPrompt(state.negativePrompt), clip: ['28', 0] },
+      class_type: 'CLIPTextEncode',
+      _meta: { title: 'Negative Prompt' }
     },
     '19': {
       inputs: {
@@ -693,6 +642,7 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
       _meta: { title: 'Empty Latent Image' }
     },
     '9': {
+      ...sampler,
       inputs: {
         seed: state.sampler.seed,
         steps,
@@ -704,11 +654,7 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
         positive: ['21', 0],
         negative: ['17', 0],
         latent_image: ['19', 0],
-        ...variationInputs(state)
-      },
-      class_type: state.sampler.variationEnabled ? 'YEKSampler' : 'KSampler',
-      _meta: {
-        title: state.sampler.variationEnabled ? 'YE KSampler' : 'KSampler'
+        ...sampler.inputs
       }
     },
     '6': {

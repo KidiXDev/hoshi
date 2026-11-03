@@ -19,6 +19,39 @@ interface UltimateUpscaleSources {
 
 export const ULTIMATE_UPSCALE_MAX_SCALE = 4;
 
+interface ModelUpscaleSources {
+  image: WorkflowNodeRef;
+  upscaleModel: string;
+  upscaleBy: number;
+}
+
+export function appendModelUpscaleStage(
+  prompt: Record<string, unknown>,
+  sources: ModelUpscaleSources,
+  nodeId: string
+): WorkflowNodeRef {
+  prompt[`${nodeId}_loader`] = {
+    inputs: { model_name: sources.upscaleModel },
+    class_type: 'UpscaleModelLoader',
+    _meta: { title: 'Load Upscale Model' }
+  };
+  prompt[`${nodeId}_upscale`] = {
+    inputs: { upscale_model: [`${nodeId}_loader`, 0], image: sources.image },
+    class_type: 'ImageUpscaleWithModel',
+    _meta: { title: 'Upscale Image (using Model)' }
+  };
+  prompt[nodeId] = {
+    inputs: {
+      image: [`${nodeId}_upscale`, 0],
+      reference: sources.image,
+      scale_by: sources.upscaleBy
+    },
+    class_type: 'KoharuScaleToReference',
+    _meta: { title: 'Scale To Upscale Factor' }
+  };
+  return [nodeId, 0];
+}
+
 export function appendUltimateUpscaleStage(
   prompt: Record<string, unknown>,
   settings: UltimateUpscaleSettings,
@@ -40,7 +73,7 @@ export function appendUltimateUpscaleStage(
         strength_model: 1,
         model: sources.model
       },
-      class_type: 'YELoadLoraModel',
+      class_type: 'LoraLoaderModelOnly',
       _meta: { title: 'Load Ultimate SD Upscale Turbo LoRA' }
     };
     modelSource = [turboNode, 0];
@@ -150,7 +183,7 @@ export function buildUltimateUpscalePrompt(
     const id = `usdu_lora_${index}`;
     prompt[id] = {
       inputs: { model, lora_name: lora.name, strength_model: lora.strength },
-      class_type: 'YELoadLoraModel'
+      class_type: 'LoraLoaderModelOnly'
     };
     model = [id, 0];
   }

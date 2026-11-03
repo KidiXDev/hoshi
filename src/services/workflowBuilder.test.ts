@@ -240,6 +240,18 @@ describe('prepareWorkflowForQueue', () => {
     ).toBeUndefined();
   });
 
+  it('draws a concrete variation seed for a random one', () => {
+    const state = createState((s) => {
+      s.sampler.variationEnabled = true;
+      s.sampler.variationSeed = -1;
+    });
+
+    const queued = prepareWorkflowForQueue(state);
+
+    expect(state.sampler.variationSeed).toBe(-1);
+    expect(queued.sampler.variationSeed).toBeGreaterThanOrEqual(0);
+  });
+
   it('expands wildcards from the seed and keeps the template', () => {
     const state = createState((s) => {
       s.positivePrompt = '1girl, __Hair/Color__';
@@ -288,8 +300,8 @@ describe('prepareWorkflowForQueue', () => {
 
       const graph = graphOf(queued);
 
-      expect(graph['21']?.inputs.prompt).toBe(queued.positivePrompt);
-      expect(graph['17']?.inputs.prompt).toBe(queued.negativePrompt);
+      expect(graph['21']?.inputs.text).toBe(queued.positivePrompt);
+      expect(graph['17']?.inputs.text).toBe(queued.negativePrompt);
       expect(JSON.stringify(graph)).not.toContain('{red');
     });
 
@@ -330,38 +342,95 @@ describe('buildWorkflowPrompt', () => {
     expect(graph['9']?.inputs.model).toEqual(['renorm_cfg', 0]);
   });
 
-  describe('variation seed', () => {
-    it('switches to the variation sampler', () => {
-      const graph = graphOf(
-        createState((s) => {
-          s.sampler.variationEnabled = true;
-        })
-      );
+  it('switches to the bridge variation sampler', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.sampler.variationEnabled = true;
+      })
+    );
 
-      expect(graph['9']?.class_type).toBe('YEKSampler');
-      expect(graph['9']?.inputs).toMatchObject({
-        variation_seed: 2,
-        variation_strength: 0.35
-      });
+    expect(graph['9']?.class_type).toBe('KoharuKSampler');
+    expect(graph['9']?.inputs).toMatchObject({
+      seed: 1,
+      variation_seed: 2,
+      variation_strength: 0.35
     });
+  });
 
-    it('passes a random variation seed through for ComfyUI to draw', () => {
-      const graph = graphOf(
-        createState((s) => {
-          s.sampler.variationEnabled = true;
-          s.sampler.variationSeed = -1;
-        })
-      );
+  it('encodes formatted prompts and drops negatives already in the positive', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.positivePrompt = ' 1girl ,, blue hair ';
+        s.negativePrompt = 'Blue Hair, lowres';
+      })
+    );
 
-      expect(graph['9']?.inputs.variation_seed).toBe(-1);
+    expect(graph['21']?.class_type).toBe('CLIPTextEncode');
+    expect(graph['21']?.inputs.text).toBe('1girl, blue hair');
+    expect(graph['17']?.inputs.text).toBe('lowres');
+    expect(graph['9']?.inputs).toMatchObject({
+      positive: ['21', 0],
+      negative: ['17', 0]
     });
+  });
+
+  it('starts text2img from an empty latent at the resolution size', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.imageInput.mode = 'text2img';
+        s.resolution = {
+          preset: '1216 x 832 (19:13 Landscape)',
+          batchSize: 2,
+          width: 1216,
+          height: 832,
+          isCustom: false
+        };
+      })
+    );
+
+    expect(graph['19']?.class_type).toBe('EmptyLatentImage');
+    expect(graph['19']?.inputs).toEqual({
+      width: 1216,
+      height: 832,
+      batch_size: 2
+    });
+  });
+
+  it('saves with A1111 metadata through the bridge save node', () => {
+    const graph = graphOf(createState());
+
+    expect(graph['5']?.class_type).toBe('KoharuSaveImage');
+    expect(graph['5']?.inputs).toMatchObject({
+      positive: 'test',
+      negative: 'bad',
+      seed: 1,
+      steps: 20,
+      cfg: 4,
+      sampler_name: 'euler',
+      scheduler: 'simple',
+      denoise: 0.7,
+      model_name: 'anima.safetensors'
+    });
+  });
+
+  it('runs PostFX as one bridge node', () => {
+    const graph = graphOf(createState(enableUpscale));
+
+    expect(graph['4']?.class_type).toBe('KoharuPostFX');
+    expect(graph['4']?.inputs).toMatchObject({
+      image: ['8', 0],
+      style_enabled: false,
+      adjust_enabled: false,
+      contrast: 1
+    });
+    expect(graph['5']?.inputs.images).toEqual(['4', 0]);
   });
 
   it('runs the face detailer with turbo settings and zeroed empty prompts', () => {
     const graph = graphOf(createState(enableTurboFaceDetailer));
 
     expect(graph.face_detailer_apply?.class_type).toBe('FaceDetailer');
-    expect(graph.face_detailer_turbo?.class_type).toBe('YELoadLoraModel');
+    expect(graph.face_detailer_turbo?.class_type).toBe('LoraLoaderModelOnly');
     expect(graph.face_detailer_apply?.inputs).toMatchObject({
       steps: 8,
       cfg: 1,
@@ -385,9 +454,9 @@ describe('buildWorkflowPrompt', () => {
       expect(graph['31']?.class_type).toBe('LoadImageMask');
       expect(graph['33']?.class_type).toBe('AnimaLLLiteApply');
       expect(graph['34']?.class_type).toBe('LoraLoaderModelOnly');
-      expect(graph['21']?.class_type).toBe('YEClipTextEncodePrompt');
-      expect(graph['17']?.class_type).toBe('YEClipTextEncodePrompt');
-      expect(graph['9']?.class_type).toBe('YEKSampler');
+      expect(graph['21']?.class_type).toBe('CLIPTextEncode');
+      expect(graph['17']?.class_type).toBe('CLIPTextEncode');
+      expect(graph['9']?.class_type).toBe('KoharuKSampler');
       expect(graph['9']?.inputs).toMatchObject({
         model: ['34', 0],
         steps: 8,
@@ -439,6 +508,29 @@ describe('buildWorkflowPrompt', () => {
         for (const [nodeId] of connections(graph)) {
           expect(graph, `missing node ${nodeId}`).toHaveProperty([nodeId]);
         }
+      }
+    );
+
+    it.each([false, true])(
+      'emits no yet_essential nodes (upscale with Ultimate: %s)',
+      (ultimate) => {
+        const graph = graphOf(
+          createState((s) => {
+            enableModelPatches(s);
+            enableTurboFaceDetailer(s);
+            enableUpscale(s);
+            enableInpaint(s);
+            s.imageInput.mode = mode;
+            s.sampler.variationEnabled = true;
+            s.postfx.upscale.ultimate.enabled = ultimate;
+            s.postfx.upscale.ultimate.turboEnabled = ultimate;
+          })
+        );
+
+        const yeNodes = Object.values(graph).filter((node) =>
+          node.class_type.startsWith('YE')
+        );
+        expect(yeNodes).toEqual([]);
       }
     );
 
@@ -835,10 +927,22 @@ describe('buildFaceDetailerPrompt', () => {
 });
 
 describe('Ultimate SD Upscale', () => {
-  it('keeps the plain upscaler when Ultimate is off', () => {
-    expect(graphOf(createState(enableUpscale))['8']?.class_type).toBe(
-      'YEImageUpscale'
-    );
+  it('upscales with the model, then scales to the factor, when Ultimate is off', () => {
+    const graph = graphOf(createState(enableUpscale));
+
+    expect(graph['8_loader']?.inputs).toEqual({
+      model_name: 'up.safetensors'
+    });
+    expect(graph['8_upscale']?.inputs).toEqual({
+      upscale_model: ['8_loader', 0],
+      image: ['6', 0]
+    });
+    expect(graph['8']?.class_type).toBe('KoharuScaleToReference');
+    expect(graph['8']?.inputs).toEqual({
+      image: ['8_upscale', 0],
+      reference: ['6', 0],
+      scale_by: 6
+    });
   });
 
   it('replaces the upscaler node in the generation chain', () => {
@@ -853,9 +957,9 @@ describe('Ultimate SD Upscale', () => {
     expect(graph['8_model']?.class_type).toBe('UpscaleModelLoader');
     expect(graph['8']?.inputs).toMatchObject({
       upscale_by: 4,
-      seed: ['14', 0],
-      positive: ['18', 0],
-      negative: ['18', 1],
+      seed: 1,
+      positive: ['21', 0],
+      negative: ['17', 0],
       model: ['101', 0],
       upscale_model: ['8_model', 0],
       mode_type: 'Chess'
@@ -872,7 +976,7 @@ describe('Ultimate SD Upscale', () => {
       })
     );
 
-    expect(graph['8_turbo']?.class_type).toBe('YELoadLoraModel');
+    expect(graph['8_turbo']?.class_type).toBe('LoraLoaderModelOnly');
     expect(graph['8_turbo']?.inputs.model).toEqual(['101', 0]);
     expect(graph['8']?.inputs).toMatchObject({
       model: ['8_turbo', 0],

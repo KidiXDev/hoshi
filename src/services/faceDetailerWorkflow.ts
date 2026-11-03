@@ -71,7 +71,7 @@ export function appendFaceDetailerStage(
         strength_model: 1,
         model: sources.model
       },
-      class_type: 'YELoadLoraModel',
+      class_type: 'LoraLoaderModelOnly',
       _meta: { title: 'Load Face Detailer Turbo LoRA' }
     };
     modelSource = [turboNode, 0];
@@ -169,7 +169,7 @@ export function buildFaceDetailerPrompt(
     const id = `detail_lora_${index}`;
     prompt[id] = {
       inputs: { model, lora_name: lora.name, strength_model: lora.strength },
-      class_type: 'YELoadLoraModel'
+      class_type: 'LoraLoaderModelOnly'
     };
     model = [id, 0];
   }

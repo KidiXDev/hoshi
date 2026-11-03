@@ -123,14 +123,12 @@ function getFriendlyStageName(
     '27': 'Loading VAE Model',
     '21': 'Encoding Positive Prompt',
     '17': 'Encoding Negative Prompt',
-    '18': 'Processing Prompt Conditioning',
-    '14': 'Preparing Sampling Seed',
     '19': 'Initializing Latent Space',
     '13': 'Configuring Sampling Parameters',
     '9': 'Sampling & Denoising',
     '6': 'Decoding Latents to Pixels',
     '7': 'Finalizing Output Image',
-    '8': 'Connecting Metadata'
+    '8': 'Upscaling Image'
   };
 
   if (defaultMap[nodeId]) return defaultMap[nodeId];
@@ -220,13 +218,13 @@ export const useComfyStore = defineStore('comfy', () => {
   const availableVaes = modelChoices('vaes', ['VAELoader'], ['vae_name']);
   const availableLoras = modelChoices(
     'loras',
-    ['YELoadLoraModel', 'LoraLoader'],
+    ['LoraLoaderModelOnly', 'LoraLoader'],
     ['lora_name']
   );
   const availableUpscaleModels = modelChoices(
     'upscale_models',
-    ['YEImageUpscale', 'UpscaleModelLoader'],
-    ['upscale_model', 'model_name']
+    ['UpscaleModelLoader'],
+    ['model_name']
   );
   const availableSamplers = modelChoices(
     'samplers',
