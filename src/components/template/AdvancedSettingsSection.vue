@@ -23,10 +23,109 @@ import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import type { MossSettings } from '../../types/workflow';
+
+interface SpectrumField {
+  key:
+    | 'spectrumWarmupSteps'
+    | 'spectrumTailActualSteps'
+    | 'spectrumDetailGuardSteps'
+    | 'spectrumPostGuardHorizonCap'
+    | 'spectrumErrorTolerance'
+    | 'spectrumMaxConsecutiveForecasts';
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}
+
+const SPECTRUM_SHARED_FIELDS: SpectrumField[] = [
+  {
+    key: 'spectrumWarmupSteps',
+    label: 'Warmup Steps',
+    min: 0,
+    max: 64,
+    step: 1
+  },
+  {
+    key: 'spectrumTailActualSteps',
+    label: 'Tail Actual Steps',
+    min: 0,
+    max: 16,
+    step: 1
+  }
+];
+
+const SPECTRUM_MODE_FIELDS: Record<
+  MossSettings['spectrumMode'],
+  SpectrumField[]
+> = {
+  adaptive: [
+    {
+      key: 'spectrumDetailGuardSteps',
+      label: 'Detail Guard Steps',
+      min: 0,
+      max: 32,
+      step: 1
+    },
+    {
+      key: 'spectrumPostGuardHorizonCap',
+      label: 'Post-Guard Horizon Cap',
+      min: 1,
+      max: 16,
+      step: 1
+    },
+    {
+      key: 'spectrumErrorTolerance',
+      label: 'Error Tolerance',
+      min: 0.75,
+      max: 1.5,
+      step: 0.05
+    }
+  ],
+  manual: [
+    {
+      key: 'spectrumMaxConsecutiveForecasts',
+      label: 'Max Consecutive Forecasts',
+      min: 0,
+      max: 32,
+      step: 1
+    }
+  ]
+};
+
+const spectrumModes = [
+  { value: 'adaptive', label: 'Adaptive' },
+  { value: 'manual', label: 'Manual' }
+];
+const spectrumCacheDevices = ['main_device', 'offload_device', 'cpu'];
 
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
 const isAnima = computed(() => workflowStore.profile === 'anima');
+const canUseSpectrum = computed(
+  () => comfyStore.isConnected && comfyStore.isSpectrumMossAvailable
+);
+const spectrumFields = computed(() => [
+  ...SPECTRUM_SHARED_FIELDS,
+  ...SPECTRUM_MODE_FIELDS[workflowStore.moss.spectrumMode]
+]);
+
+const slgStartPercent = computed({
+  get: () =>
+    workflowStore.moss.spectrumEnabled ? 0 : workflowStore.moss.slgStartPercent,
+  set: (value: number) => {
+    workflowStore.moss.slgStartPercent = value;
+  }
+});
+
+const slgEndPercent = computed({
+  get: () =>
+    workflowStore.moss.spectrumEnabled ? 1 : workflowStore.moss.slgEndPercent,
+  set: (value: number) => {
+    workflowStore.moss.slgEndPercent = value;
+  }
+});
 const cacheModelTypes = [
   'Auto',
   'Anima',
@@ -104,6 +203,16 @@ const renormCfgModel = computed({
               </span>
               <span
                 v-if="
+                  !isAnima &&
+                  workflowStore.moss.spectrumEnabled &&
+                  canUseSpectrum
+                "
+                class="border-primary/30 bg-primary/10 text-primary rounded border px-2 py-0.5 font-mono text-xs font-bold"
+              >
+                Spectrum ON
+              </span>
+              <span
+                v-if="
                   isAnima &&
                   workflowStore.advanced.cacheDiT.enabled &&
                   comfyStore.isCacheDiTAvailable
@@ -166,25 +275,153 @@ const renormCfgModel = computed({
 
               <WorkflowField label="Start Percent">
                 <Input
-                  v-model.number="workflowStore.moss.slgStartPercent"
+                  v-model.number="slgStartPercent"
                   type="number"
                   min="0"
                   max="1"
                   step="0.001"
                   class="font-mono text-xs"
-                  :disabled="!comfyStore.isConnected"
+                  :disabled="
+                    !comfyStore.isConnected ||
+                    workflowStore.moss.spectrumEnabled
+                  "
                 />
               </WorkflowField>
 
               <WorkflowField label="End Percent">
                 <Input
-                  v-model.number="workflowStore.moss.slgEndPercent"
+                  v-model.number="slgEndPercent"
                   type="number"
                   min="0"
                   max="1"
                   step="0.001"
                   class="font-mono text-xs"
-                  :disabled="!comfyStore.isConnected"
+                  :disabled="
+                    !comfyStore.isConnected ||
+                    workflowStore.moss.spectrumEnabled
+                  "
+                />
+              </WorkflowField>
+            </div>
+
+            <p
+              v-if="
+                workflowStore.moss.skipLayerGuidance &&
+                workflowStore.moss.spectrumEnabled
+              "
+              class="text-muted-foreground text-xs"
+            >
+              Start and end are locked to 0 and 1 while Spectrum is on.
+            </p>
+          </div>
+
+          <!-- MOSS Spectrum Accelerator -->
+          <div
+            v-if="!isAnima"
+            class="border-border bg-card flex flex-col gap-3 rounded-lg border p-3"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex flex-col gap-0.5">
+                <div class="flex items-center gap-2">
+                  <Label
+                    for="moss-spectrum-enabled"
+                    class="text-foreground text-xs font-medium"
+                    :class="{ 'cursor-pointer': canUseSpectrum }"
+                  >
+                    Spectrum Accelerator
+                  </Label>
+                  <span
+                    v-if="
+                      comfyStore.isConnected &&
+                      !comfyStore.isSpectrumMossAvailable
+                    "
+                    class="py-0.2 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 font-mono text-xs font-semibold text-amber-400"
+                  >
+                    UNAVAILABLE
+                  </span>
+                </div>
+                <p class="text-muted-foreground text-xs">
+                  Forecast transformer steps for roughly 2x faster sampling.
+                  Runs Skip Layer Guidance over the full 0 to 1 range so
+                  forecasts are not reset mid-run.
+                </p>
+              </div>
+              <Switch
+                id="moss-spectrum-enabled"
+                v-model="workflowStore.moss.spectrumEnabled"
+                :disabled="!canUseSpectrum"
+              />
+            </div>
+
+            <div
+              v-if="
+                comfyStore.isConnected && !comfyStore.isSpectrumMossAvailable
+              "
+              class="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-400"
+            >
+              <AlertCircle class="h-4 w-4 shrink-0" />
+              <span>
+                Spectrum custom node (<code>ComfyUI-Spectrum-MOSS</code>) is not
+                installed in ComfyUI.
+              </span>
+            </div>
+
+            <div
+              v-if="workflowStore.moss.spectrumEnabled && canUseSpectrum"
+              class="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2"
+            >
+              <WorkflowField label="Mode">
+                <Select v-model="workflowStore.moss.spectrumMode">
+                  <SelectTrigger class="w-full font-mono text-xs">
+                    <SelectValue placeholder="Select mode..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup class="max-h-40 overflow-y-auto">
+                      <SelectItem
+                        v-for="mode in spectrumModes"
+                        :key="mode.value"
+                        :value="mode.value"
+                        class="font-mono text-xs"
+                      >
+                        {{ mode.label }}
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </WorkflowField>
+
+              <WorkflowField label="Cache Device">
+                <Select v-model="workflowStore.moss.spectrumCacheDevice">
+                  <SelectTrigger class="w-full font-mono text-xs">
+                    <SelectValue placeholder="Select device..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup class="max-h-40 overflow-y-auto">
+                      <SelectItem
+                        v-for="device in spectrumCacheDevices"
+                        :key="device"
+                        :value="device"
+                        class="font-mono text-xs"
+                      >
+                        {{ device }}
+                      </SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </WorkflowField>
+
+              <WorkflowField
+                v-for="field in spectrumFields"
+                :key="field.key"
+                :label="field.label"
+              >
+                <Input
+                  v-model.number="workflowStore.moss[field.key]"
+                  type="number"
+                  :min="field.min"
+                  :max="field.max"
+                  :step="field.step"
+                  class="font-mono text-xs"
                 />
               </WorkflowField>
             </div>

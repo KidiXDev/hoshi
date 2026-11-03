@@ -36,7 +36,7 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 - **MOSS-Image layouts** — draw, move and resize boxes for objects, characters and exact text, with a scene caption and descriptions for each box. Import layout drafts from Maya or the prompt enhancer.
 - **Prompting** — tag autocomplete from a Danbooru tag CSV you drop into the app's `tags` folder (works without ComfyUI running), prompt chips, weight hotkeys, find-in-prompt, negative prompt bundles, and `{a|b}` dynamic prompts and `__wildcards__` (from the app's `wildcards` folder) resolved from the seed.
 - **LoRA chain** — stack LoRAs with per-item strength and pull trigger words from Civitai sidecars or safetensors metadata.
-- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance.
+- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance and Spectrum acceleration.
 - **Live output** — streaming latent previews, progress, batch queueing, generation history with "reuse settings", and the elapsed-time HUD.
 
 ### Post-process
@@ -110,6 +110,7 @@ Generated graphs use nodes from these packs. Install them into your ComfyUI `cus
 - [ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
 - [ComfyUI-Impact-Subpack](https://github.com/ltdrdata/ComfyUI-Impact-Subpack)
 - [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG)
+- [ComfyUI-Spectrum-MOSS](https://github.com/Rkkss/ComfyUI-Spectrum-MOSS)
 
 ## Install
 

@@ -156,6 +156,7 @@ export const useComfyStore = defineStore('comfy', () => {
   const bridgeSystem = shallowRef<BridgeSystemResponse | null>(null);
   const isFaceDetailerAvailable = ref(false);
   const isCacheDiTAvailable = ref(false);
+  const isSpectrumMossAvailable = ref(false);
   const isUltimateUpscaleAvailable = ref(false);
   const availableBBoxDetectors = ref<string[]>([]);
   const availableSegmDetectors = ref<string[]>([]);
@@ -436,6 +437,7 @@ export const useComfyStore = defineStore('comfy', () => {
   function resetCapabilities() {
     isFaceDetailerAvailable.value = false;
     isCacheDiTAvailable.value = false;
+    isSpectrumMossAvailable.value = false;
     isUltimateUpscaleAvailable.value = false;
   }
 
@@ -560,29 +562,36 @@ export const useComfyStore = defineStore('comfy', () => {
         );
       }
 
-      const [faceDetailerNode, detectorNode, cacheDiTNode, ultimateNode] =
-        await Promise.all([
-          ComfyApi.fetchNodeInfo(
-            launcherStore.config.serverUrl,
-            'FaceDetailer'
-          ),
-          ComfyApi.fetchNodeInfo(
-            launcherStore.config.serverUrl,
-            'UltralyticsDetectorProvider'
-          ),
-          ComfyApi.fetchNodeInfo(
-            launcherStore.config.serverUrl,
-            'CacheDiT_Model_Optimizer'
-          ),
-          ComfyApi.fetchNodeInfo(
-            launcherStore.config.serverUrl,
-            'UltimateSDUpscale'
-          )
-        ]);
+      const [
+        faceDetailerNode,
+        detectorNode,
+        cacheDiTNode,
+        spectrumNode,
+        ultimateNode
+      ] = await Promise.all([
+        ComfyApi.fetchNodeInfo(launcherStore.config.serverUrl, 'FaceDetailer'),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'UltralyticsDetectorProvider'
+        ),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'CacheDiT_Model_Optimizer'
+        ),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'SpectrumMOSSImageAdaptive'
+        ),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'UltimateSDUpscale'
+        )
+      ]);
       const detectorInput = detectorNode?.input.required.model_name?.[0];
       const detectorModels = Array.isArray(detectorInput) ? detectorInput : [];
       isFaceDetailerAvailable.value = Boolean(faceDetailerNode && detectorNode);
       isCacheDiTAvailable.value = Boolean(cacheDiTNode);
+      isSpectrumMossAvailable.value = Boolean(spectrumNode);
       isUltimateUpscaleAvailable.value = Boolean(ultimateNode);
       availableBBoxDetectors.value = detectorModels.filter((model) =>
         model.startsWith('bbox/')
@@ -664,6 +673,7 @@ export const useComfyStore = defineStore('comfy', () => {
     bridgeSystem,
     isFaceDetailerAvailable,
     isCacheDiTAvailable,
+    isSpectrumMossAvailable,
     isUltimateUpscaleAvailable,
     availableBBoxDetectors,
     availableSegmDetectors,
