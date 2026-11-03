@@ -34,7 +34,7 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 
 - **Workflow Generator** — txt2img and img2img for Anima and MOSS-Image, plus Anima inpainting with a built-in mask painter. Switch model profiles to keep separate generation settings, with resolution presets, sampler/scheduler selection, seed control and variation seeds.
 - **MOSS-Image layouts** — draw, move and resize boxes for objects, characters and exact text, with a scene caption and descriptions for each box. Import layout drafts from Maya or the prompt enhancer.
-- **Prompting** — tag autocomplete backed by a local suggestion catalog and the ComfyUI server, prompt chips, weight hotkeys, find-in-prompt, negative prompt bundles and `{a|b}` dynamic prompts resolved from the seed.
+- **Prompting** — tag autocomplete from a Danbooru tag CSV you drop into the app's `tags` folder (works without ComfyUI running), prompt chips, weight hotkeys, find-in-prompt, negative prompt bundles, and `{a|b}` dynamic prompts and `__wildcards__` (from the app's `wildcards` folder) resolved from the seed.
 - **LoRA chain** — stack LoRAs with per-item strength and pull trigger words from Civitai sidecars or safetensors metadata.
 - **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance.
 - **Live output** — streaming latent previews, progress, batch queueing, generation history with "reuse settings", and the elapsed-time HUD.
@@ -105,7 +105,6 @@ Browse models, inspect versions and preview samples, with background download ma
 
 Generated graphs use nodes from these packs. Install them into your ComfyUI `custom_nodes/` directory:
 
-- [yet_essential](https://github.com/KidiXDev/yet_essential)
 - [ComfyUI-WD-Timm-Tagger](https://github.com/bedovyy/ComfyUI-WD-Timm-Tagger)
 - [ComfyUI_UltimateSDUpscale](https://github.com/ssitu/ComfyUI_UltimateSDUpscale)
 - [ComfyUI-Impact-Pack](https://github.com/ltdrdata/ComfyUI-Impact-Pack)
