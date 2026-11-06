@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "trailingComma": "none",
+  "semi": true,
+  "tabWidth": 2,
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "sortTailwindcss": {},
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "src-tauri/target",
+    "src-tauri/gen",
+    "bun.lock",
+    "*.lock",
+    "components.d.ts",
+    ".agents",
+    ".claude",
+    "*.toml"
+  ],
+  "overrides": [
+    {
+      "files": ["*.ts"],
+      "options": {
+        "sortImports": {
+          "groups": [
+            ["builtin", "external", "internal", "subpath", "style", "unknown"],
+            ["parent", "sibling", "index"]
+          ],
+          "newlinesBetween": false
+        }
+      }
+    }
+  ]
+}

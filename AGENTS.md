@@ -40,7 +40,7 @@ Context and guidelines for AI agents working on **Hoshi** (codename **Koharu**),
 | **AI**             | Vercel `ai` + `@openrouter/ai-sdk-provider`                                  | Maya assistant, prompt enhancer, session titling                        |
 | **HTTP**           | `axios` (frontend), `reqwest` (Rust)                                         | ComfyUI REST and third-party APIs                                       |
 | **Linter**         | Oxlint                                                                       | `src/components/ui/**` is ignored                                       |
-| **Formatter**      | Prettier                                                                     | `prettier-plugin-organize-imports` + `prettier-plugin-tailwindcss`      |
+| **Formatter**      | Oxfmt                                                                        | `.oxfmtrc.json`; sorts Tailwind classes, and imports in `.ts` files     |
 
 ---
 
@@ -115,7 +115,7 @@ koharu/
 
 ## 6. Conventions
 
-1. **Prettier plugin order** — `prettier-plugin-tailwindcss` must stay last in `.prettierrc`.
+1. **Import sorting** — `sortImports` is scoped to `*.ts` in `.oxfmtrc.json`; `.vue` imports keep their hand-written order. Oxfmt does not remove unused imports; Oxlint's `no-unused-vars` flags them.
 2. **Components** — SFCs with `<script setup lang="ts">`, Composition API, Pinia composables. Shared primitives in `src/components/ui/`, app shell in `src/components/template/`.
 3. **Path sanitization** — strip surrounding quotes from path inputs in both frontend and backend.
 4. **Validation** — `bun run lint` + `bun run typecheck`; never `bun run build` for routine checks.

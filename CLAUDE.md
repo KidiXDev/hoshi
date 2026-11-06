@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Hoshi (codename Koharu): a Tauri v2 (Rust) + Vue 3 desktop frontend for ComfyUI, targeting the Anima model family. Read [AGENTS.md](AGENTS.md) for conventions (shadcn `Select` usage, Tailwind canonical classes, Prettier plugin order, path sanitization) and the project tree.
+Hoshi (codename Koharu): a Tauri v2 (Rust) + Vue 3 desktop frontend for ComfyUI, targeting the Anima model family. Read [AGENTS.md](AGENTS.md) for conventions (shadcn `Select` usage, Tailwind canonical classes, import sorting, path sanitization) and the project tree.
 
 ## Naming
 
@@ -20,7 +20,7 @@ bun run tauri dev                       # full desktop app (starts vite on :1420
 bun run dev                             # vite only — Tauri `invoke` calls will fail in a plain browser
 bun run lint                            # oxlint (src/components/ui/** is ignored)
 bun run typecheck                       # vue-tsc --noEmit — preferred routine validation
-bun run format                          # prettier --write .
+bun run format                          # oxfmt
 bun run test                            # vitest run — every src/**/*.test.ts (NOT `bun test`, that is Bun's own runner)
 bun run test src/services/workflowBuilder.test.ts   # single file
 bun run test:watch                      # vitest watch mode
