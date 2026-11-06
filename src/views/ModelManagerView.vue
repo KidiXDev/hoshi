@@ -74,9 +74,11 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import ModelImportDialog from '@/components/models/ModelImportDialog.vue';
 import ModelPreviewImage from '@/components/models/ModelPreviewImage.vue';
 import ModelSyncDialog from '@/components/models/ModelSyncDialog.vue';
 import { useConfirmDialog } from '@/composables/useConfirmDialog';
+import { useModelFileDrop } from '@/composables/useModelFileDrop';
 import { useModelSyncDialog } from '@/composables/useModelSyncDialog';
 import {
   loadCivitaiApiKey,
@@ -181,6 +183,20 @@ const syncRunning = ref(false);
 const syncIssues = ref<{ file: string; reason: string }[]>([]);
 const draggingId = ref<string>();
 const dropCategory = ref<string>();
+const {
+  isFileDrag,
+  importStatus,
+  isImportDialogOpen,
+  cancelImport,
+  closeImport,
+  onFileDragOver,
+  onFileDragLeave,
+  onFileDrop
+} = useModelFileDrop({
+  targetCategory: () => dropCategory.value ?? category.value,
+  markBusy,
+  onSynced: resetImageState
+});
 let dragStartTimer: ReturnType<typeof setTimeout> | undefined;
 let resizeObserver: ResizeObserver | null = null;
 let savedScrollTop = 0;
@@ -217,7 +233,7 @@ const draggedModel = computed(() =>
   allModels.value.find((model) => model.id === draggingId.value)
 );
 const categoryPills = computed(() =>
-  draggedModel.value ? moveTargets.value : categories.value
+  draggedModel.value || isFileDrag.value ? moveTargets.value : categories.value
 );
 // Sort once per sort change; filtering (every keystroke) preserves that order.
 const sortedModels = computed(() =>
@@ -417,21 +433,30 @@ function onModelDragEnd() {
 }
 
 function canDropOn(target: string) {
-  return Boolean(draggedModel.value && draggedModel.value.category !== target);
+  return (
+    isFileDrag.value ||
+    Boolean(draggedModel.value && draggedModel.value.category !== target)
+  );
 }
 
 function onCategoryDragOver(event: DragEvent, target: string) {
   if (!canDropOn(target)) return;
+  dropCategory.value = target;
+  if (isFileDrag.value) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-  dropCategory.value = target;
 }
 
 function onCategoryDragLeave(target: string) {
   if (dropCategory.value === target) dropCategory.value = undefined;
 }
 
+watch(isFileDrag, (active) => {
+  if (!active) dropCategory.value = undefined;
+});
+
 function onCategoryDrop(event: DragEvent, target: string) {
+  if (isFileDrag.value) return;
   const model = draggedModel.value;
   onModelDragEnd();
   if (!model || model.category === target) return;
@@ -587,6 +612,9 @@ onUnmounted(() => {
     title="Model Manager"
     subtitle="Installed checkpoints, LoRAs, VAEs and more — synced with Civitai"
     content-class="flex flex-col overflow-hidden p-0"
+    @dragover="onFileDragOver"
+    @dragleave="onFileDragLeave"
+    @drop="onFileDrop"
   >
     <template #icon>
       <HardDrive class="h-4 w-4" />
@@ -1270,5 +1298,12 @@ onUnmounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ModelImportDialog
+      :open="isImportDialogOpen"
+      :status="importStatus"
+      @cancel="cancelImport"
+      @close="closeImport"
+    />
   </PageLayout>
 </template>

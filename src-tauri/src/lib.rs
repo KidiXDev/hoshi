@@ -6,6 +6,8 @@ mod comfy_paths;
 mod comfy_update;
 mod danbooru_wiki;
 mod download_manager;
+#[cfg(windows)]
+mod dropped_files;
 mod image_gallery;
 mod library_manager;
 mod model_manager;
@@ -403,6 +405,8 @@ pub fn run() {
                 window.set_icon(icon.clone())?;
                 #[cfg(windows)]
                 style_native_window(&window)?;
+                #[cfg(windows)]
+                dropped_files::install(&window)?;
             }
             Ok(())
         })
@@ -452,6 +456,7 @@ pub fn run() {
             model_manager::check_model_update,
             model_manager::delete_model,
             model_manager::move_model,
+            model_manager::import_model_files,
             model_manager::set_model_preview,
             download_manager::list,
             download_manager::pause,

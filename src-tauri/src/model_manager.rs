@@ -9,7 +9,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{self, File};
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -199,6 +199,16 @@ struct HashProgress {
     id: String,
     processed: u64,
     total: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportProgress {
+    file: String,
+    position: usize,
+    total: usize,
+    copied: u64,
+    size: u64,
 }
 
 #[derive(Clone, Serialize)]
@@ -405,7 +415,7 @@ impl ModelIndex {
 
     /// Memory → disk index → fresh scan. Does not clone the index; call
     /// `snapshot()` or `find()` afterwards.
-    fn ensure_loaded(
+    pub(crate) fn ensure_loaded(
         &self,
         app: &AppHandle,
         working_dir: &str,
@@ -454,6 +464,18 @@ impl ModelIndex {
             }
         }
         Ok(fallback.cloned())
+    }
+
+    pub(crate) fn category_root(&self, category: &str) -> Result<CategoryRoot, String> {
+        let category = canonical_category(category);
+        self.state
+            .read()
+            .map_err(lock_error)?
+            .roots
+            .iter()
+            .find(|root| root.category == category)
+            .cloned()
+            .ok_or_else(|| format!("No model folder is configured for {category}."))
     }
 
     fn is_loaded_for(&self, comfy_root: &Path) -> Result<bool, String> {
@@ -685,6 +707,12 @@ impl ProgressEmitter {
                     total,
                 },
             );
+        }
+    }
+
+    fn emit_import(&self, progress: &ImportProgress) {
+        if progress.copied == 0 || progress.copied == progress.size || self.should_emit(100) {
+            let _ = self.app.emit("model-import-progress", progress);
         }
     }
 }
@@ -980,7 +1008,7 @@ fn collect_model_files(
     }
 }
 
-fn is_model_file(path: &Path) -> bool {
+pub(crate) fn is_model_file(path: &Path) -> bool {
     let name = path
         .file_name()
         .and_then(|value| value.to_str())
@@ -1782,11 +1810,58 @@ pub async fn delete_model(id: String, index: State<'_, ModelIndex>) -> Result<Ve
     .await
 }
 
-fn move_file(from: &Path, to: &Path) -> Result<(), String> {
+const COPY_BUFFER: usize = 8 * 1024 * 1024;
+
+fn copy_into_partial(
+    from: &Path,
+    partial: &Path,
+    on_progress: &mut dyn FnMut(u64) -> bool,
+) -> Result<(), String> {
+    let mut source = open_sequential(from).map_err(|error| error.to_string())?;
+    let mut target = File::create(partial).map_err(|error| error.to_string())?;
+    let mut buffer = vec![0u8; COPY_BUFFER];
+    let mut copied = 0;
+    loop {
+        let read = source
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
+        if read == 0 {
+            return target.sync_all().map_err(|error| error.to_string());
+        }
+        target
+            .write_all(&buffer[..read])
+            .map_err(|error| error.to_string())?;
+        copied += read as u64;
+        if !on_progress(copied) {
+            return Err(CANCELLED.into());
+        }
+    }
+}
+
+fn copy_with_progress(
+    from: &Path,
+    to: &Path,
+    on_progress: &mut dyn FnMut(u64) -> bool,
+) -> Result<(), String> {
+    let partial = PathBuf::from(format!("{}.part", to.display()));
+    let copied = copy_into_partial(from, &partial, on_progress)
+        .and_then(|()| fs::rename(&partial, to).map_err(|error| error.to_string()));
+    if copied.is_err() {
+        let _ = fs::remove_file(&partial);
+    }
+    copied
+}
+
+fn move_file(
+    from: &Path,
+    to: &Path,
+    on_progress: &mut dyn FnMut(u64) -> bool,
+) -> Result<(), String> {
     match fs::rename(from, to) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::CrossesDevices => {
-            if let Err(error) = fs::copy(from, to).and_then(|_| fs::remove_file(from)) {
+            copy_with_progress(from, to, on_progress)?;
+            if let Err(error) = fs::remove_file(from) {
                 let _ = fs::remove_file(to);
                 return Err(error.to_string());
             }
@@ -1794,6 +1869,24 @@ fn move_file(from: &Path, to: &Path) -> Result<(), String> {
         }
         Err(error) => Err(error.to_string()),
     }
+}
+
+fn move_with_sidecars(
+    from: &Path,
+    to: &Path,
+    on_progress: &mut dyn FnMut(u64) -> bool,
+) -> Result<(), String> {
+    fs::create_dir_all(to.parent().ok_or("Invalid target path.")?)
+        .map_err(|error| error.to_string())?;
+    move_file(from, to, on_progress)?;
+    for candidate in sidecar_candidates(from) {
+        if let (true, Some(name)) = (candidate.is_file(), candidate.file_name()) {
+            if let Err(error) = move_file(&candidate, &to.with_file_name(name), &mut |_| true) {
+                eprintln!("Could not move {}: {error}", candidate.display());
+            }
+        }
+    }
+    Ok(())
 }
 
 fn move_model_blocking(index: &ModelIndex, id: &str, category: &str) -> Result<LocalModel, String> {
@@ -1807,26 +1900,14 @@ fn move_model_blocking(index: &ModelIndex, id: &str, category: &str) -> Result<L
     if !is_within_roots(&path, &roots) {
         return Err("Refusing to move a file outside the known model folders.".into());
     }
-    let root = roots
-        .iter()
-        .find(|root| root.category == category)
-        .ok_or_else(|| format!("No model folder is configured for {category}."))?;
+    let root = index.category_root(&category)?;
     let target = Path::new(&root.path).join(&model.relative_name);
     if target.exists() {
         return Err(format!("A file already exists at {}", target.display()));
     }
-    fs::create_dir_all(target.parent().ok_or("Invalid target path.")?)
-        .map_err(|error| error.to_string())?;
-    move_file(&path, &target)?;
-    for candidate in sidecar_candidates(&path) {
-        if let (true, Some(name)) = (candidate.is_file(), candidate.file_name()) {
-            if let Err(error) = move_file(&candidate, &target.with_file_name(name)) {
-                eprintln!("Could not move {}: {error}", candidate.display());
-            }
-        }
-    }
+    move_with_sidecars(&path, &target, &mut |_| true)?;
     index.clear_thumbnails(id);
-    let moved = describe_model(root, &target, Some(&model))?;
+    let moved = describe_model(&root, &target, Some(&model))?;
     {
         let mut state = index.state.write().map_err(lock_error)?;
         state.models.remove(id);
@@ -1844,6 +1925,107 @@ pub async fn move_model(
 ) -> Result<LocalModel, String> {
     let index = index.inner().clone();
     run_blocking(move || move_model_blocking(&index, &id, &category)).await
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedModels {
+    imported: Vec<ImportedModel>,
+    skipped: Vec<SkippedImport>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportedModel {
+    id: String,
+    file: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SkippedImport {
+    file: String,
+    reason: String,
+}
+
+fn import_model_file(
+    root: &Path,
+    source: &Path,
+    on_progress: &mut dyn FnMut(u64) -> bool,
+) -> Result<PathBuf, String> {
+    if !source.is_file() || !is_model_file(source) {
+        return Err("Not a model file.".into());
+    }
+    let target = root.join(source.file_name().ok_or("Invalid file name.")?);
+    if target.exists() {
+        return Err("Already in this folder.".into());
+    }
+    move_with_sidecars(source, &target, on_progress)?;
+    Ok(target)
+}
+
+fn import_model_paths(
+    root: &Path,
+    paths: &[String],
+    on_progress: &mut dyn FnMut(&ImportProgress) -> bool,
+) -> ImportedModels {
+    let mut result = ImportedModels::default();
+    for (position, path) in paths.iter().enumerate() {
+        let source = PathBuf::from(clean_path(path));
+        let file = source
+            .file_name()
+            .map_or_else(|| path.clone(), |name| name.to_string_lossy().into_owned());
+        let size = fs::metadata(&source).map_or(0, |metadata| metadata.len());
+        let mut report = |copied: u64| {
+            on_progress(&ImportProgress {
+                file: file.clone(),
+                position,
+                total: paths.len(),
+                copied,
+                size,
+            })
+        };
+        if !report(0) {
+            break;
+        }
+        match import_model_file(root, &source, &mut report) {
+            Ok(target) => {
+                report(size);
+                result.imported.push(ImportedModel {
+                    id: model_id_for(&target),
+                    file,
+                });
+            }
+            Err(reason) if reason == CANCELLED => result.skipped.push(SkippedImport {
+                file,
+                reason: "Cancelled.".into(),
+            }),
+            Err(reason) => result.skipped.push(SkippedImport { file, reason }),
+        }
+    }
+    result
+}
+
+#[tauri::command]
+pub async fn import_model_files(
+    app_handle: AppHandle,
+    paths: Vec<String>,
+    category: String,
+    index: State<'_, ModelIndex>,
+) -> Result<ImportedModels, String> {
+    let index = index.inner().clone();
+    run_blocking(move || {
+        index.cancel_sync.store(false, Ordering::Relaxed);
+        let root = index.category_root(&category)?;
+        let progress = ProgressEmitter::new(app_handle);
+        Ok(import_model_paths(
+            Path::new(&root.path),
+            &paths,
+            &mut |update| {
+                progress.emit_import(update);
+                !index.cancel_sync.load(Ordering::Relaxed)
+            },
+        ))
+    })
+    .await
 }
 
 fn image_extension(bytes: &[u8]) -> Result<&'static str, String> {
@@ -2299,6 +2481,138 @@ mod tests {
         index.update(blocked.clone()).unwrap();
         assert!(move_model_blocking(&index, &blocked.id, "diffusion_models").is_err());
         assert!(source.is_file());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn imports_model_with_sidecars_and_removes_the_source() {
+        let dir = temp_dir("import");
+        let root = dir.join("loras");
+        let source = dir.join("downloads").join("style.safetensors");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"weights").unwrap();
+        fs::write(source.with_file_name("style.preview.png"), b"png").unwrap();
+
+        let result =
+            import_model_paths(&root, &[format!("\"{}\"", source.display())], &mut |_| true);
+
+        let target = root.join("style.safetensors");
+        assert_eq!(result.imported[0].id, model_id_for(&target));
+        assert_eq!(result.imported[0].file, "style.safetensors");
+        assert!(result.skipped.is_empty());
+        assert!(target.is_file() && !source.exists());
+        assert!(target.with_file_name("style.preview.png").is_file());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn import_skips_non_model_files_and_keeps_them_in_place() {
+        let dir = temp_dir("import-other");
+        let root = dir.join("loras");
+        let source = dir.join("notes.txt");
+        fs::write(&source, b"notes").unwrap();
+
+        let result = import_model_paths(&root, &[source.display().to_string()], &mut |_| true);
+
+        assert!(result.imported.is_empty());
+        assert_eq!(result.skipped[0].file, "notes.txt");
+        assert!(source.is_file());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn import_keeps_both_files_when_the_target_exists() {
+        let dir = temp_dir("import-existing");
+        let root = dir.join("loras");
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("style.safetensors");
+        fs::write(&target, b"current").unwrap();
+        let source = dir.join("style.safetensors");
+        fs::write(&source, b"incoming").unwrap();
+
+        let result = import_model_paths(&root, &[source.display().to_string()], &mut |_| true);
+
+        assert_eq!(result.skipped[0].reason, "Already in this folder.");
+        assert_eq!(fs::read(&target).unwrap(), b"current");
+        assert!(source.is_file());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn import_reports_each_file_from_start_to_finish() {
+        let dir = temp_dir("import-progress");
+        let root = dir.join("loras");
+        let source = dir.join("style.safetensors");
+        fs::write(&source, b"weights").unwrap();
+        let mut updates = Vec::new();
+
+        import_model_paths(
+            &root,
+            &[source.display().to_string()],
+            &mut |update: &ImportProgress| {
+                updates.push((update.file.clone(), update.copied, update.size));
+                true
+            },
+        );
+
+        assert_eq!(
+            updates,
+            vec![
+                ("style.safetensors".to_string(), 0, 7),
+                ("style.safetensors".to_string(), 7, 7)
+            ]
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cancelled_import_leaves_the_remaining_files_in_place() {
+        let dir = temp_dir("import-cancel");
+        let root = dir.join("loras");
+        let source = dir.join("style.safetensors");
+        fs::write(&source, b"weights").unwrap();
+
+        let result = import_model_paths(&root, &[source.display().to_string()], &mut |_| false);
+
+        assert!(result.imported.is_empty());
+        assert!(source.is_file());
+        assert!(!root.join("style.safetensors").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn copy_reports_bytes_and_leaves_no_partial_file() {
+        let dir = temp_dir("copy");
+        let source = dir.join("source.safetensors");
+        let target = dir.join("target.safetensors");
+        fs::write(&source, b"weights").unwrap();
+        let mut reported = 0;
+
+        copy_with_progress(&source, &target, &mut |copied| {
+            reported = copied;
+            true
+        })
+        .unwrap();
+
+        assert_eq!(reported, 7);
+        assert_eq!(fs::read(&target).unwrap(), b"weights");
+        assert!(!dir.join("target.safetensors.part").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn cancelled_copy_keeps_the_source_and_removes_the_partial_file() {
+        let dir = temp_dir("copy-cancel");
+        let source = dir.join("source.safetensors");
+        let target = dir.join("target.safetensors");
+        fs::write(&source, b"weights").unwrap();
+
+        let result = copy_with_progress(&source, &target, &mut |_| false);
+
+        assert_eq!(result, Err(CANCELLED.to_string()));
+        assert!(source.is_file());
+        assert!(!target.exists());
+        assert!(!dir.join("target.safetensors.part").exists());
         let _ = fs::remove_dir_all(dir);
     }
 

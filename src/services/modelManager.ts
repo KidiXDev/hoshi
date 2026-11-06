@@ -1,6 +1,26 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { listen, once, type UnlistenFn } from '@tauri-apps/api/event';
 import { customSchemeUrl } from '../lib/customScheme';
+
+declare global {
+  interface Window {
+    chrome?: {
+      webview?: {
+        postMessageWithAdditionalObjects(
+          message: string,
+          objects: ArrayLike<File>
+        ): void;
+      };
+    };
+  }
+}
+
+const MODEL_FILE_PATTERN = /\.(?:safetensors|ckpt|pt|pth|bin|sft|gguf|onnx)$/iu;
+const DROPPED_PATHS_TIMEOUT_MS = 10_000;
+
+export function isModelFileName(name: string) {
+  return MODEL_FILE_PATTERN.test(name);
+}
 
 /** Mirrors `model_manager::CivitaiSummary` (Rust). */
 export interface CivitaiSummary {
@@ -175,6 +195,44 @@ export function moveModel(id: string, category: string) {
   return invoke<LocalModel>('move_model', { id, category });
 }
 
+/** Mirrors `model_manager::ImportedModels` (Rust). */
+export interface ImportedModels {
+  imported: { id: string; file: string }[];
+  skipped: { file: string; reason: string }[];
+}
+
+/** Mirrors `model_manager::ImportProgress` (Rust). */
+export interface ModelImportProgress {
+  file: string;
+  position: number;
+  total: number;
+  copied: number;
+  size: number;
+}
+
+export function importModelFiles(paths: string[], category: string) {
+  return invoke<ImportedModels>('import_model_files', { paths, category });
+}
+
+export async function droppedFilePaths(files: File[]): Promise<string[]> {
+  const webview = window.chrome?.webview;
+  if (!webview) throw new Error('Dropping files needs the desktop app.');
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error('Could not read the dropped file paths.')),
+      DROPPED_PATHS_TIMEOUT_MS
+    );
+    once<string[]>('dropped-file-paths', (event) => {
+      clearTimeout(timeout);
+      resolve(event.payload);
+    })
+      .then(() =>
+        webview.postMessageWithAdditionalObjects('koharu-dropped-files', files)
+      )
+      .catch(reject);
+  });
+}
+
 export function setModelPreview(id: string, source: PreviewSource) {
   return invoke<LocalModel>('set_model_preview', { id, source });
 }
@@ -213,6 +271,14 @@ export function onModelHashProgress(
   handler: (progress: ModelHashProgress) => void
 ): Promise<UnlistenFn> {
   return listen<ModelHashProgress>('model-hash-progress', (event) =>
+    handler(event.payload)
+  );
+}
+
+export function onModelImportProgress(
+  handler: (progress: ModelImportProgress) => void
+): Promise<UnlistenFn> {
+  return listen<ModelImportProgress>('model-import-progress', (event) =>
     handler(event.payload)
   );
 }
