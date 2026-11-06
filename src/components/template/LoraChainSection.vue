@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import LoraPresetDialog from '../common/LoraPresetDialog.vue';
 import ModelGridSelectorDialog from '../common/ModelGridSelectorDialog.vue';
@@ -58,6 +59,14 @@ const isLoraPresetManagerOpen = ref(false);
 const isLoraGridOpen = ref(false);
 const editingLoraIndex = ref<number | null>(null);
 const failedImageSet = ref(new Set<string>());
+
+const allLorasEnabled = computed({
+  get: () =>
+    loras.value.length > 0 && loras.value.every((lora) => lora.enabled),
+  set: (enabled: boolean) => {
+    for (const lora of loras.value) lora.enabled = enabled;
+  }
+});
 
 const loraOptions = computed(() => {
   if (comfyStore.availableLoras.length > 0) {
@@ -131,6 +140,13 @@ function showPreview(name: string, event: PointerEvent) {
         >
           LOCKED
         </span>
+        <Switch
+          v-if="loras.length > 0"
+          v-model="allLorasEnabled"
+          :disabled="!comfyStore.isConnected"
+          title="Toggle all LoRAs"
+          aria-label="Toggle all LoRAs"
+        />
       </div>
 
       <div class="flex items-center gap-1.5">
