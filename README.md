@@ -32,11 +32,11 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 
 ### Generate
 
-- **Workflow Generator** — txt2img and img2img for Anima and MOSS-Image, plus Anima inpainting with a built-in mask painter. Switch model profiles to keep separate generation settings, with resolution presets, sampler/scheduler selection, seed control and variation seeds.
+- **Workflow Generator** — txt2img and img2img for Anima and MOSS-Image, plus Anima inpainting with a built-in mask painter and MOSS-Image prompt-based image editing. Switch model profiles to keep separate generation settings, with resolution presets, sampler/scheduler selection, seed control and variation seeds.
 - **MOSS-Image layouts** — draw, move and resize boxes for objects, characters and exact text, with a scene caption and descriptions for each box. Import layout drafts from Maya or the prompt enhancer.
 - **Prompting** — tag autocomplete from a Danbooru tag CSV you drop into the app's `tags` folder (works without ComfyUI running), prompt chips, weight hotkeys, find-in-prompt, negative prompt bundles, and `{a|b}` dynamic prompts and `__wildcards__` (from the app's `wildcards` folder) resolved from the seed.
 - **LoRA chain** — stack LoRAs with per-item strength and pull trigger words from Civitai sidecars or safetensors metadata.
-- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance and Spectrum acceleration.
+- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance, temporal score rescaling, AuraFlow sampling and Spectrum acceleration.
 - **Live output** — streaming latent previews, progress, batch queueing, generation history with "reuse settings", and the elapsed-time HUD.
 
 ### Post-process
@@ -50,14 +50,14 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 
 - **Booru Gallery** — Danbooru, Gelbooru, Safebooru, AI Tag, yande.re and Konachan with per-site credentials, tag autocomplete, a post inspector and a built-in Cloudflare verification window.
 - **Animadex** — explore characters and artists, and push their tags straight into the prompt.
-- **Civitai** — browse models, inspect versions and samples, and download files with a background download manager.
+- **Civitai** — browse models, inspect versions and samples, and download files with a background download manager that also accepts direct links, such as Hugging Face files, into a folder you pick.
 - **Danbooru Wiki** — read tag wikis in-app with pinned pages and DText rendering.
 
 ### Manage
 
 - **Gallery** — indexed output viewer with thumbnails, metadata search (`model:` filters, tags), A/B compare modes and a lightbox inspector.
 - **Library** — prompt presets, LoRA presets and character entries (with thumbnails and notes that the assistant can read).
-- **Model Manager** — indexes every ComfyUI model folder (including `extra_model_paths.yaml`), hashes files, syncs metadata and previews from Civitai, checks for updates and manages preview images.
+- **Model Manager** — indexes every ComfyUI model folder (including `extra_model_paths.yaml`), hashes files, syncs metadata and previews from Civitai, checks for updates and manages preview images. Drop model files from File Explorer onto a folder to move them in and sync them.
 - **Embedded ComfyUI editor** — the full ComfyUI frontend inside Hoshi, with one-click "open this generation as a workflow".
 - **Server terminal** — launch/stop ComfyUI with your Python and arguments, ANSI-colored log streaming and a log drawer available on every page.
 

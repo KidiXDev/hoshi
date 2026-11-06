@@ -83,6 +83,7 @@ koharu/
 │   │   ├── image_gallery.rs      # Output index + thumbnail cache
 │   │   ├── model_manager.rs      # Local model index, hashing, Civitai sync, previews
 │   │   ├── library_manager.rs  prompt_suggestions.rs  download_manager.rs
+│   │   ├── dropped_files.rs      # WebView2 bridge returning real paths for files dropped from Explorer (Windows only)
 │   │   ├── civitai.rs  animadex.rs  danbooru_wiki.rs  network_cache.rs
 │   │   └── booru/                # Provider trait (mod.rs) + API engines danbooru/gelbooru/moebooru; sources/ has one file per site
 │   ├── Cargo.toml  tauri.conf.json  capabilities/default.json
@@ -108,7 +109,7 @@ koharu/
 
 7. **Library & presets** — `library_manager.rs` stores prompts, LoRA presets and characters as JSON with JPEG thumbnails; LoRA presets only replace the LoRA stack. Legacy `lora_presets` app data is migrated into the Library on startup.
 
-8. **Drag & drop** — `dragDropEnabled: false`, so the webview handles drops; `main.ts` cancels stray file/link drops (they would otherwise navigate the app away). Every drop zone uses `useImageDropZone`, which accepts files and `text/uri-list` (gallery/history drags).
+8. **Drag & drop** — `dragDropEnabled: false`, so the webview handles drops; `main.ts` cancels stray file/link drops (they would otherwise navigate the app away). Every image drop zone uses `useImageDropZone`, which accepts files and `text/uri-list` (gallery/history drags). Model Manager uses `useModelFileDrop` instead: HTML5 `File` objects carry no path, so `droppedFilePaths` posts them with `chrome.webview.postMessageWithAdditionalObjects` and `dropped_files.rs` emits the real paths. The message must be a string: wry's handler runs first and fails on anything else, and WebView2 then never calls `dropped_files.rs`. It keeps `dropEffect = 'copy'` even though the import moves files, because reporting `move` can make Explorer delete the source itself. It uses plain handlers because `useDropZone` sets `dropEffect = 'none'` on bubbling in-app model drags.
 
 ---
 
