@@ -1,44 +1,41 @@
 <script setup lang="ts">
+import BooruGridSkeleton from '@/components/booru/BooruGridSkeleton.vue';
 import BooruPostInspector from '@/components/booru/BooruPostInspector.vue';
-import { ratingColorClass } from '@/utils/booruPresentation';
+import BooruPostTile from '@/components/booru/BooruPostTile.vue';
 import BooruSearchInput from '@/components/booru/BooruSearchInput.vue';
 import {
   computed,
+  nextTick,
   onActivated,
   onDeactivated,
   onMounted,
   onUnmounted,
-  nextTick,
   ref,
+  shallowRef,
   watch
 } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { useVirtualizer } from '@tanstack/vue-virtual';
 import {
   AlertCircle,
   Check,
   ChevronDown,
-  Copy,
-  ExternalLink,
   Image as ImageIcon,
+  LayoutDashboard,
+  LayoutGrid,
   Loader2,
+  RefreshCw,
+  Rows3,
   Search,
   ShieldAlert,
   ShieldCheck,
-  ZoomIn
+  Sparkles,
+  X
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import NoticeBanner from '@/components/layout/NoticeBanner.vue';
 import PageLayout from '@/components/layout/PageLayout.vue';
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger
-} from '@/components/ui/context-menu';
 import {
   Select,
   SelectContent,
@@ -48,10 +45,16 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import {
+  computeBooruGridLayout,
+  filterVisibleBoxes,
+  type BooruGridDensity,
+  type BooruLayoutMode
+} from '@/utils/booruGridLayout';
+import { ratingColorClass } from '@/utils/booruPresentation';
+import {
   fetchBooruSettings,
   fetchBooruSources,
   formatBooruWarnings,
-  getBooruMediaUrl,
   normalizeBooruRatings,
   searchBooru,
   solveBooruCloudflare,
@@ -61,9 +64,102 @@ import {
 } from '../services/booruGallery';
 import { loadAppData, saveAppData } from '../services/appStorage';
 
+defineOptions({ name: 'BooruGalleryView' });
+
 interface BooruGalleryState {
   ratingsBySource?: Record<string, unknown>;
+  layoutMode?: BooruLayoutMode;
+  gridDensity?: BooruGridDensity;
+  selectedSource?: string;
+  sortBySource?: Record<string, string>;
 }
+
+const LOCAL_PREFS_KEY = 'koharu:booru_gallery_prefs';
+
+function isValidLayoutMode(value: unknown): value is BooruLayoutMode {
+  return value === 'masonry' || value === 'justified' || value === 'cards';
+}
+
+function isValidGridDensity(value: unknown): value is BooruGridDensity {
+  return value === 'compact' || value === 'comfortable' || value === 'spacious';
+}
+
+function readLocalPrefs(): {
+  layoutMode?: BooruLayoutMode;
+  gridDensity?: BooruGridDensity;
+} {
+  try {
+    const raw = localStorage.getItem(LOCAL_PREFS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      layoutMode: isValidLayoutMode(parsed.layoutMode)
+        ? parsed.layoutMode
+        : undefined,
+      gridDensity: isValidGridDensity(parsed.gridDensity)
+        ? parsed.gridDensity
+        : undefined
+    };
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalPrefs(mode: BooruLayoutMode, density: BooruGridDensity) {
+  try {
+    localStorage.setItem(
+      LOCAL_PREFS_KEY,
+      JSON.stringify({ layoutMode: mode, gridDensity: density })
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+const LAYOUT_OPTIONS: {
+  value: BooruLayoutMode;
+  label: string;
+  title: string;
+  icon: typeof LayoutDashboard;
+}[] = [
+  {
+    value: 'masonry',
+    label: 'Masonry',
+    title: 'Masonry columns (maintains image aspect ratio)',
+    icon: LayoutDashboard
+  },
+  {
+    value: 'justified',
+    label: 'Rows',
+    title: 'Justified rows (maintains image aspect ratio)',
+    icon: Rows3
+  },
+  {
+    value: 'cards',
+    label: 'Cards',
+    title: 'Uniform 3:4 portrait cards',
+    icon: LayoutGrid
+  }
+];
+
+const DENSITY_OPTIONS: {
+  value: BooruGridDensity;
+  label: string;
+  title: string;
+}[] = [
+  { value: 'compact', label: 'S', title: 'Compact tiles (more columns)' },
+  { value: 'comfortable', label: 'M', title: 'Comfortable tile size' },
+  { value: 'spacious', label: 'L', title: 'Large tiles (fewer columns)' }
+];
+
+const QUICK_SUGGESTION_TAGS = [
+  '1girl',
+  'solo',
+  'scenery',
+  'sky',
+  'dress',
+  'smile'
+];
 
 const detailDialog = ref<InstanceType<typeof BooruPostInspector>>();
 function openDetail(post: BooruPost) {
@@ -74,82 +170,139 @@ const route = useRoute();
 const router = useRouter();
 const sources = ref<BooruSource[]>([]);
 const settings = ref<BooruSettings | null>(null);
-const selectedSource = ref('');
-const query = ref('');
+const selectedSource = shallowRef('');
+const query = shallowRef('');
 
-// `?q=` from other views (e.g. wiki "Search Booru"): fill the field and run.
-// Query is consumed via replace so re-sending the same tag triggers again.
+const initialPrefs = readLocalPrefs();
+const layoutMode = shallowRef<BooruLayoutMode>(
+  initialPrefs.layoutMode ?? 'masonry'
+);
+const gridDensity = shallowRef<BooruGridDensity>(
+  initialPrefs.gridDensity ?? 'comfortable'
+);
+let userChangedLayout = false;
+let userChangedDensity = false;
+
 watch(
   () => (route.name === 'booru' ? route.query.q : undefined),
   (q) => {
     if (typeof q !== 'string' || !q) return;
     query.value = q;
     void router.replace({ path: '/booru' });
-    // Before sources load, loadSources() runs the first search with query.value.
     if (sources.value.length > 0) void runSearch(true);
   },
   { immediate: true }
 );
-const selectedSort = ref('latest');
+
+const selectedSort = shallowRef('latest');
 const selectedRatings = ref<string[]>([]);
 const posts = ref<BooruPost[]>([]);
-const nextCursor = ref<string | null>(null);
-const ended = ref(false);
-const isLoading = ref(false);
-const isSetupLoading = ref(false);
-const errorMessage = ref('');
+const nextCursor = shallowRef<string | null>(null);
+const ended = shallowRef(false);
+const isLoading = shallowRef(false);
+const isSetupLoading = shallowRef(false);
+const errorMessage = shallowRef('');
 const warnings = ref<string[]>([]);
 let ratingsBySource: Record<string, unknown> = {};
 
 const scrollViewport = ref<HTMLElement | null>(null);
-const gridWidth = ref(1200);
+const gridWidth = shallowRef(1200);
+const viewportHeight = shallowRef(800);
+const scrollTop = shallowRef(0);
 let resizeObserver: ResizeObserver | undefined;
 let savedScrollTop = 0;
 
-const loadedImages = ref<Set<string>>(new Set());
-const isViewActive = ref(true);
+const loadedImages = shallowRef<Record<string, true>>({});
+const measuredDimensions = shallowRef<
+  Record<string, { width: number; height: number }>
+>({});
+const isViewActive = shallowRef(true);
 
-// Virtualization geometry parameters
 const GRID_GAP = 14;
-
-const CARD_ASPECT_RATIO = 4 / 3;
-const OVERSCAN_ROWS = 3;
+const OVERSCAN_PX = 800;
 
 const activeSource = computed(() =>
   sources.value.find((source) => source.source === selectedSource.value)
 );
 const visibleWarnings = computed(() => formatBooruWarnings(warnings.value));
 
-const columns = computed(() => {
-  if (gridWidth.value < 540) return 2;
-  if (gridWidth.value < 840) return 3;
-  if (gridWidth.value < 1140) return 4;
-  if (gridWidth.value < 1500) return 5;
-  if (gridWidth.value < 1860) return 6;
-  return 7;
-});
-
-const cardWidth = computed(() => {
-  const totalGapWidth = GRID_GAP * (columns.value - 1);
-  return Math.max(80, (gridWidth.value - totalGapWidth) / columns.value);
-});
-const cardImageHeight = computed(() => cardWidth.value * CARD_ASPECT_RATIO);
-const rowHeight = computed(() => cardImageHeight.value + GRID_GAP);
-const totalRows = computed(() => Math.ceil(posts.value.length / columns.value));
-
-const rowVirtualizer = useVirtualizer(
-  computed(() => ({
-    count: totalRows.value,
-    enabled: isViewActive.value,
-    getScrollElement: () => scrollViewport.value,
-    initialOffset: () => savedScrollTop,
-    estimateSize: () => rowHeight.value,
-    overscan: OVERSCAN_ROWS
-  }))
+const activeQueryTags = computed(() =>
+  query.value
+    .split(/[\s,]+/u)
+    .map((token) => token.trim())
+    .filter(Boolean)
 );
 
-const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems());
-const totalVirtualHeight = computed(() => rowVirtualizer.value.getTotalSize());
+const postMap = computed(() => {
+  const map = new Map<string, BooruPost>();
+  for (const post of posts.value) {
+    map.set(`${post.source}:${post.postId}`, post);
+  }
+  return map;
+});
+
+const sizablePosts = computed(() =>
+  posts.value.map((post) => {
+    const key = `${post.source}:${post.postId}`;
+    const measured = measuredDimensions.value[key];
+    return {
+      key,
+      width: post.width > 0 ? post.width : (measured?.width ?? 0),
+      height: post.height > 0 ? post.height : (measured?.height ?? 0)
+    };
+  })
+);
+
+const gridLayout = computed(() =>
+  computeBooruGridLayout({
+    items: sizablePosts.value,
+    containerWidth: gridWidth.value,
+    mode: layoutMode.value,
+    density: gridDensity.value,
+    gap: GRID_GAP
+  })
+);
+
+const visibleBoxes = computed(() => {
+  if (!isViewActive.value) return [];
+  return filterVisibleBoxes(
+    gridLayout.value.boxes,
+    scrollTop.value,
+    viewportHeight.value,
+    OVERSCAN_PX
+  );
+});
+
+const visibleTiles = computed(() =>
+  visibleBoxes.value.flatMap((box) => {
+    const post = postMap.value.get(box.key);
+    return post ? [{ box, post }] : [];
+  })
+);
+
+function persistGalleryState() {
+  writeLocalPrefs(layoutMode.value, gridDensity.value);
+  void saveAppData('booru_gallery_state', {
+    ratingsBySource,
+    layoutMode: layoutMode.value,
+    gridDensity: gridDensity.value,
+    selectedSource: selectedSource.value || undefined
+  }).catch((error) =>
+    console.error('Failed to save Booru gallery state:', error)
+  );
+}
+
+function setLayoutMode(mode: BooruLayoutMode) {
+  userChangedLayout = true;
+  layoutMode.value = mode;
+  persistGalleryState();
+}
+
+function setGridDensity(density: BooruGridDensity) {
+  userChangedDensity = true;
+  gridDensity.value = density;
+  persistGalleryState();
+}
 
 function ratingsForSource(source: string) {
   const available =
@@ -187,16 +340,33 @@ function formatSortLabel(sort: string): string {
   }
 }
 
-function isImageLoaded(key: string): boolean {
-  return loadedImages.value.has(key);
-}
-
-function onImageLoad(key: string) {
-  loadedImages.value.add(key);
-}
-
-function mediaUrl(post: BooruPost) {
-  return getBooruMediaUrl(post.source, post.previewUrl || post.sampleUrl);
+function onTileImageLoad(payload: {
+  key: string;
+  naturalWidth: number;
+  naturalHeight: number;
+}) {
+  if (!loadedImages.value[payload.key]) {
+    loadedImages.value = {
+      ...loadedImages.value,
+      [payload.key]: true
+    };
+  }
+  const post = postMap.value.get(payload.key);
+  if (
+    post &&
+    (post.width <= 0 || post.height <= 0) &&
+    payload.naturalWidth > 0 &&
+    payload.naturalHeight > 0 &&
+    !measuredDimensions.value[payload.key]
+  ) {
+    measuredDimensions.value = {
+      ...measuredDimensions.value,
+      [payload.key]: {
+        width: payload.naturalWidth,
+        height: payload.naturalHeight
+      }
+    };
+  }
 }
 
 function readableError(error: unknown) {
@@ -225,11 +395,33 @@ async function loadSources() {
       !Array.isArray(storedRatings)
         ? storedRatings
         : {};
-    selectedSource.value = availableSources.some(
-      (source) => source.source === remoteSettings.defaultSource
-    )
-      ? remoteSettings.defaultSource
-      : availableSources[0]?.source || '';
+    if (
+      !userChangedLayout &&
+      !initialPrefs.layoutMode &&
+      isValidLayoutMode(savedState?.layoutMode)
+    ) {
+      layoutMode.value = savedState.layoutMode;
+    }
+    if (
+      !userChangedDensity &&
+      !initialPrefs.gridDensity &&
+      isValidGridDensity(savedState?.gridDensity)
+    ) {
+      gridDensity.value = savedState.gridDensity;
+    }
+    writeLocalPrefs(layoutMode.value, gridDensity.value);
+    const preferredSource =
+      savedState?.selectedSource &&
+      availableSources.some(
+        (source) => source.source === savedState.selectedSource
+      )
+        ? savedState.selectedSource
+        : availableSources.some(
+              (source) => source.source === remoteSettings.defaultSource
+            )
+          ? remoteSettings.defaultSource
+          : availableSources[0]?.source || '';
+    selectedSource.value = preferredSource;
     selectedSort.value =
       activeSource.value?.sortValues[0] ||
       (selectedSource.value === 'aitag' ? 'new' : 'latest');
@@ -246,6 +438,12 @@ async function changeSource(source: string) {
   selectedSource.value = source;
   selectedSort.value = activeSource.value?.sortValues[0] || 'latest';
   selectedRatings.value = ratingsForSource(source);
+  persistGalleryState();
+  await runSearch(true);
+}
+
+async function changeSort(sort: string) {
+  selectedSort.value = sort;
   await runSearch(true);
 }
 
@@ -258,9 +456,24 @@ function toggleRating(rating: string) {
     nextRatings
   );
   ratingsBySource[selectedSource.value] = selectedRatings.value;
-  void saveAppData('booru_gallery_state', { ratingsBySource }).catch((error) =>
-    console.error('Failed to save Booru gallery state:', error)
-  );
+  persistGalleryState();
+  void runSearch(true);
+}
+
+function removeQueryTag(tagToRemove: string) {
+  const remaining = activeQueryTags.value.filter((tag) => tag !== tagToRemove);
+  query.value = remaining.join(' ');
+  void runSearch(true);
+}
+
+function clearQuery() {
+  query.value = '';
+  void runSearch(true);
+}
+
+function applySuggestionTag(tag: string) {
+  query.value = tag;
+  void runSearch(true);
 }
 
 const isCloudflareBlocked = computed(
@@ -270,7 +483,7 @@ const isCloudflareBlocked = computed(
       errorMessage.value.includes('403'))
 );
 
-const isSolvingCloudflare = ref(false);
+const isSolvingCloudflare = shallowRef(false);
 
 async function handleSolveCloudflare() {
   if (isSolvingCloudflare.value) return;
@@ -303,8 +516,10 @@ async function runSearch(reset = false) {
     posts.value = [];
     nextCursor.value = null;
     ended.value = false;
-    loadedImages.value.clear();
+    loadedImages.value = {};
+    measuredDimensions.value = {};
     savedScrollTop = 0;
+    scrollTop.value = 0;
     scrollViewport.value?.scrollTo({ top: 0 });
   }
   try {
@@ -332,41 +547,38 @@ async function runSearch(reset = false) {
   }
 }
 
-function handleScroll(e: Event) {
-  const target = e.target as HTMLElement;
-  if (!target) return;
-  savedScrollTop = target.scrollTop;
+function maybeLoadMore() {
   if (
+    !isViewActive.value ||
     isLoading.value ||
     ended.value ||
     Boolean(errorMessage.value) ||
     posts.value.length === 0
-  )
-    return;
-  const bottomThreshold = 600;
-  if (
-    target.scrollHeight - target.scrollTop - target.clientHeight <
-    bottomThreshold
   ) {
+    return;
+  }
+  const remaining =
+    gridLayout.value.totalHeight - (scrollTop.value + viewportHeight.value);
+  if (remaining < 700) {
     void runSearch(false);
   }
 }
 
-watch(virtualRows, (rows) => {
-  if (
-    !isViewActive.value ||
-    rows.length === 0 ||
-    isLoading.value ||
-    ended.value ||
-    Boolean(errorMessage.value) ||
-    posts.value.length === 0
-  )
-    return;
-  const lastRow = rows.at(-1);
-  if (lastRow && lastRow.index >= totalRows.value - 2) {
-    void runSearch(false);
+function handleScroll(e: Event) {
+  const target = e.target as HTMLElement;
+  if (!target) return;
+  savedScrollTop = target.scrollTop;
+  scrollTop.value = target.scrollTop;
+  viewportHeight.value = target.clientHeight;
+  maybeLoadMore();
+}
+
+watch(
+  () => gridLayout.value.totalHeight,
+  () => {
+    maybeLoadMore();
   }
-});
+);
 
 function copyPostUrl(url: string) {
   void navigator.clipboard.writeText(url);
@@ -382,9 +594,11 @@ async function activateView() {
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => resolve());
   });
-  rowVirtualizer.value.measure();
-  rowVirtualizer.value.scrollToOffset(savedScrollTop);
-  scrollViewport.value?.dispatchEvent(new Event('scroll'));
+  if (scrollViewport.value) {
+    scrollViewport.value.scrollTop = savedScrollTop;
+    scrollTop.value = savedScrollTop;
+    viewportHeight.value = scrollViewport.value.clientHeight;
+  }
 }
 
 function deactivateView() {
@@ -397,12 +611,12 @@ onMounted(() => {
     resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         if (entry.contentRect.width > 0) {
-          // 20px padding left + right
-          gridWidth.value = entry.contentRect.width - 40;
+          gridWidth.value = Math.max(240, entry.contentRect.width - 40);
+          viewportHeight.value = Math.max(400, entry.contentRect.height);
         }
       }
     });
-    activateView();
+    void activateView();
   }
   void loadSources();
 });
@@ -422,6 +636,79 @@ onUnmounted(deactivateView);
       <ImageIcon class="h-4 w-4" />
     </template>
 
+    <template #title-extra>
+      <Badge
+        v-if="posts.length"
+        variant="secondary"
+        class="font-mono text-xs font-medium tabular-nums"
+      >
+        {{ posts.length.toLocaleString() }} loaded
+      </Badge>
+    </template>
+
+    <template #actions>
+      <!-- Layout Mode Switcher (Masonry / Justified Rows / Cards) -->
+      <div
+        class="border-border/80 bg-secondary/60 flex items-center rounded-lg border p-0.5"
+        role="group"
+        aria-label="Gallery layout mode"
+      >
+        <button
+          v-for="option in LAYOUT_OPTIONS"
+          :key="option.value"
+          type="button"
+          :title="option.title"
+          :aria-pressed="layoutMode === option.value"
+          class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+          :class="
+            layoutMode === option.value
+              ? 'bg-primary text-primary-foreground shadow-xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="setLayoutMode(option.value)"
+        >
+          <component :is="option.icon" class="size-3.5" />
+          <span class="hidden sm:inline">{{ option.label }}</span>
+        </button>
+      </div>
+
+      <!-- Density Switcher (S / M / L) -->
+      <div
+        class="border-border/80 bg-secondary/60 hidden items-center rounded-lg border p-0.5 md:flex"
+        role="group"
+        aria-label="Grid tile density"
+      >
+        <button
+          v-for="density in DENSITY_OPTIONS"
+          :key="density.value"
+          type="button"
+          :title="density.title"
+          :aria-pressed="gridDensity === density.value"
+          class="rounded-md px-2 py-1 font-mono text-xs font-semibold transition-colors"
+          :class="
+            gridDensity === density.value
+              ? 'bg-accent text-foreground shadow-xs'
+              : 'text-muted-foreground hover:text-foreground'
+          "
+          @click="setGridDensity(density.value)"
+        >
+          {{ density.label }}
+        </button>
+      </div>
+
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-8 text-xs"
+        :disabled="!selectedSource || isLoading"
+        title="Refresh search results"
+        @click="runSearch(true)"
+      >
+        <RefreshCw class="size-3.5" :class="{ 'animate-spin': isLoading }" />
+        <span class="hidden sm:inline">Refresh</span>
+      </Button>
+    </template>
+
     <template #below-header>
       <div
         class="border-border/80 bg-card/70 relative z-20 flex shrink-0 flex-col gap-3 border-b px-5 py-3.5 backdrop-blur-md"
@@ -437,7 +724,7 @@ onUnmounted(deactivateView);
             :disabled="!sources.length || isLoading"
             @update:model-value="changeSource(String($event))"
           >
-            <SelectTrigger class="bg-secondary/80 h-9 w-38 text-xs font-medium">
+            <SelectTrigger class="bg-secondary/80 h-9 w-40 text-xs font-medium">
               <SelectValue placeholder="Source">
                 {{ activeSource?.displayName || 'Source' }}
               </SelectValue>
@@ -456,8 +743,13 @@ onUnmounted(deactivateView);
           </Select>
 
           <BooruSearchInput v-model="query" :disabled="!sources.length" />
+
           <!-- Sort Selector -->
-          <Select v-model="selectedSort" :disabled="!activeSource || isLoading">
+          <Select
+            :model-value="selectedSort"
+            :disabled="!activeSource || isLoading"
+            @update:model-value="changeSort(String($event))"
+          >
             <SelectTrigger class="bg-secondary/80 h-9 w-34 text-xs font-medium">
               <SelectValue placeholder="Sort">
                 {{ formatSortLabel(selectedSort) }}
@@ -492,37 +784,68 @@ onUnmounted(deactivateView);
           </Button>
         </form>
 
-        <!-- Rating Filters -->
+        <!-- Rating Filters & Active Query Tag Chips -->
         <div
-          v-if="activeSource?.ratings.length"
-          class="flex flex-wrap items-center gap-2"
+          v-if="activeSource?.ratings.length || activeQueryTags.length"
+          class="flex flex-wrap items-center justify-between gap-3"
         >
-          <span class="text-muted-foreground text-xs font-medium">
-            Ratings:
-          </span>
-          <button
-            v-for="rating in activeSource.ratings"
-            :key="rating"
-            type="button"
-            class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-medium capitalize transition-all"
-            :class="
-              selectedRatings.includes(rating)
-                ? ratingColorClass(rating)
-                : 'border-border/80 bg-secondary/40 text-muted-foreground hover:text-foreground'
-            "
-            :aria-pressed="selectedRatings.includes(rating)"
-            @click="toggleRating(rating)"
+          <div
+            v-if="activeSource?.ratings.length"
+            class="flex flex-wrap items-center gap-1.5"
           >
-            <span
-              class="h-1.5 w-1.5 rounded-full"
+            <span class="text-muted-foreground mr-1 text-xs font-medium">
+              Rating:
+            </span>
+            <button
+              v-for="rating in activeSource.ratings"
+              :key="rating"
+              type="button"
+              class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-medium capitalize transition-all"
               :class="
                 selectedRatings.includes(rating)
-                  ? 'bg-current shadow-xs'
-                  : 'bg-muted-foreground'
+                  ? ratingColorClass(rating)
+                  : 'border-border/80 bg-secondary/40 text-muted-foreground hover:text-foreground'
               "
-            />
-            <span>{{ rating }}</span>
-          </button>
+              :aria-pressed="selectedRatings.includes(rating)"
+              @click="toggleRating(rating)"
+            >
+              <span
+                class="h-1.5 w-1.5 rounded-full"
+                :class="
+                  selectedRatings.includes(rating)
+                    ? 'bg-current shadow-xs'
+                    : 'bg-muted-foreground'
+                "
+              />
+              <span>{{ rating }}</span>
+            </button>
+          </div>
+
+          <div
+            v-if="activeQueryTags.length"
+            class="flex flex-wrap items-center gap-1.5"
+          >
+            <span class="text-muted-foreground text-xs">Active tags:</span>
+            <button
+              v-for="tag in activeQueryTags"
+              :key="tag"
+              type="button"
+              class="border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-xs transition-colors"
+              :title="`Remove tag '${tag}'`"
+              @click="removeQueryTag(tag)"
+            >
+              <span>{{ tag }}</span>
+              <X class="size-3" />
+            </button>
+            <button
+              v-if="activeQueryTags.length > 1"
+              type="button"
+              class="text-muted-foreground hover:text-foreground px-1.5 text-xs underline-offset-2 hover:underline"
+              @click="clearQuery"
+            >
+              Clear all
+            </button>
+          </div>
         </div>
       </div>
     </template>
@@ -551,8 +874,8 @@ onUnmounted(deactivateView);
               <Button
                 size="sm"
                 class="cursor-pointer bg-amber-600 font-medium text-white shadow-xs hover:bg-amber-500"
-                @click="handleSolveCloudflare"
                 :disabled="isSolvingCloudflare"
+                @click="handleSolveCloudflare"
               >
                 <Loader2
                   v-if="isSolvingCloudflare"
@@ -577,31 +900,31 @@ onUnmounted(deactivateView);
       >
         <div class="flex items-start gap-3">
           <AlertCircle class="h-5 w-5 shrink-0" />
-          <div class="space-y-1">
-            <span class="font-semibold">Unable to fetch posts</span>
+          <div class="space-y-2">
+            <span class="block font-semibold">Unable to fetch posts</span>
             <p>{{ errorMessage }}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              class="mt-1 h-7 text-xs"
+              @click="runSearch(true)"
+            >
+              Try Again
+            </Button>
           </div>
         </div>
       </div>
 
-      <!-- Full-Page Skeleton Loader on Initial Search -->
-      <div
+      <!-- Full-Page Aspect-Ratio Skeleton Loader on Initial Search -->
+      <BooruGridSkeleton
         v-else-if="(isSetupLoading || isLoading) && !posts.length"
-        class="grid gap-3.5"
-        :style="{
-          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
-        }"
-      >
-        <div
-          v-for="i in columns * 3"
-          :key="i"
-          class="border-border/60 bg-muted/20 relative flex aspect-3/4 w-full animate-pulse items-center justify-center overflow-hidden rounded-xl border"
-        >
-          <ImageIcon class="text-muted-foreground/20 h-8 w-8" />
-        </div>
-      </div>
+        :container-width="gridWidth"
+        :mode="layoutMode"
+        :density="gridDensity"
+        :gap="GRID_GAP"
+      />
 
-      <!-- Loaded Virtualized Gallery Results -->
+      <!-- Loaded Virtualized Aspect-Ratio Gallery Results -->
       <template v-else>
         <!-- Warnings / Soft Errors -->
         <NoticeBanner v-if="visibleWarnings.length" class="mb-4">
@@ -623,8 +946,8 @@ onUnmounted(deactivateView);
           <Button
             size="sm"
             class="h-7 cursor-pointer bg-amber-600 px-3 text-xs text-white hover:bg-amber-500"
-            @click="handleSolveCloudflare"
             :disabled="isSolvingCloudflare"
+            @click="handleSolveCloudflare"
           >
             <Loader2
               v-if="isSolvingCloudflare"
@@ -639,110 +962,23 @@ onUnmounted(deactivateView);
           {{ errorMessage }}
         </NoticeBanner>
 
-        <!-- TanStack Virtualized Responsive Grid -->
+        <!-- Virtualized Positioned Aspect-Ratio Canvas -->
         <div
           v-if="posts.length"
           class="relative w-full"
-          :style="{ height: `${totalVirtualHeight}px` }"
+          :style="{ height: `${gridLayout.totalHeight}px` }"
         >
-          <div
-            v-for="virtualRow in virtualRows"
-            :key="virtualRow.index"
-            class="absolute top-0 left-0 grid w-full gap-3.5"
-            :style="{
-              height: `${virtualRow.size - GRID_GAP}px`,
-              transform: `translateY(${virtualRow.start}px)`,
-              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
-            }"
-          >
-            <!-- Card Item -->
-            <ContextMenu
-              v-for="post in posts.slice(
-                virtualRow.index * columns,
-                (virtualRow.index + 1) * columns
-              )"
-              :key="`${post.source}:${post.postId}`"
-            >
-              <ContextMenuTrigger as-child>
-                <div
-                  role="button"
-                  tabindex="0"
-                  class="group border-border/60 bg-muted/20 hover:border-primary/50 relative flex aspect-3/4 w-full cursor-pointer flex-col overflow-hidden rounded-xl border text-left transition-all duration-300 hover:shadow-xl hover:shadow-black/30"
-                  @click="openDetail(post)"
-                  @keydown.enter="openDetail(post)"
-                  @keydown.space.prevent="openDetail(post)"
-                >
-                  <div
-                    v-if="!isImageLoaded(`${post.source}:${post.postId}`)"
-                    class="bg-muted/50 absolute inset-0 flex animate-pulse items-center justify-center"
-                  >
-                    <ImageIcon class="text-muted-foreground/30 h-7 w-7" />
-                  </div>
-
-                  <!-- High-Performance Lazy Decoded Image -->
-                  <img
-                    :src="mediaUrl(post)"
-                    :alt="`${post.source} post ${post.postId}`"
-                    decoding="async"
-                    class="h-full w-full object-cover transition-opacity duration-300"
-                    :class="
-                      isImageLoaded(`${post.source}:${post.postId}`)
-                        ? 'opacity-100'
-                        : 'opacity-0'
-                    "
-                    @load="onImageLoad(`${post.source}:${post.postId}`)"
-                  />
-
-                  <!-- Floating Rating Badge (Top Right) -->
-                  <div v-if="post.rating" class="absolute top-2 right-2 z-10">
-                    <Badge
-                      variant="outline"
-                      :class="ratingColorClass(post.rating)"
-                      class="border-white/10 bg-black/60 px-1.5 py-0 font-mono text-[10px] font-bold tracking-wider uppercase shadow-xs backdrop-blur-md"
-                    >
-                      {{ post.rating }}
-                    </Badge>
-                  </div>
-
-                  <!-- Floating Action Overlay on Hover -->
-                  <div
-                    class="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-2 bg-linear-to-t from-black/90 via-black/40 to-transparent px-3 pt-8 pb-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                  >
-                    <Button
-                      size="iconSm"
-                      variant="secondary"
-                      class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
-                      title="View Post Details & Tags"
-                      @click.stop="openDetail(post)"
-                    >
-                      <ZoomIn class="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="iconSm"
-                      variant="secondary"
-                      class="h-7 w-7 rounded-full border border-white/20 bg-black/70 text-white shadow-md transition-colors hover:bg-white/20 hover:text-white"
-                      title="Open in Source Provider"
-                      @click.stop="openUrl(post.postUrl)"
-                    >
-                      <ExternalLink class="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent class="w-48">
-                <ContextMenuItem @select="openDetail(post)">
-                  <ZoomIn /> View Details & Tags
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem @select="openUrl(post.postUrl)">
-                  <ExternalLink /> Open Source Post
-                </ContextMenuItem>
-                <ContextMenuItem @select="copyPostUrl(post.postUrl)">
-                  <Copy /> Copy Post URL
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          </div>
+          <BooruPostTile
+            v-for="{ box, post } in visibleTiles"
+            :key="box.key"
+            :post="post"
+            :box="box"
+            :initially-loaded="Boolean(loadedImages[box.key])"
+            @select="openDetail"
+            @open-external="openUrl"
+            @copy-url="copyPostUrl"
+            @image-loaded="onTileImageLoad"
+          />
         </div>
 
         <!-- Empty Results View with Clickable Suggestions -->
@@ -757,8 +993,21 @@ onUnmounted(deactivateView);
           </div>
           <h3 class="text-foreground text-sm font-semibold">No posts found</h3>
           <p class="text-muted-foreground mt-1 text-xs">
-            Try adjusting your search tags, rating filters.
+            Try adjusting your search tags or rating filters, or explore a
+            popular tag:
           </p>
+          <div class="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+            <button
+              v-for="tag in QUICK_SUGGESTION_TAGS"
+              :key="tag"
+              type="button"
+              class="border-border bg-secondary/70 text-foreground hover:border-primary/50 hover:bg-secondary inline-flex items-center gap-1 rounded-full border px-3 py-1 font-mono text-xs transition-colors"
+              @click="applySuggestionTag(tag)"
+            >
+              <Sparkles class="text-primary size-3" />
+              <span>{{ tag }}</span>
+            </button>
+          </div>
         </div>
 
         <div class="flex flex-col items-center justify-center gap-3 py-6">
@@ -774,8 +1023,8 @@ onUnmounted(deactivateView);
             <Button
               size="sm"
               class="h-7 cursor-pointer bg-amber-600 px-3 text-xs text-white hover:bg-amber-500"
-              @click="handleSolveCloudflare"
               :disabled="isSolvingCloudflare"
+              @click="handleSolveCloudflare"
             >
               <Loader2
                 v-if="isSolvingCloudflare"
