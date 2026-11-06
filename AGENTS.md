@@ -120,7 +120,7 @@ koharu/
 3. **Path sanitization** — strip surrounding quotes from path inputs in both frontend and backend.
 4. **Validation** — `bun run lint` + `bun run typecheck`; never `bun run build` for routine checks.
 5. **Select** — always the shadcn-vue `Select` suite, items wrapped in `<SelectGroup class="max-h-40 overflow-y-auto">`; canonical Tailwind classes over arbitrary values.
-6. **Comments** — none, except short section markers and `ponytail:` notes for deliberate simplifications.
+6. **Comments** — none, except short section markers.
 7. **Tests** — Vitest; typed `*.test.ts` next to the code with explicit `vitest` imports, one behavior per `it`, typed `vi.mock(import(...))`, `setActivePinia(createPinia())` for stores, `happy-dom` + `@vue/test-utils` for DOM/components. Shared helpers live in `src/test/`.
 
 ---

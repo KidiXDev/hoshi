@@ -116,7 +116,6 @@ function limitChatContext<T extends { role: string; content: unknown }>(
   messages: T[],
   tokenLimit: number
 ): T[] {
-  // ponytail: token estimate is enough for budgeting; use a model tokenizer if exact limits become necessary.
   const characterBudget = Math.max(1, tokenLimit) * 4;
   let usedCharacters = 0;
   let startIndex = messages.length - 1;
