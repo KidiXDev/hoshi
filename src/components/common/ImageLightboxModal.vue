@@ -13,6 +13,7 @@ import {
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import PositivePromptSection from '@/components/common/PositivePromptSection.vue';
 import { useGenerationDataPanel } from '@/composables/useGenerationDataPanel';
 import { useOverlayLayer } from '@/composables/useOverlayLayer';
 import type { WorkflowState } from '@/types/workflow';
@@ -58,12 +59,6 @@ async function copyText(key: string, text?: string) {
     setTimeout(() => (copied.value = null), 2000);
   } catch {}
 }
-const promptTags = computed(() =>
-  (props.workflowState?.positivePrompt ?? '')
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-);
 const enabledLoras = computed(() =>
   (props.workflowState?.loras ?? []).filter((lora) => lora.enabled)
 );
@@ -473,48 +468,29 @@ onUnmounted(() => {
                       </dl>
                     </div>
 
-                    <section class="border-border/80 rounded-xl border p-3">
-                      <div class="mb-2 flex items-center justify-between">
-                        <h3
-                          class="text-foreground text-xs font-bold tracking-wider uppercase"
-                        >
-                          Positive Prompt
-                        </h3>
-                        <Button
-                          v-if="workflowState.positivePrompt"
-                          size="sm"
-                          variant="ghost"
-                          class="text-muted-foreground hover:text-primary h-6 gap-1 px-2 text-xs"
-                          @click="
-                            copyText('prompt', workflowState.positivePrompt)
-                          "
-                        >
-                          <Check
-                            v-if="copied === 'prompt'"
-                            class="h-3 w-3 text-emerald-400"
-                          />
-                          <Copy v-else class="h-3 w-3" />
-                          <span>{{
-                            copied === 'prompt' ? 'Copied!' : 'Copy'
-                          }}</span>
-                        </Button>
-                      </div>
-                      <div
-                        v-if="promptTags.length"
-                        class="flex flex-wrap gap-1.5"
+                    <PositivePromptSection
+                      :prompt="workflowState.positivePrompt"
+                      empty-message="No positive prompt."
+                    >
+                      <Button
+                        v-if="workflowState.positivePrompt"
+                        size="sm"
+                        variant="ghost"
+                        class="text-muted-foreground hover:text-primary h-6 gap-1 px-2 text-xs"
+                        @click="
+                          copyText('prompt', workflowState.positivePrompt)
+                        "
                       >
-                        <span
-                          v-for="tag in promptTags"
-                          :key="tag"
-                          class="border-border/80 bg-muted/60 text-foreground rounded-md border px-2 py-0.5 font-mono text-xs break-all"
-                        >
-                          {{ tag }}
-                        </span>
-                      </div>
-                      <p v-else class="text-muted-foreground text-xs italic">
-                        No positive prompt.
-                      </p>
-                    </section>
+                        <Check
+                          v-if="copied === 'prompt'"
+                          class="h-3 w-3 text-emerald-400"
+                        />
+                        <Copy v-else class="h-3 w-3" />
+                        <span>{{
+                          copied === 'prompt' ? 'Copied!' : 'Copy'
+                        }}</span>
+                      </Button>
+                    </PositivePromptSection>
 
                     <section
                       v-if="workflowState.negativePrompt"

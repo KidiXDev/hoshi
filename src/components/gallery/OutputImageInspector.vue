@@ -45,6 +45,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
+import PositivePromptSection from '@/components/common/PositivePromptSection.vue';
 import { useGenerationDataPanel } from '@/composables/useGenerationDataPanel';
 import { useImageTransfer } from '@/composables/useImageTransfer';
 import type { TransferTarget } from '@/stores/imageTransferStore';
@@ -104,12 +105,6 @@ const selectedIndex = computed(() =>
         (image) => image.path === selectedImage.value?.path
       )
     : -1
-);
-const promptTags = computed(() =>
-  (metadata.value?.prompt ?? '')
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean)
 );
 const panX = ref(0);
 const panY = ref(0);
@@ -835,42 +830,25 @@ defineExpose({ open: openImage, openCompare });
                 </div>
 
                 <!-- Positive Prompt Section -->
-                <section class="border-border/80 rounded-xl border p-3">
-                  <div class="mb-2 flex items-center justify-between">
-                    <h3
-                      class="text-foreground text-xs font-bold tracking-wider uppercase"
-                    >
-                      Positive Prompt
-                    </h3>
-                    <Button
-                      v-if="metadata?.prompt"
-                      size="sm"
-                      variant="ghost"
-                      class="text-muted-foreground hover:text-primary h-6 gap-1 px-2 text-xs"
-                      @click="copyWithFeedback('prompt', metadata.prompt)"
-                    >
-                      <Check
-                        v-if="copiedState.prompt"
-                        class="h-3 w-3 text-emerald-400"
-                      />
-                      <Copy v-else class="h-3 w-3" />
-                      <span>{{ copiedState.prompt ? 'Copied!' : 'Copy' }}</span>
-                    </Button>
-                  </div>
-
-                  <div v-if="promptTags.length" class="flex flex-wrap gap-1.5">
-                    <span
-                      v-for="tag in promptTags"
-                      :key="tag"
-                      class="border-border/80 bg-muted/60 text-foreground hover:border-primary/40 rounded-md border px-2 py-0.5 font-mono text-xs break-all transition-colors"
-                    >
-                      {{ tag }}
-                    </span>
-                  </div>
-                  <p v-else class="text-muted-foreground text-xs italic">
-                    No positive prompt metadata found.
-                  </p>
-                </section>
+                <PositivePromptSection
+                  :prompt="metadata?.prompt"
+                  empty-message="No positive prompt metadata found."
+                >
+                  <Button
+                    v-if="metadata?.prompt"
+                    size="sm"
+                    variant="ghost"
+                    class="text-muted-foreground hover:text-primary h-6 gap-1 px-2 text-xs"
+                    @click="copyWithFeedback('prompt', metadata.prompt)"
+                  >
+                    <Check
+                      v-if="copiedState.prompt"
+                      class="h-3 w-3 text-emerald-400"
+                    />
+                    <Copy v-else class="h-3 w-3" />
+                    <span>{{ copiedState.prompt ? 'Copied!' : 'Copy' }}</span>
+                  </Button>
+                </PositivePromptSection>
 
                 <!-- Negative Prompt Section -->
                 <section
