@@ -3,11 +3,16 @@ import {
   activityLevel,
   countByDay,
   dailySeries,
+  extensionBreakdown,
   heatmapWeeks,
   hourlyCounts,
   niceCeiling,
   streaks,
-  topModels
+  subfolderBreakdown,
+  timeOfDayBuckets,
+  topModels,
+  topPromptTags,
+  weekdayCounts
 } from './generationStats';
 
 const at = (day: number, hour = 12) => new Date(2026, 9, day, hour).getTime();
@@ -94,5 +99,53 @@ describe('niceCeiling', () => {
     expect(
       [0, 1, 7, 12, 50, 51, 180, 999].map((value) => niceCeiling(value))
     ).toEqual([1, 1, 10, 20, 50, 100, 200, 1000]);
+  });
+});
+
+describe('weekdayCounts and timeOfDayBuckets', () => {
+  it('aggregates timestamps by weekday and 6-hour time periods', () => {
+    const timestamps = [at(4, 2), at(4, 8), at(4, 14), at(4, 20), at(4, 21)];
+    const weekdays = weekdayCounts(timestamps);
+    expect(weekdays[0]).toBe(5);
+
+    const buckets = timeOfDayBuckets(hourlyCounts(timestamps));
+    expect(buckets.map((bucket) => [bucket.key, bucket.count])).toEqual([
+      ['morning', 1],
+      ['afternoon', 1],
+      ['evening', 2],
+      ['night', 1]
+    ]);
+  });
+});
+
+describe('subfolderBreakdown and extensionBreakdown', () => {
+  it('groups root and subfolders with byte totals', () => {
+    const items = [
+      { subfolder: '', extension: 'png', fileSize: 100 },
+      { subfolder: 'characters', extension: 'png', fileSize: 250 },
+      { subfolder: 'characters', extension: 'webp', fileSize: 50 }
+    ];
+    expect(subfolderBreakdown(items, 5)).toEqual([
+      { name: 'characters', count: 2, bytes: 300 },
+      { name: 'Root output', count: 1, bytes: 100 }
+    ]);
+    expect(extensionBreakdown(items)).toEqual([
+      { name: 'PNG', count: 2, bytes: 350 },
+      { name: 'WEBP', count: 1, bytes: 50 }
+    ]);
+  });
+});
+
+describe('topPromptTags', () => {
+  it('normalizes weighted tags and counts once per image', () => {
+    const prompts = [
+      '(masterpiece:1.2), 1girl, solo, 1girl',
+      'masterpiece, 1girl, blue eyes',
+      ''
+    ];
+    expect(topPromptTags(prompts, 2)).toEqual([
+      { name: '1girl', count: 2 },
+      { name: 'masterpiece', count: 2 }
+    ]);
   });
 });

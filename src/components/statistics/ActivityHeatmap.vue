@@ -8,9 +8,9 @@ const props = defineProps<{ weeks: (HeatmapDay | null)[][] }>();
 
 const LEVEL_COLORS = [
   'var(--muted)',
-  'color-mix(in oklab, var(--primary) 52%, var(--card))',
-  'color-mix(in oklab, var(--primary) 68%, var(--card))',
-  'color-mix(in oklab, var(--primary) 84%, var(--card))',
+  'color-mix(in oklab, var(--primary) 42%, var(--card))',
+  'color-mix(in oklab, var(--primary) 62%, var(--card))',
+  'color-mix(in oklab, var(--primary) 82%, var(--card))',
   'var(--primary)'
 ];
 const WEEKDAY_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
@@ -37,11 +37,27 @@ const monthLabels = computed(() =>
   })
 );
 
-const summaryLabel = computed(() => {
-  const days = props.weeks.flat().filter((day) => day && day.count > 0);
-  const total = days.reduce((sum, day) => sum + (day?.count ?? 0), 0);
-  return `${total.toLocaleString()} images on ${days.length} days in the last year`;
+const yearStats = computed(() => {
+  const allDays = props.weeks
+    .flat()
+    .filter((day): day is HeatmapDay => day !== null);
+  const activeDays = allDays.filter((day) => day.count > 0);
+  const total = activeDays.reduce((sum, day) => sum + day.count, 0);
+  const consistency =
+    allDays.length > 0
+      ? Math.round((activeDays.length / allDays.length) * 100)
+      : 0;
+  return {
+    total,
+    activeCount: activeDays.length,
+    consistency
+  };
 });
+
+const summaryLabel = computed(
+  () =>
+    `${yearStats.value.total.toLocaleString()} images on ${yearStats.value.activeCount} days in the last year`
+);
 
 function showDay(event: PointerEvent, day: HeatmapDay) {
   show(
@@ -53,9 +69,9 @@ function showDay(event: PointerEvent, day: HeatmapDay) {
 </script>
 
 <template>
-  <div ref="root" class="relative">
+  <div ref="root" class="relative flex flex-col gap-3">
     <div
-      class="grid auto-cols-fr grid-flow-col grid-rows-8 gap-0.5"
+      class="grid auto-cols-fr grid-flow-col grid-rows-8 gap-1"
       :style="{ gridTemplateColumns: 'auto' }"
       role="img"
       :aria-label="summaryLabel"
@@ -77,7 +93,7 @@ function showDay(event: PointerEvent, day: HeatmapDay) {
         <template v-for="(day, weekday) in week" :key="weekday">
           <div
             v-if="day"
-            class="aspect-square rounded-xs transition-[filter] hover:brightness-125"
+            class="aspect-square rounded-xs transition-all hover:scale-110 hover:brightness-125"
             :style="{ backgroundColor: LEVEL_COLORS[day.level] }"
             @pointerenter="showDay($event, day)"
             @pointerleave="hide"
@@ -88,16 +104,34 @@ function showDay(event: PointerEvent, day: HeatmapDay) {
     </div>
 
     <div
-      class="text-muted-foreground mt-3 flex items-center justify-end gap-1 text-xs"
+      class="text-muted-foreground flex flex-wrap items-center justify-between gap-2 pt-1 text-xs"
     >
-      <span class="mr-1">Less</span>
-      <span
-        v-for="color in LEVEL_COLORS"
-        :key="color"
-        class="size-2.5 rounded-xs"
-        :style="{ backgroundColor: color }"
-      />
-      <span class="ml-1">More</span>
+      <div class="flex flex-wrap items-center gap-2">
+        <span>
+          <strong class="text-foreground font-medium tabular-nums">{{
+            yearStats.total.toLocaleString()
+          }}</strong>
+          images in the last year
+        </span>
+        <span aria-hidden="true">·</span>
+        <span>
+          <strong class="text-foreground font-medium tabular-nums">{{
+            yearStats.activeCount
+          }}</strong>
+          active days ({{ yearStats.consistency }}%)
+        </span>
+      </div>
+
+      <div class="flex items-center gap-1">
+        <span class="mr-1">Less</span>
+        <span
+          v-for="color in LEVEL_COLORS"
+          :key="color"
+          class="size-2.5 rounded-xs"
+          :style="{ backgroundColor: color }"
+        />
+        <span class="ml-1">More</span>
+      </div>
     </div>
 
     <StatTooltip :tooltip="tooltip" />
