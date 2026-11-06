@@ -35,4 +35,3 @@ const model = defineModel<T>({ required: true });
     </button>
   </div>
 </template>
-
