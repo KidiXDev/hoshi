@@ -38,6 +38,10 @@ export function clearDownloadHistory(gid?: string) {
   return invoke('clear_history', { gid });
 }
 
+export function retryDownload(gid: string) {
+  return invoke('retry', { gid });
+}
+
 export function queueCivitaiDownload(options: {
   versionId: number;
   fileId?: number;
@@ -45,4 +49,29 @@ export function queueCivitaiDownload(options: {
   apiKey: string;
 }) {
   return invoke<DownloadRecord>('download', options);
+}
+
+export function queueUrlDownload(options: {
+  url: string;
+  category: string;
+  fileName: string;
+  workingDir: string;
+  args: string[];
+}) {
+  return invoke<DownloadRecord>('download_url', options);
+}
+
+export function normalizeDownloadUrl(url: string) {
+  const trimmed = url.trim();
+  return trimmed.startsWith('https://huggingface.co/')
+    ? trimmed.replace('/blob/', '/resolve/')
+    : trimmed;
+}
+
+export function fileNameFromUrl(url: string) {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
+  } catch {
+    return '';
+  }
 }

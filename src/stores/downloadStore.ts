@@ -9,15 +9,21 @@ import {
   listDownloads,
   pauseDownload,
   queueCivitaiDownload,
+  queueUrlDownload,
   resumeDownload,
+  retryDownload,
   type DownloadRecord
 } from '../services/downloadManager';
 import { useCivitaiStore } from './civitaiStore';
+import { useComfyStore } from './comfyStore';
 import {
   cleanPath,
   parseLauncherArgs,
   useLauncherStore
 } from './launcherStore';
+
+const MISSING_COMFY_FOLDER =
+  'Choose your ComfyUI folder in Settings before downloading models.';
 
 function isRunning(status: DownloadRecord['status']) {
   return ['active', 'waiting', 'paused'].includes(status);
@@ -32,6 +38,7 @@ export function shouldPollDownloads(records: Pick<DownloadRecord, 'status'>[]) {
 export const useDownloadStore = defineStore('downloads', () => {
   const launcherStore = useLauncherStore();
   const civitaiStore = useCivitaiStore();
+  const comfyStore = useComfyStore();
   const items = ref<DownloadRecord[]>([]);
   const errorMessage = ref('');
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -44,6 +51,7 @@ export const useDownloadStore = defineStore('downloads', () => {
     const { workingDir, args } = launcherStore.config;
     if (!cleanPath(workingDir)) return;
     void civitaiStore.refreshLocalModels();
+    if (comfyStore.isConnected) void comfyStore.refreshModels();
     await rescanLocalModelIndex(cleanPath(workingDir), parseLauncherArgs(args));
   }
 
@@ -89,28 +97,46 @@ export const useDownloadStore = defineStore('downloads', () => {
     scheduleRefresh();
   }
 
+  function trackRecord(record: DownloadRecord) {
+    const index = items.value.findIndex((item) => item.gid === record.gid);
+    if (index === -1) items.value.unshift(record);
+    else items.value[index] = record;
+    scheduleRefresh();
+    return record;
+  }
+
   async function enqueueCivitai(options: {
     versionId: number;
     fileId?: number;
     workingDir: string;
     apiKey: string;
   }) {
-    if (!cleanPath(options.workingDir))
-      throw new Error(
-        'Choose your ComfyUI folder in Settings before downloading models.'
-      );
+    if (!cleanPath(options.workingDir)) throw new Error(MISSING_COMFY_FOLDER);
     if (!Number.isSafeInteger(options.versionId) || options.versionId <= 0)
       throw new Error('Select a valid model version before downloading.');
     const settings = await loadAppData<{ apiKey?: string }>('civitai_settings');
-    const record = await queueCivitaiDownload({
-      ...options,
-      apiKey: (settings?.apiKey?.trim() || options.apiKey).trim()
-    });
-    const index = items.value.findIndex((item) => item.gid === record.gid);
-    if (index === -1) items.value.unshift(record);
-    else items.value[index] = record;
-    scheduleRefresh();
-    return record;
+    return trackRecord(
+      await queueCivitaiDownload({
+        ...options,
+        apiKey: (settings?.apiKey?.trim() || options.apiKey).trim()
+      })
+    );
+  }
+
+  async function enqueueUrl(options: {
+    url: string;
+    category: string;
+    fileName: string;
+  }) {
+    const workingDir = cleanPath(launcherStore.config.workingDir);
+    if (!workingDir) throw new Error(MISSING_COMFY_FOLDER);
+    return trackRecord(
+      await queueUrlDownload({
+        ...options,
+        workingDir,
+        args: parseLauncherArgs(launcherStore.config.args)
+      })
+    );
   }
 
   async function pause(gid: string) {
@@ -120,6 +146,12 @@ export const useDownloadStore = defineStore('downloads', () => {
 
   async function resume(gid: string) {
     await resumeDownload(gid);
+    await refresh();
+    scheduleRefresh();
+  }
+
+  async function retry(gid: string) {
+    await retryDownload(gid);
     await refresh();
     scheduleRefresh();
   }
@@ -159,8 +191,10 @@ export const useDownloadStore = defineStore('downloads', () => {
     stop,
     refresh,
     enqueueCivitai,
+    enqueueUrl,
     pause,
     resume,
+    retry,
     cancel,
     clearHistory,
     byVersion

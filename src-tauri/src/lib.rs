@@ -458,6 +458,8 @@ pub fn run() {
             download_manager::resume,
             download_manager::cancel,
             download_manager::clear_history,
+            download_manager::retry,
+            download_manager::download_url,
             image_gallery::list_output_images,
             image_gallery::resolve_history_images,
             process_manager::discover_local_models,

@@ -1,3 +1,5 @@
+use crate::civitai::safe_filename;
+use crate::model_manager::{is_model_file, ModelIndex};
 use reqwest::blocking::{Client, Response};
 use reqwest::header::{CONTENT_RANGE, RANGE};
 use reqwest::StatusCode;
@@ -145,10 +147,17 @@ fn content_range_total(value: &str) -> Option<u64> {
 const MAX_STREAM_RETRIES: u64 = 3;
 
 const EXPIRED_LINK: &str =
-    "Download link expired and Civitai could not issue a new one, so this download cannot be continued.";
+    "The download link expired or was refused and no new one could be issued, so this download cannot be continued.";
 
 fn is_expired_link(status: StatusCode) -> bool {
     matches!(status.as_u16(), 400 | 401 | 403 | 404 | 410)
+}
+
+fn is_being_written(records: &[DownloadRecord], model_path: &str) -> bool {
+    records.iter().any(|record| {
+        record.model_path == model_path
+            && matches!(record.status.as_str(), "active" | "waiting" | "paused")
+    })
 }
 
 fn request_from(client: &Client, url: &str, offset: u64) -> Result<Response, String> {
@@ -455,7 +464,7 @@ impl DownloadManager {
             load_history(&mut inner, app)?;
             if let Some(pos) = inner.records.iter().position(|record| {
                 record.version_id == download.version_id
-                    && record.file_name == download.file_name
+                    && Path::new(&record.model_path) == download.model_path
                     && !matches!(record.status.as_str(), "error" | "removed")
             }) {
                 let existing = &inner.records[pos];
@@ -466,10 +475,7 @@ impl DownloadManager {
                 }
             }
             let model_path = download.model_path.to_string_lossy().to_string();
-            if inner.records.iter().any(|record| {
-                record.model_path == model_path
-                    && matches!(record.status.as_str(), "active" | "waiting" | "paused")
-            }) {
+            if is_being_written(&inner.records, &model_path) {
                 return Err(format!("Another download is already writing {model_path}."));
             }
             let created_at = SystemTime::now()
@@ -551,6 +557,36 @@ impl DownloadManager {
             control.paused.store(paused, Ordering::Relaxed);
         }
         save_history(&inner, app)
+    }
+
+    fn retry(&self, app: &AppHandle, gid: &str) -> Result<(), String> {
+        let record = {
+            let mut inner = self.inner.lock().map_err(|e| e.to_string())?;
+            load_history(&mut inner, app)?;
+            let index = inner
+                .records
+                .iter()
+                .position(|record| record.gid == gid)
+                .ok_or("Download was not found.")?;
+            if inner.records[index].status != "error" {
+                return Err("Only failed downloads can be retried.".into());
+            }
+            let model_path = inner.records[index].model_path.clone();
+            if Path::new(&model_path).exists() {
+                return Err(format!("Model already exists: {model_path}"));
+            }
+            if is_being_written(&inner.records, &model_path) {
+                return Err(format!("Another download is already writing {model_path}."));
+            }
+            let record = &mut inner.records[index];
+            record.status = "waiting".into();
+            record.error_message = None;
+            let record = record.clone();
+            save_history(&inner, app)?;
+            record
+        };
+        self.start(app.clone(), record);
+        Ok(())
     }
 
     fn cancel(&self, app: &AppHandle, gid: &str) -> Result<(), String> {
@@ -672,11 +708,100 @@ pub async fn clear_history(
         .await
         .map_err(|e| e.to_string())?
 }
+#[tauri::command]
+pub async fn retry(
+    app_handle: AppHandle,
+    manager: State<'_, DownloadManager>,
+    gid: String,
+) -> Result<(), String> {
+    let manager = (*manager).clone();
+    tauri::async_runtime::spawn_blocking(move || manager.retry(&app_handle, &gid))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn validated_url_download(url: &str, file_name: &str) -> Result<(reqwest::Url, String), String> {
+    let url = reqwest::Url::parse(url.trim()).map_err(|_| "Enter a valid download link.")?;
+    if url.scheme() != "https" {
+        return Err("Only https links can be downloaded.".into());
+    }
+    let file_name = safe_filename(file_name.trim());
+    if !is_model_file(Path::new(&file_name)) {
+        return Err("The file name needs a model extension such as .safetensors.".into());
+    }
+    Ok((url, file_name))
+}
+
+#[tauri::command]
+pub async fn download_url(
+    app_handle: AppHandle,
+    manager: State<'_, DownloadManager>,
+    index: State<'_, ModelIndex>,
+    url: String,
+    category: String,
+    file_name: String,
+    working_dir: String,
+    args: Vec<String>,
+) -> Result<DownloadRecord, String> {
+    let manager = (*manager).clone();
+    let index = index.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let (url, file_name) = validated_url_download(&url, &file_name)?;
+        index.ensure_loaded(&app_handle, &working_dir, &args)?;
+        let root = index.category_root(&category)?;
+        fs::create_dir_all(&root.path).map_err(|e| e.to_string())?;
+        let model_path = Path::new(&root.path).join(&file_name);
+        if model_path.exists() {
+            return Err(format!("Model already exists: {}", model_path.display()));
+        }
+        let host = url.host_str().unwrap_or_default().to_string();
+        manager.add(
+            &app_handle,
+            NewDownload {
+                version_id: 0,
+                name: file_name.clone(),
+                file_name,
+                model_type: root.category,
+                base_model: host,
+                model_path,
+                preview_url: None,
+                url: url.to_string(),
+                source_url: url.to_string(),
+                expected_sha256: None,
+            },
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
 #[cfg(test)]
 mod tests {
-    use super::{cleanup_files, content_range_total};
+    use super::{cleanup_files, content_range_total, validated_url_download};
     use std::fs;
+
+    #[test]
+    fn accepts_https_model_links() {
+        let (url, file_name) = validated_url_download(
+            " https://huggingface.co/org/repo/resolve/main/model.safetensors ",
+            "model.safetensors",
+        )
+        .unwrap();
+        assert_eq!(url.host_str(), Some("huggingface.co"));
+        assert_eq!(file_name, "model.safetensors");
+    }
+
+    #[test]
+    fn rejects_links_that_are_not_https() {
+        assert!(validated_url_download("http://host/model.pt", "model.pt").is_err());
+        assert!(validated_url_download("not a link", "model.pt").is_err());
+    }
+
+    #[test]
+    fn rejects_file_names_without_a_model_extension() {
+        assert!(validated_url_download("https://host/file", "setup.exe").is_err());
+        assert!(validated_url_download("https://host/file", "model.safetensors.part").is_err());
+    }
 
     #[test]
     fn parses_range_total() {
