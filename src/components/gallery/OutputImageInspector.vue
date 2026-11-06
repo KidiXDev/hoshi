@@ -45,6 +45,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
+import { useGenerationDataPanel } from '@/composables/useGenerationDataPanel';
 import { useImageTransfer } from '@/composables/useImageTransfer';
 import type { TransferTarget } from '@/stores/imageTransferStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -88,7 +89,7 @@ const zoomEnabled = computed(
 const metadata = ref<OutputImageMetadata>();
 const metadataLoading = ref(false);
 const showRaw = ref(false);
-const showInspector = ref(true);
+const showInspector = useGenerationDataPanel();
 const zoom = ref(1);
 const copiedState = ref<{
   prompt?: boolean;
@@ -173,7 +174,6 @@ async function openImage(image: OutputImage) {
   metadata.value = undefined;
   metadataLoading.value = true;
   showRaw.value = false;
-  showInspector.value = true;
   resetPanAndZoom();
   appliedToWorkflow.value = false;
   try {

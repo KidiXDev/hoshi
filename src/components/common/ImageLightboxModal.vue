@@ -13,6 +13,7 @@ import {
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useGenerationDataPanel } from '@/composables/useGenerationDataPanel';
 import { useOverlayLayer } from '@/composables/useOverlayLayer';
 import type { WorkflowState } from '@/types/workflow';
 
@@ -21,7 +22,7 @@ interface Props {
   src?: string;
   alt?: string;
   title?: string;
-  /** Generation data for the inspector side panel (hidden by default). */
+  /** Generation data for the inspector side panel. */
   workflowState?: WorkflowState;
   inspectorSubtitle?: string;
   video?: boolean;
@@ -44,7 +45,7 @@ const { style: overlayStyle } = useOverlayLayer(
   () => props.open && Boolean(props.src)
 );
 
-const showInspector = ref(false);
+const showInspector = useGenerationDataPanel();
 function hasInspector() {
   return Boolean(props.workflowState || slots.inspector);
 }
@@ -166,7 +167,6 @@ watch(
   () => [props.open, props.src] as const,
   ([isOpen]) => {
     resetPanAndZoom();
-    showInspector.value = false;
     if (isOpen) {
       window.addEventListener('keydown', handleKeydown);
     } else {
@@ -447,7 +447,11 @@ onUnmounted(() => {
                         <dd class="text-foreground font-medium">
                           {{ workflowState.imageInput.mode }}
                           <template
-                            v-if="workflowState.imageInput.mode !== 'text2img'"
+                            v-if="
+                              !['text2img', 'edit'].includes(
+                                workflowState.imageInput.mode
+                              )
+                            "
                           >
                             · denoise {{ workflowState.sampler.denoise }}
                           </template>
