@@ -11,7 +11,9 @@ import { useComfyStore } from '../../stores/comfyStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 
 type ControlSliderKey =
-  'controlStrength' | 'controlStartPercent' | 'controlEndPercent';
+  | 'controlStrength'
+  | 'controlStartPercent'
+  | 'controlEndPercent';
 
 const CONTROL_SLIDERS: { key: ControlSliderKey; label: string; max: number }[] =
   [

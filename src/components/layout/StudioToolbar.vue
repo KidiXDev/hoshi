@@ -22,9 +22,7 @@ const emit = defineEmits<{ clear: [] }>();
         v-if="total > 0"
         class="bg-secondary/60 text-muted-foreground flex items-center gap-2 rounded-lg px-2.5 py-1 font-mono text-xs"
       >
-        <span
-          ><strong class="text-foreground">{{ total }}</strong> total</span
-        >
+        <span><strong class="text-foreground">{{ total }}</strong> total</span>
         <span class="text-muted-foreground/40">•</span>
         <span
           ><strong class="text-emerald-400">{{ completed }}</strong> done</span

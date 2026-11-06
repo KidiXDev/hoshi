@@ -44,7 +44,12 @@ const props = withDefaults(
     open: boolean;
     title?: string;
     category:
-      'checkpoints' | 'unet' | 'diffusion_models' | 'loras' | 'vae' | 'clip';
+      | 'checkpoints'
+      | 'unet'
+      | 'diffusion_models'
+      | 'loras'
+      | 'vae'
+      | 'clip';
     models: string[];
     selectedModel?: string;
   }>(),

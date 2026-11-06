@@ -115,7 +115,8 @@ export interface SyncAllResult {
 }
 
 export type PreviewSource =
-  { kind: 'url'; url: string } | { kind: 'localPath'; path: string };
+  | { kind: 'url'; url: string }
+  | { kind: 'localPath'; path: string };
 
 /** Error sentinel returned by the Rust side when Civitai has no record of a hash. */
 export const CIVITAI_NOT_FOUND = 'NOT_FOUND';

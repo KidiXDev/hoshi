@@ -257,7 +257,8 @@ export const useComfyStore = defineStore('comfy', () => {
 
   function activateNextGeneration() {
     const next = pendingGenerations.values().next().value as
-      PendingGeneration | undefined;
+      | PendingGeneration
+      | undefined;
     if (next) activateGeneration(next);
     else {
       currentPromptId.value = null;

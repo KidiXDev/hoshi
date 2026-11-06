@@ -177,7 +177,10 @@ function copyAllLogs() {
                 (val: any) => {
                   if (val)
                     streamFilter = val as
-                      'all' | 'stdout' | 'stderr' | 'system';
+                      | 'all'
+                      | 'stdout'
+                      | 'stderr'
+                      | 'system';
                 }
               "
             >

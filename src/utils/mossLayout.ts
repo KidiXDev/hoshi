@@ -82,14 +82,9 @@ function parseItem(
     fail(`${at} bbox must be four numbers`);
   }
   const [x1, y1, x2, y2] = bbox as number[];
-  if (!(
-    0 <= x1 &&
-    x1 < x2 &&
-    x2 <= width &&
-    0 <= y1 &&
-    y1 < y2 &&
-    y2 <= height
-  )) {
+  if (
+    !(0 <= x1 && x1 < x2 && x2 <= width && 0 <= y1 && y1 < y2 && y2 <= height)
+  ) {
     fail(`${at} bbox must lie inside the ${width}×${height} canvas`);
   }
   return {

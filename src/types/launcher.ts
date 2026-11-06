@@ -1,5 +1,9 @@
 export type ProcessStatus =
-  'stopped' | 'starting' | 'stopping' | 'running' | 'error';
+  | 'stopped'
+  | 'starting'
+  | 'stopping'
+  | 'running'
+  | 'error';
 
 export interface LauncherConfig {
   workingDir: string;

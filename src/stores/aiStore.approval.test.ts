@@ -8,7 +8,9 @@ import { useComfyStore } from './comfyStore';
 import { useWorkflowStore } from './workflowStore';
 
 type StudioTool =
-  'inject_positive_prompt' | 'inject_negative_prompt' | 'queue_generation';
+  | 'inject_positive_prompt'
+  | 'inject_negative_prompt'
+  | 'queue_generation';
 
 const openRouter = vi.hoisted(() => ({
   model: null as MockLanguageModelV3 | null

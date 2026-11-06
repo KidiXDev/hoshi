@@ -84,7 +84,10 @@ export interface ResolutionSettings {
 
 export type UltimateUpscaleMode = 'Linear' | 'Chess' | 'None';
 export type UltimateSeamFixMode =
-  'None' | 'Band Pass' | 'Half Tile' | 'Half Tile + Intersections';
+  | 'None'
+  | 'Band Pass'
+  | 'Half Tile'
+  | 'Half Tile + Intersections';
 
 export interface UltimateUpscaleSettings {
   enabled: boolean;

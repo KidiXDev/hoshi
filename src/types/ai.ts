@@ -12,7 +12,13 @@ export interface AiConfig {
   contextTokenLimit: number;
   maxOutputTokens: number;
   reasoningEffort?:
-    'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+    | 'default'
+    | 'none'
+    | 'minimal'
+    | 'low'
+    | 'medium'
+    | 'high'
+    | 'xhigh';
   providerOverride?: string;
   allowProviderFallbacks?: boolean;
 }

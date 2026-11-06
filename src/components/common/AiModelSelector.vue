@@ -48,7 +48,13 @@ const searchQuery = ref('');
 const searchInputRef = ref<HTMLInputElement | null>(null);
 
 type CategoryFilter =
-  'all' | 'vision' | 'google' | 'anthropic' | 'openai' | 'deepseek' | 'meta';
+  | 'all'
+  | 'vision'
+  | 'google'
+  | 'anthropic'
+  | 'openai'
+  | 'deepseek'
+  | 'meta';
 
 const activeCategory = ref<CategoryFilter>('all');
 

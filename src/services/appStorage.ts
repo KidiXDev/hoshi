@@ -24,7 +24,12 @@ export type AppDataName =
   | 'workflow_session_state_moss';
 
 type DataFile =
-  'config' | 'history' | 'state' | 'chat' | 'ai_config' | 'bookmarks';
+  | 'config'
+  | 'history'
+  | 'state'
+  | 'chat'
+  | 'ai_config'
+  | 'bookmarks';
 const dataFiles: Record<AppDataName, DataFile> = {
   ai_config: 'ai_config',
   booru_prompt_format_options: 'state',

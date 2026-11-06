@@ -296,7 +296,12 @@ export const ComfyApi = {
   getModelPreviewUrl(
     serverUrl: string,
     category:
-      'checkpoints' | 'unet' | 'diffusion_models' | 'loras' | 'vae' | 'clip',
+      | 'checkpoints'
+      | 'unet'
+      | 'diffusion_models'
+      | 'loras'
+      | 'vae'
+      | 'clip',
     name: string,
     res = 300
   ): string {
