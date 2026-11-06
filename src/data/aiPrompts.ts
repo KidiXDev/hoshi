@@ -172,7 +172,7 @@ ${MOSS_LAYOUT_EXAMPLE}
 - Size text boxes so the copy stays readable at the canvas resolution.
 
 ### Negative Prompts
-The recommended negative baseline is: nsfw, worst quality, bad anatomy, watermark, jpeg artifact. Negatives list unwanted features only, as comma-separated terms.`;
+The recommended negative baseline is: worst quality, bad anatomy, watermark, jpeg artifact. Negatives list unwanted features only, as comma-separated terms.`;
 
 const MOSS_DECISION_RULES = `- Decide quickly. When a minor detail is unspecified, pick one plausible option and move on; do not weigh alternatives at length.
 - Visible text: render exactly the wording the user gives and add no other copy (taglines, credits, logos, signatures) unless asked. Write your own copy only when the user gives none and the image cannot work without text.`;

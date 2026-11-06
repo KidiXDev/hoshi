@@ -31,7 +31,7 @@ export interface SamplerSettings {
 }
 
 export interface ImageInputSettings {
-  mode: 'text2img' | 'img2img' | 'inpaint';
+  mode: 'text2img' | 'img2img' | 'inpaint' | 'edit';
   imageName: string;
   imageWidth: number;
   imageHeight: number;
@@ -207,6 +207,14 @@ export interface MossSettings {
   spectrumPostGuardHorizonCap: number;
   spectrumErrorTolerance: number;
   spectrumMaxConsecutiveForecasts: number;
+  tsrEnabled: boolean;
+  tsrK: number;
+  tsrSigma: number;
+  auraFlowEnabled: boolean;
+  auraFlowShift: number;
+  editLora: string;
+  editFormat: 'Moss-Image-Edit' | 'ai-toolkit' | 'ai-toolkit (kv_cache off)';
+  editImageStrength: number;
 }
 
 export interface WorkflowState {

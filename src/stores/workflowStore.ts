@@ -193,7 +193,15 @@ const DEFAULT_MOSS: MossSettings = {
   spectrumDetailGuardSteps: 8,
   spectrumPostGuardHorizonCap: 6,
   spectrumErrorTolerance: 1,
-  spectrumMaxConsecutiveForecasts: 2
+  spectrumMaxConsecutiveForecasts: 2,
+  tsrEnabled: false,
+  tsrK: 0.95,
+  tsrSigma: 1,
+  auraFlowEnabled: false,
+  auraFlowShift: 5,
+  editLora: 'moss_image_edit_lora_rank_64_bf16.safetensors',
+  editFormat: 'Moss-Image-Edit',
+  editImageStrength: 1
 };
 
 interface ProfileDefaults {

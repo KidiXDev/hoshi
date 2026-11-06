@@ -226,7 +226,12 @@ async function viewWorkflow() {
             class="border-border bg-card hover:border-primary/40 flex flex-col gap-3 rounded-xl border p-3.5 shadow-2xs transition-colors"
           >
             <PromptSection />
-            <template v-if="workflowStore.profile === 'moss'">
+            <template
+              v-if="
+                workflowStore.profile === 'moss' &&
+                workflowStore.imageInput.mode !== 'edit'
+              "
+            >
               <div class="border-border border-t pt-2">
                 <MossLayoutSection />
               </div>

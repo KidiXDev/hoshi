@@ -106,7 +106,13 @@ function appendMossLayoutStage(
   state: WorkflowState
 ): WorkflowNodeRef | null {
   const boxes = state.moss.layoutBoxes;
-  if (!state.moss.layoutEnabled || boxes.length === 0) return null;
+  if (
+    state.imageInput.mode === 'edit' ||
+    !state.moss.layoutEnabled ||
+    boxes.length === 0
+  ) {
+    return null;
+  }
   const { width, height } = layoutCanvasSize(state);
 
   prompt['moss_boxes'] = {
@@ -212,6 +218,66 @@ function appendMossControlStage(
   };
 }
 
+function appendMossEditStage(
+  prompt: Record<string, unknown>,
+  state: WorkflowState,
+  sampler: SamplerInputs,
+  texts: { positive: string; negative: string }
+): SamplerInputs {
+  const { moss } = state;
+  if (!moss.editLora) {
+    throw new Error('Select a MOSS edit LoRA before generating.');
+  }
+
+  prompt['moss_edit_scale'] = {
+    inputs: {
+      upscale_method: 'lanczos',
+      megapixels: 1,
+      resolution_steps: 16,
+      image: ['30', 0]
+    },
+    class_type: 'ImageScaleToTotalPixels',
+    _meta: { title: 'Scale MOSS Edit Reference' }
+  };
+
+  prompt['moss_edit_size'] = {
+    inputs: { image: ['moss_edit_scale', 0] },
+    class_type: 'GetImageSize',
+    _meta: { title: 'Get MOSS Edit Size' }
+  };
+
+  prompt['moss_edit_lora'] = {
+    inputs: {
+      lora_name: moss.editLora,
+      strength_model: 1,
+      model: sampler.model
+    },
+    class_type: 'LoraLoaderModelOnly',
+    _meta: { title: 'Load MOSS Edit LoRA' }
+  };
+
+  const encodeEdit = (text: string, title: string) => ({
+    inputs: {
+      prompt: text,
+      edit_format: moss.editFormat,
+      image_strength: moss.editImageStrength,
+      clip: ['28', 0],
+      vae: ['27', 0],
+      'images.image_0': ['moss_edit_scale', 0]
+    },
+    class_type: 'TextEncodeMOSSImageEdit',
+    _meta: { title }
+  });
+  prompt['moss_edit_positive'] = encodeEdit(texts.positive, 'Edit Instruction');
+  prompt['moss_edit_negative'] = encodeEdit(texts.negative, 'Negative Prompt');
+
+  return {
+    model: ['moss_edit_lora', 0],
+    positive: ['moss_edit_positive', 0],
+    negative: ['moss_edit_negative', 0]
+  };
+}
+
 function mossSpectrumNode(moss: MossSettings, model: WorkflowNodeRef) {
   const shared = {
     model,
@@ -255,6 +321,7 @@ export function buildWorkflowPrompt(
   state: WorkflowState
 ): Record<string, unknown> {
   const isMoss = state.profile === 'moss';
+  const isMossEdit = isMoss && state.imageInput.mode === 'edit';
   if (state.imageInput.mode === 'inpaint' && !isMoss) {
     return buildInpaintPrompt(state);
   }
@@ -321,8 +388,33 @@ export function buildWorkflowPrompt(
     lastModelNodeId = 'cache_dit';
   }
 
+  if (isMoss && state.moss.tsrEnabled) {
+    prompt['moss_tsr'] = {
+      inputs: {
+        tsr_k: state.moss.tsrK,
+        tsr_sigma: state.moss.tsrSigma,
+        model: [lastModelNodeId, 0]
+      },
+      class_type: 'TemporalScoreRescaling',
+      _meta: { title: 'TSR - Temporal Score Rescaling' }
+    };
+    lastModelNodeId = 'moss_tsr';
+  }
+
+  if (isMoss && state.moss.auraFlowEnabled) {
+    prompt['moss_aura_flow'] = {
+      inputs: {
+        shift: state.moss.auraFlowShift,
+        model: [lastModelNodeId, 0]
+      },
+      class_type: 'ModelSamplingAuraFlow',
+      _meta: { title: 'ModelSamplingAuraFlow' }
+    };
+    lastModelNodeId = 'moss_aura_flow';
+  }
+
   if (isMoss && state.moss.skipLayerGuidance) {
-    const fullRange = state.moss.spectrumEnabled;
+    const fullRange = state.moss.spectrumEnabled || isMossEdit;
     prompt['moss_slg'] = {
       inputs: {
         double_layers: '',
@@ -431,7 +523,7 @@ export function buildWorkflowPrompt(
   }
 
   // 8. Empty Latent Image (Node 19)
-  if (usesInputImage) {
+  if (usesInputImage && !isMossEdit) {
     prompt['19'] = {
       inputs: {
         pixels: ['30', 0],
@@ -443,8 +535,12 @@ export function buildWorkflowPrompt(
   } else if (isMoss) {
     prompt['19'] = {
       inputs: {
-        width: state.resolution.width || 1024,
-        height: state.resolution.height || 1024,
+        width: isMossEdit
+          ? ['moss_edit_size', 0]
+          : state.resolution.width || 1024,
+        height: isMossEdit
+          ? ['moss_edit_size', 1]
+          : state.resolution.height || 1024,
         batch_size: state.resolution.batchSize
       },
       class_type: 'EmptyFlux2LatentImage',
@@ -468,6 +564,13 @@ export function buildWorkflowPrompt(
     positive: positiveConditioning,
     negative: negativeConditioning
   };
+  const appendMossSamplerStage = () =>
+    isMossEdit
+      ? appendMossEditStage(prompt, state, samplerInputs, {
+          positive: positiveText,
+          negative: negativeText
+        })
+      : appendMossControlStage(prompt, state, samplerInputs);
   const sampler = samplerNode(state);
   prompt['9'] = {
     ...sampler,
@@ -477,10 +580,8 @@ export function buildWorkflowPrompt(
       cfg: state.sampler.cfg,
       sampler_name: state.sampler.samplerName,
       scheduler: state.sampler.scheduler,
-      denoise: state.sampler.denoise,
-      ...(isMoss
-        ? appendMossControlStage(prompt, state, samplerInputs)
-        : samplerInputs),
+      denoise: isMossEdit ? 1 : state.sampler.denoise,
+      ...(isMoss ? appendMossSamplerStage() : samplerInputs),
       latent_image: ['19', 0],
       ...sampler.inputs
     }

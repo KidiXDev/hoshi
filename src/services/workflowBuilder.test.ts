@@ -1,248 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { createWorkflowSnapshot } from '../composables/useComfyUiWorkspace';
-import type { LayoutBox, LoraItem, WorkflowState } from '../types/workflow';
+import {
+  BASE_STATE,
+  connections,
+  createState,
+  enableInpaint,
+  enableModelPatches,
+  enableTurboFaceDetailer,
+  enableUpscale,
+  graphOf,
+  inpaintState,
+  MODES,
+  mossState,
+  TEST_LORA,
+  withControl,
+  withLayout,
+  type Graph
+} from '../test/workflowFixtures';
 import { buildFaceDetailerPrompt } from './faceDetailerWorkflow';
 import { buildUltimateUpscalePrompt } from './ultimateUpscaleWorkflow';
 import {
   buildWorkflowPrompt,
   prepareWorkflowForQueue
 } from './workflowBuilder';
-
-type Graph = Record<
-  string,
-  { class_type: string; inputs: Record<string, unknown> }
->;
-
-const BASE_STATE: WorkflowState = {
-  profile: 'anima',
-  moss: {
-    skipLayerGuidance: true,
-    slgSingleLayers: '22',
-    slgStartPercent: 0,
-    slgEndPercent: 0.5,
-    layoutEnabled: false,
-    layoutBoxes: [],
-    controlEnabled: false,
-    controlAdapter: '',
-    controlColorMap: '',
-    controlDepthMap: '',
-    controlStrength: 1,
-    controlStartPercent: 0,
-    controlEndPercent: 1,
-    spectrumEnabled: false,
-    spectrumMode: 'adaptive',
-    spectrumWarmupSteps: 8,
-    spectrumTailActualSteps: 1,
-    spectrumCacheDevice: 'main_device',
-    spectrumDetailGuardSteps: 8,
-    spectrumPostGuardHorizonCap: 6,
-    spectrumErrorTolerance: 1,
-    spectrumMaxConsecutiveForecasts: 2
-  },
-  positivePrompt: 'test',
-  negativePrompt: 'bad',
-  models: {
-    unetName: 'anima.safetensors',
-    clipName: 'clip.safetensors',
-    vaeName: 'vae.safetensors',
-    shift: 2.5
-  },
-  advanced: {
-    auraFlowEnabled: false,
-    cacheDiT: {
-      enabled: false,
-      modelType: 'Auto',
-      warmupSteps: 0,
-      skipInterval: 0,
-      printSummary: true,
-      threshold: 0.25,
-      noiseScale: 0.001,
-      strategy: 'adaptive'
-    },
-    renormCfg: { enabled: false, cfgTrunc: 100, renormCfg: 1 }
-  },
-  loras: [],
-  sampler: {
-    steps: 20,
-    cfg: 4,
-    samplerName: 'euler',
-    scheduler: 'simple',
-    denoise: 0.7,
-    seed: 1,
-    randomizeSeed: false,
-    variationEnabled: false,
-    variationSeed: 2,
-    variationStrength: 0.35
-  },
-  imageInput: {
-    mode: 'img2img',
-    imageName: 'input.png',
-    imageWidth: 512,
-    imageHeight: 768,
-    maskName: '',
-    modelPatch: 'patch.safetensors',
-    llliteStrength: 1,
-    llliteStart: 0,
-    llliteEnd: 1,
-    turboEnabled: true,
-    turboLora: 'turbo.safetensors',
-    inpaintSteps: 30,
-    inpaintCfg: 4,
-    turboSteps: 8,
-    turboCfg: 1
-  },
-  resolution: {
-    preset: 'Custom',
-    batchSize: 1,
-    width: 512,
-    height: 768,
-    isCustom: true
-  },
-  postfx: {
-    enabled: false,
-    styleStage: {
-      enabled: false,
-      vignetteStrength: 0,
-      vignetteSoftness: 0.5,
-      filmGrain: 0,
-      bloomStrength: 0,
-      bloomRadius: 1.5,
-      bloomThreshold: 0.7,
-      chromaticAberration: 0
-    },
-    adjustStage: {
-      enabled: false,
-      brightness: 0,
-      contrast: 1,
-      saturation: 1,
-      sharpness: 0
-    },
-    upscale: {
-      enabled: false,
-      upscaleModel: '',
-      upscaleBy: 1,
-      ultimate: {
-        enabled: false,
-        steps: 20,
-        cfg: 4,
-        samplerName: 'euler',
-        scheduler: 'simple',
-        denoise: 0.2,
-        modeType: 'Chess',
-        tileWidth: 1024,
-        tileHeight: 1024,
-        maskBlur: 8,
-        tilePadding: 32,
-        seamFixMode: 'None',
-        seamFixDenoise: 1,
-        seamFixWidth: 64,
-        seamFixMaskBlur: 8,
-        seamFixPadding: 16,
-        forceUniformTiles: true,
-        tiledDecode: false,
-        batchSize: 1,
-        turboEnabled: false,
-        turboLora: 'turbo.safetensors',
-        turboSteps: 8
-      }
-    }
-  },
-  faceDetailer: {
-    positivePrompt: '',
-    negativePrompt: '',
-    enabled: false,
-    bboxModel: 'bbox/face.pt',
-    segmModel: '',
-    steps: 20,
-    turboSteps: 8,
-    cfg: 4,
-    samplerName: 'euler',
-    scheduler: 'simple',
-    bboxThreshold: 0.5,
-    denoise: 0.31,
-    feather: 5,
-    guideSize: 512,
-    turboEnabled: false,
-    turboLora: 'turbo.safetensors'
-  }
-};
-
-const TEST_LORA: LoraItem = {
-  id: '1',
-  name: 'test.safetensors',
-  strength: 1,
-  enabled: true
-};
-
-const MODES = ['text2img', 'img2img', 'inpaint'] as const;
-
-function createState(configure?: (state: WorkflowState) => void) {
-  const state = structuredClone(BASE_STATE);
-  configure?.(state);
-  return state;
-}
-
-function enableModelPatches(state: WorkflowState) {
-  state.loras = [{ ...TEST_LORA }];
-  state.advanced.cacheDiT.enabled = true;
-  state.advanced.auraFlowEnabled = true;
-  state.advanced.renormCfg.enabled = true;
-}
-
-function enableTurboFaceDetailer(state: WorkflowState) {
-  state.faceDetailer.enabled = true;
-  state.faceDetailer.turboEnabled = true;
-}
-
-function enableInpaint(state: WorkflowState) {
-  state.imageInput.mode = 'inpaint';
-  state.imageInput.maskName = 'mask.png';
-}
-
-function enableUpscale(state: WorkflowState) {
-  state.imageInput.mode = 'text2img';
-  state.loras = [{ ...TEST_LORA }];
-  state.postfx.enabled = true;
-  state.postfx.upscale.enabled = true;
-  state.postfx.upscale.upscaleModel = 'up.safetensors';
-  state.postfx.upscale.upscaleBy = 6;
-}
-
-function withControl(state: WorkflowState) {
-  state.moss.controlEnabled = true;
-  state.moss.controlAdapter = 'moss-control.safetensors';
-  state.moss.controlColorMap = 'color.png';
-  state.moss.controlDepthMap = 'depth.png';
-  state.moss.controlStrength = 0.8;
-  state.moss.controlStartPercent = 0.1;
-  state.moss.controlEndPercent = 0.6;
-}
-
-const inpaintState = (turbo: boolean) =>
-  createState((s) => {
-    enableModelPatches(s);
-    enableInpaint(s);
-    s.sampler.variationEnabled = true;
-    s.imageInput.turboEnabled = turbo;
-  });
-
-const mossState = (configure?: (state: WorkflowState) => void) =>
-  createState((s) => {
-    s.profile = 'moss';
-    s.imageInput.mode = 'text2img';
-    configure?.(s);
-  });
-
-const graphOf = (state: WorkflowState) => buildWorkflowPrompt(state) as Graph;
-
-function connections(graph: Graph) {
-  return Object.values(graph)
-    .flatMap((node) => Object.values(node.inputs))
-    .filter(
-      (input): input is [string, number] =>
-        Array.isArray(input) && typeof input[0] === 'string'
-    );
-}
 
 describe('prepareWorkflowForQueue', () => {
   it('draws a random seed without mutating the editor state', () => {
@@ -589,36 +369,6 @@ describe('buildWorkflowPrompt', () => {
 });
 
 describe('MOSS profile', () => {
-  const LAYOUT_BOXES: LayoutBox[] = [
-    {
-      id: 'title',
-      kind: 'text',
-      x: 0,
-      y: 0,
-      width: 1,
-      height: 0.25,
-      caption: 'cream serif capitals',
-      text: 'MOSS'
-    },
-    {
-      id: 'knight',
-      kind: 'character',
-      x: 0.25,
-      y: 0.25,
-      width: 0.5,
-      height: 0.75,
-      caption: 'a kneeling knight',
-      text: 'ignored'
-    }
-  ];
-
-  const withLayout = (s: WorkflowState) => {
-    s.resolution.width = 1024;
-    s.resolution.height = 512;
-    s.moss.layoutEnabled = true;
-    s.moss.layoutBoxes = structuredClone(LAYOUT_BOXES);
-  };
-
   it('loads the MOSS text encoder and a Flux 2 latent', () => {
     const graph = graphOf(mossState());
 
@@ -659,6 +409,51 @@ describe('MOSS profile', () => {
     expect(graph['13']).toBeUndefined();
     expect(graph.renorm_cfg).toBeUndefined();
     expect(graph['9']?.inputs.model).toEqual(['moss_slg', 0]);
+  });
+
+  it('leaves TSR and AuraFlow out by default', () => {
+    const graph = graphOf(mossState());
+
+    expect(graph.moss_tsr).toBeUndefined();
+    expect(graph.moss_aura_flow).toBeUndefined();
+    expect(graph.moss_slg?.inputs.model).toEqual(['29', 0]);
+  });
+
+  it('chains TSR and AuraFlow between the LoRAs and skip layer guidance', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.loras = [{ ...TEST_LORA }];
+        s.moss.tsrEnabled = true;
+        s.moss.tsrK = 0.9;
+        s.moss.tsrSigma = 2;
+        s.moss.auraFlowEnabled = true;
+        s.moss.auraFlowShift = 6;
+      })
+    );
+
+    expect(graph.moss_tsr?.class_type).toBe('TemporalScoreRescaling');
+    expect(graph.moss_tsr?.inputs).toEqual({
+      tsr_k: 0.9,
+      tsr_sigma: 2,
+      model: ['101', 0]
+    });
+    expect(graph.moss_aura_flow?.class_type).toBe('ModelSamplingAuraFlow');
+    expect(graph.moss_aura_flow?.inputs).toEqual({
+      shift: 6,
+      model: ['moss_tsr', 0]
+    });
+    expect(graph.moss_slg?.inputs.model).toEqual(['moss_aura_flow', 0]);
+  });
+
+  it('ignores the Anima shift settings', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.advanced.auraFlowEnabled = true;
+      })
+    );
+
+    expect(graph['13']).toBeUndefined();
+    expect(graph.moss_aura_flow).toBeUndefined();
   });
 
   it('passes the configured skip layer guidance layers and range', () => {
@@ -919,7 +714,7 @@ describe('MOSS profile', () => {
     });
   });
 
-  it.each(['text2img', 'img2img'] as const)(
+  it.each(['text2img', 'img2img', 'edit'] as const)(
     'connects every input to an emitted node (%s)',
     (mode) => {
       const graph = graphOf(

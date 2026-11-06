@@ -3,6 +3,7 @@ import { AlertCircle, Layers } from '@lucide/vue';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
+import HelpTooltip from '../common/HelpTooltip.vue';
 import SearchableSelect from '../common/SearchableSelect.vue';
 import ControlMapInput from './ControlMapInput.vue';
 import WorkflowField from './WorkflowField.vue';
@@ -39,11 +40,16 @@ function updateSlider(key: ControlSliderKey, value?: number[]) {
           <Layers class="h-4 w-4" />
         </div>
         <div>
-          <h3 class="text-xs font-bold tracking-wider uppercase">
-            Color / Depth Control
-          </h3>
+          <div class="flex items-center gap-1.5">
+            <h3 class="text-xs font-bold tracking-wider uppercase">
+              Color / Depth Control
+            </h3>
+            <HelpTooltip
+              text="Use maps with the output's aspect ratio. End around 0.5 for mannequin or painted maps so their surface does not show through. Without maps the control is skipped."
+            />
+          </div>
           <p class="text-muted-foreground text-xs">
-            Guide the layout with a color region map, a depth map, or both
+            Guide layout with color or depth maps
           </p>
         </div>
       </div>
@@ -88,7 +94,7 @@ function updateSlider(key: ControlSliderKey, value?: number[]) {
         class="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-400"
       >
         <AlertCircle class="h-4 w-4 shrink-0" />
-        <span>No maps yet. Without maps the control is skipped.</span>
+        <span>No maps yet.</span>
       </div>
 
       <div class="grid grid-cols-2 gap-3">
@@ -117,11 +123,6 @@ function updateSlider(key: ControlSliderKey, value?: number[]) {
           />
         </WorkflowField>
       </div>
-
-      <p class="text-muted-foreground text-xs">
-        Use maps with the output's aspect ratio. End around 0.5 for mannequin or
-        painted maps so their surface does not show through.
-      </p>
     </div>
   </div>
 </template>

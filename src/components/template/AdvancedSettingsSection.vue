@@ -20,6 +20,7 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
+import HelpTooltip from '../common/HelpTooltip.vue';
 import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
@@ -111,17 +112,21 @@ const spectrumFields = computed(() => [
   ...SPECTRUM_MODE_FIELDS[workflowStore.moss.spectrumMode]
 ]);
 
+const slgFullRange = computed(
+  () =>
+    workflowStore.moss.spectrumEnabled ||
+    workflowStore.imageInput.mode === 'edit'
+);
+
 const slgStartPercent = computed({
-  get: () =>
-    workflowStore.moss.spectrumEnabled ? 0 : workflowStore.moss.slgStartPercent,
+  get: () => (slgFullRange.value ? 0 : workflowStore.moss.slgStartPercent),
   set: (value: number) => {
     workflowStore.moss.slgStartPercent = value;
   }
 });
 
 const slgEndPercent = computed({
-  get: () =>
-    workflowStore.moss.spectrumEnabled ? 1 : workflowStore.moss.slgEndPercent,
+  get: () => (slgFullRange.value ? 1 : workflowStore.moss.slgEndPercent),
   set: (value: number) => {
     workflowStore.moss.slgEndPercent = value;
   }
@@ -138,11 +143,33 @@ const cacheModelTypes = [
 ];
 const cacheStrategies = ['preset', 'adaptive', 'static', 'dynamic'] as const;
 
+const auraFlowEnabled = computed({
+  get: () =>
+    isAnima.value
+      ? workflowStore.advanced.auraFlowEnabled
+      : workflowStore.moss.auraFlowEnabled,
+  set: (enabled: boolean) => {
+    if (isAnima.value) workflowStore.advanced.auraFlowEnabled = enabled;
+    else workflowStore.moss.auraFlowEnabled = enabled;
+  }
+});
+
+const auraFlowShift = computed({
+  get: () =>
+    isAnima.value
+      ? workflowStore.models.shift
+      : workflowStore.moss.auraFlowShift,
+  set: (shift: number) => {
+    if (isAnima.value) workflowStore.models.shift = shift;
+    else workflowStore.moss.auraFlowShift = shift;
+  }
+});
+
 const shiftModel = computed({
-  get: () => [workflowStore.models.shift],
+  get: () => [auraFlowShift.value],
   set: (value: number[]) => {
     if (value[0] !== undefined) {
-      workflowStore.models.shift = Number(value[0].toFixed(1));
+      auraFlowShift.value = Number(value[0].toFixed(1));
     }
   }
 });
@@ -190,10 +217,16 @@ const renormCfgModel = computed({
             </span>
             <template v-else>
               <span
-                v-if="isAnima && workflowStore.advanced.auraFlowEnabled"
+                v-if="auraFlowEnabled"
                 class="border-primary/30 bg-primary/10 text-primary rounded border px-2 py-0.5 font-mono text-xs font-bold"
               >
                 Shift ON
+              </span>
+              <span
+                v-if="!isAnima && workflowStore.moss.tsrEnabled"
+                class="border-primary/30 bg-primary/10 text-primary rounded border px-2 py-0.5 font-mono text-xs font-bold"
+              >
+                TSR ON
               </span>
               <span
                 v-if="!isAnima && workflowStore.moss.skipLayerGuidance"
@@ -241,17 +274,19 @@ const renormCfgModel = computed({
           >
             <div class="flex items-center justify-between">
               <div class="flex flex-col gap-0.5">
-                <Label
-                  for="moss-slg-enabled"
-                  class="text-foreground text-xs font-medium"
-                  :class="{ 'cursor-pointer': comfyStore.isConnected }"
-                >
-                  Skip Layer Guidance
-                </Label>
-                <p class="text-muted-foreground text-xs">
-                  Official MOSS-Image default is layer 22 from 0 to 0.5. Turn
-                  off for a more photographic look at the cost of fine detail.
-                </p>
+                <div class="flex items-center gap-2">
+                  <Label
+                    for="moss-slg-enabled"
+                    class="text-foreground text-xs font-medium"
+                    :class="{ 'cursor-pointer': comfyStore.isConnected }"
+                  >
+                    Skip Layer Guidance
+                  </Label>
+                  <HelpTooltip
+                    text="Official default is layer 22 from 0 to 0.5. Turn off for a more photographic look. Start and end lock to 0 and 1 while Spectrum or Edit Mode is on."
+                  />
+                </div>
+                <p class="text-muted-foreground text-xs">Sharper fine detail</p>
               </div>
               <Switch
                 id="moss-slg-enabled"
@@ -281,10 +316,7 @@ const renormCfgModel = computed({
                   max="1"
                   step="0.001"
                   class="font-mono text-xs"
-                  :disabled="
-                    !comfyStore.isConnected ||
-                    workflowStore.moss.spectrumEnabled
-                  "
+                  :disabled="!comfyStore.isConnected || slgFullRange"
                 />
               </WorkflowField>
 
@@ -296,23 +328,10 @@ const renormCfgModel = computed({
                   max="1"
                   step="0.001"
                   class="font-mono text-xs"
-                  :disabled="
-                    !comfyStore.isConnected ||
-                    workflowStore.moss.spectrumEnabled
-                  "
+                  :disabled="!comfyStore.isConnected || slgFullRange"
                 />
               </WorkflowField>
             </div>
-
-            <p
-              v-if="
-                workflowStore.moss.skipLayerGuidance &&
-                workflowStore.moss.spectrumEnabled
-              "
-              class="text-muted-foreground text-xs"
-            >
-              Start and end are locked to 0 and 1 while Spectrum is on.
-            </p>
           </div>
 
           <!-- MOSS Spectrum Accelerator -->
@@ -330,6 +349,9 @@ const renormCfgModel = computed({
                   >
                     Spectrum Accelerator
                   </Label>
+                  <HelpTooltip
+                    text="Forecasts transformer steps. Runs Skip Layer Guidance over the full 0 to 1 range so forecasts are not reset mid-run."
+                  />
                   <span
                     v-if="
                       comfyStore.isConnected &&
@@ -341,9 +363,7 @@ const renormCfgModel = computed({
                   </span>
                 </div>
                 <p class="text-muted-foreground text-xs">
-                  Forecast transformer steps for roughly 2x faster sampling.
-                  Runs Skip Layer Guidance over the full 0 to 1 range so
-                  forecasts are not reset mid-run.
+                  Roughly 2x faster sampling
                 </p>
               </div>
               <Switch
@@ -360,10 +380,7 @@ const renormCfgModel = computed({
               class="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-400"
             >
               <AlertCircle class="h-4 w-4 shrink-0" />
-              <span>
-                Spectrum custom node (<code>ComfyUI-Spectrum-MOSS</code>) is not
-                installed in ComfyUI.
-              </span>
+              <span>Requires <code>ComfyUI-Spectrum-MOSS</code>.</span>
             </div>
 
             <div
@@ -427,39 +444,101 @@ const renormCfgModel = computed({
             </div>
           </div>
 
-          <!-- 1. AuraFlow Shift Group -->
+          <!-- MOSS Temporal Score Rescaling -->
           <div
-            v-if="isAnima"
+            v-if="!isAnima"
             class="border-border bg-card flex flex-col gap-3 rounded-lg border p-3"
           >
             <div class="flex items-center justify-between">
               <div class="flex flex-col gap-0.5">
-                <Label
-                  for="auraflow-enabled"
-                  class="text-foreground text-xs font-medium"
-                  :class="{ 'cursor-pointer': comfyStore.isConnected }"
-                >
-                  AuraFlow Shift
-                </Label>
+                <div class="flex items-center gap-2">
+                  <Label
+                    for="moss-tsr-enabled"
+                    class="text-foreground text-xs font-medium"
+                    :class="{ 'cursor-pointer': comfyStore.isConnected }"
+                  >
+                    Temporal Score Rescaling
+                  </Label>
+                  <HelpTooltip
+                    text="Lower k adds detail, higher k smooths, 1 disables it. Larger sigma takes effect earlier."
+                  />
+                </div>
+                <p class="text-muted-foreground text-xs">
+                  Balance detail and smoothness
+                </p>
+              </div>
+              <Switch
+                id="moss-tsr-enabled"
+                v-model="workflowStore.moss.tsrEnabled"
+                :disabled="!comfyStore.isConnected"
+              />
+            </div>
+
+            <div
+              v-if="workflowStore.moss.tsrEnabled"
+              class="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2"
+            >
+              <WorkflowField label="K">
+                <Input
+                  v-model.number="workflowStore.moss.tsrK"
+                  type="number"
+                  min="0.01"
+                  max="100"
+                  step="0.001"
+                  class="font-mono text-xs"
+                  :disabled="!comfyStore.isConnected"
+                />
+              </WorkflowField>
+
+              <WorkflowField label="Sigma">
+                <Input
+                  v-model.number="workflowStore.moss.tsrSigma"
+                  type="number"
+                  min="0.01"
+                  max="100"
+                  step="0.001"
+                  class="font-mono text-xs"
+                  :disabled="!comfyStore.isConnected"
+                />
+              </WorkflowField>
+            </div>
+          </div>
+
+          <!-- 1. AuraFlow Shift Group -->
+          <div
+            class="border-border bg-card flex flex-col gap-3 rounded-lg border p-3"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex flex-col gap-0.5">
+                <div class="flex items-center gap-2">
+                  <Label
+                    for="auraflow-enabled"
+                    class="text-foreground text-xs font-medium"
+                    :class="{ 'cursor-pointer': comfyStore.isConnected }"
+                  >
+                    AuraFlow Shift
+                  </Label>
+                  <HelpTooltip
+                    v-if="!isAnima"
+                    text="MOSS-Image's native shift is 5.0."
+                  />
+                </div>
                 <p class="text-muted-foreground text-xs">
                   Model sampling shift for AuraFlow / DiT models
                 </p>
               </div>
               <Switch
                 id="auraflow-enabled"
-                v-model="workflowStore.advanced.auraFlowEnabled"
+                v-model="auraFlowEnabled"
                 :disabled="!comfyStore.isConnected"
               />
             </div>
 
-            <div
-              v-if="workflowStore.advanced.auraFlowEnabled"
-              class="flex flex-col gap-1.5 pt-1"
-            >
+            <div v-if="auraFlowEnabled" class="flex flex-col gap-1.5 pt-1">
               <WorkflowField label="Shift Value">
                 <template #action>
                   <EditableNumberBadge
-                    v-model="workflowStore.models.shift"
+                    v-model="auraFlowShift"
                     :min="0"
                     :max="100"
                     :step="0.1"
