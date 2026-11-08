@@ -25,7 +25,6 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import {
-  clearBooruCache,
   fetchBooruSettings,
   fetchBooruSources,
   saveBooruSettings,
@@ -77,8 +76,6 @@ const booruPromptCategories = ref<string[]>([
 const booruReplaceUnderscores = ref(false);
 const booruEscapeParentheses = ref(false);
 const booruTimeout = ref(30);
-const booruCacheBudget = ref(1024);
-const booruCacheMessage = ref('');
 const booruTesting = ref<AccountSource | null>(null);
 const booruResult = ref<{
   source: AccountSource;
@@ -143,7 +140,6 @@ function applyGallerySettings(settings: BooruSettings) {
     booruReplaceUnderscores.value = settings.promptDefaults.replaceUnderscores;
     booruEscapeParentheses.value = settings.promptDefaults.escapeParentheses;
     booruTimeout.value = settings.timeout;
-    booruCacheBudget.value = settings.cacheBudgetMiB;
   } finally {
     applyingGallerySettings = false;
   }
@@ -208,10 +204,6 @@ async function saveGalleryPreferences() {
       300,
       Math.max(3, Number(booruTimeout.value) || 30)
     );
-    booruCacheBudget.value = Math.min(
-      32768,
-      Math.max(128, Number(booruCacheBudget.value) || 1024)
-    );
     const update: BooruSettingsUpdate = {
       defaultSource: booruDefaultSource.value,
       blacklist: parseTagList(booruBlacklist.value),
@@ -222,7 +214,6 @@ async function saveGalleryPreferences() {
         escapeParentheses: booruEscapeParentheses.value
       },
       timeout: booruTimeout.value,
-      cacheBudgetMiB: booruCacheBudget.value,
       ...(Object.keys(credentials).length > 0 ? { credentials } : {})
     };
     applyGallerySettings(await saveBooruSettings(update));
@@ -247,7 +238,6 @@ watch(
     booruReplaceUnderscores,
     booruEscapeParentheses,
     booruTimeout,
-    booruCacheBudget,
     booruCredentials
   ],
   () => {
@@ -328,16 +318,6 @@ async function clearKonachanCredentials() {
     applyingGallerySettings = false;
   }
 }
-async function clearGalleryCache() {
-  booruCacheMessage.value = '';
-  try {
-    await clearBooruCache();
-    booruCacheMessage.value = 'Gallery cache cleared successfully.';
-  } catch (error) {
-    booruCacheMessage.value =
-      error instanceof Error ? error.message : String(error);
-  }
-}
 onMounted(() => {
   void loadBooruPromptFormatOptions();
   void loadGallerySettings();
@@ -403,52 +383,19 @@ onMounted(() => {
       <div
         class="border-border/80 bg-muted/20 flex flex-col gap-3 rounded-lg border p-4"
       >
-        <Label class="text-foreground text-xs font-semibold">
-          Network & Storage Cache
-        </Label>
-        <div class="grid grid-cols-2 gap-3">
-          <Field class="gap-1.5">
-            <FieldLabel class="text-xs">Timeout (seconds)</FieldLabel>
-            <Input
-              v-model="booruTimeout"
-              type="number"
-              min="3"
-              max="300"
-              :disabled="!booruAvailable"
-              class="font-mono text-xs"
-            />
-          </Field>
-          <Field class="gap-1.5">
-            <FieldLabel class="text-xs">Cache Budget (MiB)</FieldLabel>
-            <Input
-              v-model="booruCacheBudget"
-              type="number"
-              min="128"
-              max="32768"
-              :disabled="!booruAvailable"
-              class="font-mono text-xs"
-            />
-          </Field>
-        </div>
-        <div class="flex items-center justify-between pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
+        <Field class="gap-1.5">
+          <FieldLabel class="text-foreground text-xs font-semibold">
+            Request Timeout (seconds)
+          </FieldLabel>
+          <Input
+            v-model="booruTimeout"
+            type="number"
+            min="3"
+            max="300"
             :disabled="!booruAvailable"
-            class="border-border bg-secondary hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 text-xs font-medium"
-            @click="clearGalleryCache"
-          >
-            <Trash2 class="h-3.5 w-3.5" />
-            <span>Clear Cache</span>
-          </Button>
-          <span
-            v-if="booruCacheMessage"
-            class="font-mono text-xs text-emerald-400"
-          >
-            {{ booruCacheMessage }}
-          </span>
-        </div>
+            class="font-mono text-xs"
+          />
+        </Field>
       </div>
     </div>
 

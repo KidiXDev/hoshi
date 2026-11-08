@@ -59,6 +59,12 @@ import {
 } from '@/components/ui/select';
 import { BRAND_NAME, REPO_SLUG } from '@/lib/brand';
 import { loadAppData, saveAppData } from '../services/appStorage';
+import {
+  clearBooruCache,
+  fetchBooruSettings,
+  getBooruMediaCacheStats,
+  saveBooruSettings
+} from '../services/booruGallery';
 import { ComfyApi } from '../services/comfyApi';
 import {
   getGalleryCacheStats,
@@ -243,6 +249,7 @@ onMounted(() => {
   void loadCivitaiSettings();
   void refreshWordList();
   void refreshTagData();
+  void loadBooruMediaCacheLimit();
 });
 let saveSuccessTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -499,21 +506,73 @@ const networkCacheStats = ref<{
 } | null>(null);
 const thumbnailCacheStats = ref<GalleryCacheStats | null>(null);
 const isClearingNetworkCache = ref(false);
+const booruMediaCacheStats = ref<{
+  totalEntries: number;
+  totalSizeBytes: number;
+} | null>(null);
+const booruMediaCacheLimit = ref<number>();
+const isClearingBooruMediaCache = ref(false);
 const cacheResult = ref<{ ok: boolean; message: string } | null>(null);
 let cacheResultTimer: ReturnType<typeof setTimeout> | undefined;
 
 async function loadCacheStats() {
-  const [network, thumbnails] = await Promise.allSettled([
+  const [network, thumbnails, booruMedia] = await Promise.allSettled([
     invoke<{ totalEntries: number; totalSizeBytes: number }>(
       'get_network_cache_stats'
     ),
-    getGalleryCacheStats()
+    getGalleryCacheStats(),
+    getBooruMediaCacheStats()
   ]);
   if (network.status === 'fulfilled') networkCacheStats.value = network.value;
   else console.warn('Failed to load network cache stats:', network.reason);
   if (thumbnails.status === 'fulfilled')
     thumbnailCacheStats.value = thumbnails.value;
   else console.warn('Failed to load thumbnail cache stats:', thumbnails.reason);
+  if (booruMedia.status === 'fulfilled')
+    booruMediaCacheStats.value = booruMedia.value;
+  else console.warn('Failed to load booru media stats:', booruMedia.reason);
+}
+
+async function loadBooruMediaCacheLimit() {
+  try {
+    booruMediaCacheLimit.value = (await fetchBooruSettings()).cacheBudgetMiB;
+  } catch (err) {
+    console.warn('Failed to load booru media cache limit:', err);
+  }
+}
+
+const saveBooruMediaCacheLimit = useDebounceFn(async () => {
+  const limit = Math.min(
+    32768,
+    Math.max(128, Math.round(Number(booruMediaCacheLimit.value) || 1024))
+  );
+  booruMediaCacheLimit.value = limit;
+  try {
+    await saveBooruSettings({ cacheBudgetMiB: limit });
+    await loadCacheStats();
+    showSaved();
+  } catch (err) {
+    clearTimeout(cacheResultTimer);
+    cacheResult.value = {
+      ok: false,
+      message: `Failed to save limit: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+}, 600);
+
+async function clearBooruMediaCache() {
+  if (isClearingBooruMediaCache.value) return;
+  isClearingBooruMediaCache.value = true;
+  let error = '';
+  try {
+    await clearBooruCache();
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  } finally {
+    isClearingBooruMediaCache.value = false;
+  }
+  await loadCacheStats();
+  showCacheResult(error, 'Booru media cache cleared.');
 }
 
 function showCacheResult(error: string, successMessage: string) {
@@ -1389,6 +1448,59 @@ void loadCacheStats();
                     galleryCache.isRebuilding ? 'Re-indexing…' : 'Clear cache'
                   }}
                 </Button>
+              </div>
+
+              <div
+                class="border-border/60 bg-muted/20 flex items-center justify-between gap-4 rounded-lg border p-3"
+              >
+                <div class="min-w-0">
+                  <p class="text-foreground text-xs font-medium">Booru media</p>
+                  <p class="mt-1.5 font-mono text-sm font-semibold">
+                    <template v-if="booruMediaCacheStats">
+                      {{ formatFileSize(booruMediaCacheStats.totalSizeBytes) }}
+                    </template>
+                    <span v-else class="text-muted-foreground">Loading…</span>
+                  </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <Label
+                    for="booru-media-cache-limit"
+                    class="text-muted-foreground text-xs"
+                  >
+                    Limit (MiB)
+                  </Label>
+                  <Input
+                    id="booru-media-cache-limit"
+                    v-model.number="booruMediaCacheLimit"
+                    type="number"
+                    min="128"
+                    max="32768"
+                    step="128"
+                    :disabled="booruMediaCacheLimit === undefined"
+                    class="h-8 w-24 font-mono text-xs"
+                    @update:model-value="saveBooruMediaCacheLimit"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    :disabled="
+                      isClearingBooruMediaCache ||
+                      !booruMediaCacheStats?.totalEntries
+                    "
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="clearBooruMediaCache"
+                  >
+                    <Loader2
+                      v-if="isClearingBooruMediaCache"
+                      class="h-3.5 w-3.5 animate-spin"
+                    />
+                    <Trash2 v-else class="h-3.5 w-3.5 text-rose-400" />
+                    {{
+                      isClearingBooruMediaCache ? 'Clearing…' : 'Clear cache'
+                    }}
+                  </Button>
+                </div>
               </div>
 
               <NoticeBanner

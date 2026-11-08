@@ -1324,6 +1324,19 @@ pub async fn booru_clear_cache(app_handle: AppHandle) -> Result<Value, String> {
     Ok(serde_json::json!({"ok": true}))
 }
 
+#[tauri::command]
+pub async fn booru_media_cache_stats(app_handle: AppHandle) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let files = media_files(&app_handle);
+        Ok(serde_json::json!({
+            "totalEntries": files.len(),
+            "totalSizeBytes": files.iter().map(|(_, size, _)| size).sum::<u64>(),
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn clear_json_caches(app: &AppHandle) {
     for namespace in ["booru_search", "booru_query", "booru_detail", "booru_tags"] {
         let _ = crate::network_cache::clear_network_cache_sync(app, Some(namespace));

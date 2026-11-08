@@ -136,6 +136,12 @@ export function clearBooruCache() {
   return invoke<{ ok: boolean }>('booru_clear_cache');
 }
 
+export function getBooruMediaCacheStats() {
+  return invoke<{ totalEntries: number; totalSizeBytes: number }>(
+    'booru_media_cache_stats'
+  );
+}
+
 export function testBooruCredentials(
   source: string,
   credentials: Record<string, string>

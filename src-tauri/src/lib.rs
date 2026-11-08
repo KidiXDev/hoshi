@@ -436,6 +436,7 @@ pub fn run() {
             booru::booru_favorites,
             booru::booru_favorite_set,
             booru::booru_clear_cache,
+            booru::booru_media_cache_stats,
             civitai::models,
             civitai::model_by_id,
             civitai::image_generation_data,
