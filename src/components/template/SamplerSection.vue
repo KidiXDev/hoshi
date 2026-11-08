@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import SearchableSelect from '../common/SearchableSelect.vue';
 import { computed, watch } from 'vue';
-import { ArrowLeftRight, HelpCircle } from '@lucide/vue';
+import { ArrowLeftRight, HelpCircle, TriangleAlert } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -25,9 +25,21 @@ import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import {
+  dimensionsForMegapixels,
+  isDimensionAligned,
+  matchMossSize,
+  megapixelsOf,
+  MOSS_ASPECT_RATIOS,
+  MOSS_MEGAPIXELS,
+  nearestMossMegapixels,
+  parseAspectRatio,
+  snapDimension
+} from '../../utils/resolution';
 
 const comfyStore = useComfyStore();
 const workflowStore = useWorkflowStore();
+const isMoss = computed(() => workflowStore.profile === 'moss');
 const usesInputImage = computed(
   () => workflowStore.imageInput.mode !== 'text2img'
 );
@@ -111,6 +123,61 @@ function swapCustomDimensions() {
   workflowStore.resolution.width = workflowStore.resolution.height || 1024;
   workflowStore.resolution.height = temp;
 }
+
+const currentWidth = computed(() => workflowStore.resolution.width || 1024);
+const currentHeight = computed(() => workflowStore.resolution.height || 1024);
+const dimensionsAligned = computed(
+  () =>
+    isDimensionAligned(currentWidth.value) &&
+    isDimensionAligned(currentHeight.value)
+);
+const snappedDimensions = computed(() => ({
+  width: snapDimension(currentWidth.value),
+  height: snapDimension(currentHeight.value)
+}));
+const currentMegapixels = computed(() =>
+  megapixelsOf(currentWidth.value, currentHeight.value).toFixed(2)
+);
+
+function snapDimensions() {
+  workflowStore.resolution.width = snappedDimensions.value.width;
+  workflowStore.resolution.height = snappedDimensions.value.height;
+}
+
+const matchedMossSize = computed(() =>
+  matchMossSize(currentWidth.value, currentHeight.value)
+);
+
+function applyMossSize(
+  ratioWidth: number,
+  ratioHeight: number,
+  megapixels: number
+) {
+  const size = dimensionsForMegapixels(ratioWidth, ratioHeight, megapixels);
+  workflowStore.resolution.width = size.width;
+  workflowStore.resolution.height = size.height;
+}
+
+const mossAspectRatio = computed({
+  get: () => matchedMossSize.value?.ratio ?? 'Custom',
+  set: (ratio: string) =>
+    applyMossSize(
+      ...parseAspectRatio(ratio),
+      matchedMossSize.value?.megapixels ??
+        nearestMossMegapixels(currentWidth.value, currentHeight.value)
+    )
+});
+
+const mossMegapixels = computed({
+  get: () => String(matchedMossSize.value?.megapixels ?? 'Custom'),
+  set: (megapixels: string) => {
+    const ratio = matchedMossSize.value?.ratio;
+    const [ratioWidth, ratioHeight] = ratio
+      ? parseAspectRatio(ratio)
+      : [currentWidth.value, currentHeight.value];
+    applyMossSize(ratioWidth, ratioHeight, Number(megapixels));
+  }
+});
 
 const stepsModel = computed({
   get: () => [workflowStore.sampler.steps],
@@ -294,7 +361,8 @@ function setSeedValue(value: string | number) {
 
     <!-- Row 3: Sampler, Scheduler & Resolution -->
     <div
-      class="border-border grid grid-cols-1 gap-3 border-t pt-2.5 sm:grid-cols-3"
+      class="border-border grid grid-cols-1 gap-3 border-t pt-2.5"
+      :class="isMoss ? 'sm:grid-cols-2' : 'sm:grid-cols-3'"
     >
       <!-- Sampler Name -->
       <WorkflowField label="Sampler">
@@ -317,7 +385,7 @@ function setSeedValue(value: string | number) {
       </WorkflowField>
 
       <!-- Resolution Preset -->
-      <WorkflowField label="Resolution Preset">
+      <WorkflowField v-if="!isMoss" label="Resolution Preset">
         <Select
           v-model="workflowStore.resolution.preset"
           :disabled="usesInputImage"
@@ -355,10 +423,90 @@ function setSeedValue(value: string | number) {
         >
           Dimensions
         </span>
-        <span class="text-primary font-mono text-xs font-semibold">
-          {{ workflowStore.resolution.width || 1024 }} ×
-          {{ workflowStore.resolution.height || 1024 }}
-        </span>
+        <div class="flex items-center gap-1.5">
+          <Tooltip v-if="!dimensionsAligned">
+            <TooltipTrigger as-child>
+              <button
+                type="button"
+                aria-label="Snap dimensions to multiples of 16"
+                class="text-amber-400 hover:text-amber-300 disabled:opacity-50"
+                :disabled="usesInputImage"
+                @click="snapDimensions"
+              >
+                <TriangleAlert class="h-3.5 w-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p class="max-w-56 text-xs">
+                Width and height should be multiples of 16{{
+                  isMoss ? ', and MOSS layouts require it' : ''
+                }}. Click to snap to {{ snappedDimensions.width }} ×
+                {{ snappedDimensions.height }}.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+          <span class="text-primary font-mono text-xs font-semibold">
+            {{ currentWidth }} × {{ currentHeight }}
+          </span>
+          <span class="text-muted-foreground font-mono text-xs">
+            {{ currentMegapixels }} MP
+          </span>
+        </div>
+      </div>
+
+      <div v-if="isMoss" class="grid grid-cols-2 gap-2">
+        <WorkflowField label="Aspect Ratio">
+          <Select v-model="mossAspectRatio" :disabled="usesInputImage">
+            <SelectTrigger
+              class="w-full font-mono text-xs"
+              :disabled="usesInputImage"
+            >
+              <SelectValue placeholder="Aspect ratio">
+                {{ mossAspectRatio }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup class="max-h-48 overflow-y-auto">
+                <SelectItem
+                  v-for="ratio in MOSS_ASPECT_RATIOS"
+                  :key="ratio"
+                  :value="ratio"
+                  class="font-mono text-xs"
+                >
+                  {{ ratio }}
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </WorkflowField>
+        <WorkflowField label="Total Pixels">
+          <Select v-model="mossMegapixels" :disabled="usesInputImage">
+            <SelectTrigger
+              class="w-full font-mono text-xs"
+              :disabled="usesInputImage"
+            >
+              <SelectValue placeholder="Megapixels">
+                {{
+                  mossMegapixels === 'Custom'
+                    ? 'Custom'
+                    : `${mossMegapixels} MP`
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem
+                  v-for="megapixels in MOSS_MEGAPIXELS"
+                  :key="megapixels"
+                  :value="String(megapixels)"
+                  class="font-mono text-xs"
+                >
+                  {{ megapixels }} MP
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </WorkflowField>
       </div>
 
       <div class="flex items-center gap-2">
@@ -372,7 +520,7 @@ function setSeedValue(value: string | number) {
             type="number"
             :min="64"
             :max="4096"
-            :step="64"
+            :step="16"
             class="font-mono text-xs"
             placeholder="Width"
             :disabled="usesInputImage"
@@ -402,7 +550,7 @@ function setSeedValue(value: string | number) {
             type="number"
             :min="64"
             :max="4096"
-            :step="64"
+            :step="16"
             class="font-mono text-xs"
             placeholder="Height"
             :disabled="usesInputImage"
