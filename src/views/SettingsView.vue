@@ -91,6 +91,10 @@ import SettingsSwitchRow from '@/components/layout/SettingsSwitchRow.vue';
 const launcherStore = useLauncherStore();
 const comfyStore = useComfyStore();
 
+const COMFYUI_URL_PLACEHOLDER = 'http://127.0.0.1:8188';
+const CIVITAI_ACCOUNT_URL = 'https://civitai.com/user/account';
+const CUSTOM_NODE_URL_PLACEHOLDER = 'https://github.com/owner/custom-node';
+
 const tabs = [
   { id: 'comfyui', label: 'ComfyUI', icon: Terminal },
   { id: 'booru', label: 'Booru gallery', icon: ImageIcon },
@@ -986,7 +990,7 @@ void loadCacheStats();
                     />
                     <Input
                       v-model="serverUrl"
-                      placeholder="http://127.0.0.1:8188"
+                      :placeholder="COMFYUI_URL_PLACEHOLDER"
                       class="text-foreground pl-9 font-mono text-xs"
                     />
                   </div>
@@ -1039,7 +1043,7 @@ void loadCacheStats();
                 variant="outline"
                 size="sm"
                 class="text-xs"
-                @click="openUrl('https://civitai.com/user/account')"
+                @click="openUrl(CIVITAI_ACCOUNT_URL)"
               >
                 <ExternalLink class="h-3.5 w-3.5" />
                 Manage API keys
@@ -1617,7 +1621,7 @@ void loadCacheStats();
           v-model="repositoryUrl"
           type="url"
           autocomplete="off"
-          placeholder="https://github.com/owner/custom-node"
+          :placeholder="CUSTOM_NODE_URL_PLACEHOLDER"
           class="font-mono text-xs"
           :disabled="isInstallingCustomNode"
           @keydown.enter="installCustomNode"
