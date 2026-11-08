@@ -48,6 +48,16 @@ describe('buildAssistantSystemPrompt', () => {
   ])('keeps the %s prompt free of the other model', (_, prompt, other) => {
     expect(prompt).not.toMatch(other);
   });
+
+  it.each([
+    ['MOSS assistant', MOSS_ASSISTANT_SYSTEM_PROMPT],
+    ['MOSS enhancer', MOSS_PROMPT_ENHANCER_SYSTEM_PROMPT],
+    ['Anima assistant', DEFAULT_ASSISTANT_SYSTEM_PROMPT],
+    ['Anima enhancer', PROMPT_ENHANCER_SYSTEM_PROMPT]
+  ])('gives the %s prompt the writing style rules', (_, prompt) => {
+    expect(prompt).toMatch(/Never use em dashes or semicolons/u);
+    expect(prompt).not.toMatch(/[—;]/u);
+  });
 });
 
 describe('buildEnhancerSystemPrompt', () => {
