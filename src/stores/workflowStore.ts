@@ -178,6 +178,7 @@ const DEFAULT_MOSS: MossSettings = {
   slgEndPercent: 0.5,
   layoutEnabled: false,
   layoutBoxes: [],
+  layoutSummary: {},
   controlEnabled: false,
   controlAdapter: '',
   controlColorMap: '',
@@ -273,7 +274,8 @@ export function normalizeWorkflowState(
       ...state.moss,
       layoutBoxes: Array.isArray(state.moss?.layoutBoxes)
         ? state.moss.layoutBoxes
-        : []
+        : [],
+      layoutSummary: { ...state.moss?.layoutSummary }
     },
     positivePrompt:
       typeof state.positivePrompt === 'string'
@@ -553,7 +555,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     moss.value = {
       ...moss.value,
       layoutEnabled: true,
-      layoutBoxes: layout.boxes
+      layoutBoxes: layout.boxes,
+      layoutSummary: layout.summary
     };
     return true;
   }

@@ -116,7 +116,7 @@ describe('MOSS image edit', () => {
       })
     );
 
-    expect(graph.moss_layout).toBeUndefined();
+    expect(graph.moss_positive?.inputs.text).toBe('test');
     expect(graph.moss_control).toBeUndefined();
     expect(graph.moss_control_adapter).toBeUndefined();
   });

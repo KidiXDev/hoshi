@@ -185,6 +185,16 @@ export interface LayoutBox {
   height: number;
   caption: string;
   text: string;
+  tags?: string[];
+  palette?: string[];
+}
+
+export type LayoutCanvas = 'single' | 'multi_panel' | 'collage';
+
+export interface LayoutSummaryExtras {
+  meta?: string[];
+  canvas?: LayoutCanvas;
+  palette?: string[];
 }
 
 export interface MossSettings {
@@ -194,6 +204,7 @@ export interface MossSettings {
   slgEndPercent: number;
   layoutEnabled: boolean;
   layoutBoxes: LayoutBox[];
+  layoutSummary: LayoutSummaryExtras;
   controlEnabled: boolean;
   controlAdapter: string;
   controlColorMap: string;

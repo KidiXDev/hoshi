@@ -17,12 +17,23 @@ import {
   withLayout,
   type Graph
 } from '../test/workflowFixtures';
+import type { WorkflowState } from '../types/workflow';
 import { buildFaceDetailerPrompt } from './faceDetailerWorkflow';
 import { buildUltimateUpscalePrompt } from './ultimateUpscaleWorkflow';
 import {
   buildWorkflowPrompt,
   prepareWorkflowForQueue
 } from './workflowBuilder';
+
+const layoutPromptOf = (configure?: (s: WorkflowState) => void) =>
+  JSON.parse(
+    graphOf(
+      mossState((s) => {
+        withLayout(s);
+        configure?.(s);
+      })
+    ).moss_positive?.inputs.text as string
+  ) as Record<string, unknown>;
 
 describe('prepareWorkflowForQueue', () => {
   it('draws a random seed without mutating the editor state', () => {
@@ -570,60 +581,86 @@ describe('MOSS profile', () => {
     expect(graph['19']?.class_type).toBe('VAEEncode');
   });
 
-  it('turns layout boxes into bounding boxes and a layout prompt', () => {
-    const graph = graphOf(mossState(withLayout));
-
-    expect(graph.moss_boxes?.inputs).toEqual({
-      width: 1024,
-      height: 512,
-      editor_state: {
-        __value__: [
+  describe('layout prompt', () => {
+    it('compiles the boxes into centered yxyx pixel edges', () => {
+      expect(layoutPromptOf()).toEqual({
+        summary: { caption: 'test' },
+        items: [
           {
-            x: 0,
-            y: 0,
-            width: 1024,
-            height: 128,
-            metadata: {
-              type: 'text',
-              text: 'MOSS',
-              desc: 'cream serif capitals',
-              palette: []
-            }
+            label: 'text',
+            caption: 'cream serif capitals',
+            text: 'MOSS',
+            bbox: [-256, -512, -128, 512]
           },
           {
-            x: 256,
-            y: 128,
-            width: 512,
-            height: 384,
-            metadata: {
-              type: 'obj',
-              text: '',
-              desc: 'a kneeling knight',
-              palette: []
-            }
+            label: 'character',
+            caption: 'a kneeling knight',
+            bbox: [-128, -256, 256, 256]
           }
-        ]
-      }
+        ],
+        bbox_coord_space: 'abs_centralized',
+        bbox_format: 'yxyx'
+      });
     });
-    expect(graph.moss_layout?.inputs).toEqual({
-      prompt: 'test',
-      width: 1024,
-      height: 512,
-      character_boxes: '2',
-      element: ['moss_boxes', 2]
+
+    it('encloses fractional box edges in whole pixels', () => {
+      const prompt = layoutPromptOf((s) => {
+        Object.assign(s.moss.layoutBoxes[1] ?? {}, {
+          x: 0.1004,
+          y: 0.3001,
+          width: 0.2,
+          height: 0.2
+        });
+      });
+
+      expect(prompt.items).toMatchObject([{}, { bbox: [-103, -410, 1, -204] }]);
     });
-    expect(graph.moss_positive?.inputs.text).toEqual(['moss_layout', 0]);
-  });
 
-  it('sends the plain prompt when the layout has no boxes', () => {
-    const graph = graphOf(
-      mossState((s) => {
-        s.moss.layoutEnabled = true;
-      })
-    );
+    it('keeps meta, canvas, palette and tags', () => {
+      const prompt = layoutPromptOf((s) => {
+        s.moss.layoutSummary = {
+          meta: ['poster'],
+          canvas: 'single',
+          palette: ['#112233']
+        };
+        Object.assign(s.moss.layoutBoxes[1] ?? {}, {
+          tags: ['armor'],
+          palette: ['silver']
+        });
+      });
 
-    expect(graph.moss_boxes).toBeUndefined();
-    expect(graph.moss_positive?.inputs.text).toBe('test');
+      expect(prompt.summary).toEqual({
+        meta: ['poster'],
+        canvas: 'single',
+        caption: 'test',
+        palette: ['#112233']
+      });
+      expect(prompt.items).toMatchObject([
+        {},
+        { tags: ['armor'], palette: ['silver'] }
+      ]);
+    });
+
+    it('rejects a box without a description', () => {
+      const state = mossState((s) => {
+        withLayout(s);
+        Object.assign(s.moss.layoutBoxes[1] ?? {}, { caption: ' ' });
+      });
+
+      expect(() => buildWorkflowPrompt(state)).toThrow(
+        /item 2 needs a caption/u
+      );
+    });
+
+    it('sends the plain prompt when the layout has no boxes', () => {
+      const graph = graphOf(
+        mossState((s) => {
+          s.moss.layoutEnabled = true;
+        })
+      );
+
+      expect(graph.moss_positive?.inputs.text).toBe('test');
+    });
   });
 
   describe('color/depth control', () => {

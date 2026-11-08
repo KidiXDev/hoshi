@@ -5,7 +5,7 @@ import {
   resolveDynamicPromptWithSeed,
   type WildcardMap
 } from '../utils/dynamicPrompt';
-import { boxPixels, layoutCanvasSize } from '../utils/mossLayout';
+import { compileMossLayoutPrompt } from '../utils/mossLayout';
 import { formatPrompt, removeNegativeOverlap } from '../utils/promptFormat';
 import { randomSeed } from '../utils/seed';
 import {
@@ -99,56 +99,6 @@ function resolveDynamicPrompts(state: WorkflowState, wildcards: WildcardMap) {
       wildcards
     );
   }
-}
-
-function appendMossLayoutStage(
-  prompt: Record<string, unknown>,
-  state: WorkflowState
-): WorkflowNodeRef | null {
-  const boxes = state.moss.layoutBoxes;
-  if (
-    state.imageInput.mode === 'edit' ||
-    !state.moss.layoutEnabled ||
-    boxes.length === 0
-  ) {
-    return null;
-  }
-  const { width, height } = layoutCanvasSize(state);
-
-  prompt['moss_boxes'] = {
-    inputs: {
-      width,
-      height,
-      editor_state: {
-        __value__: boxes.map((box) => ({
-          ...boxPixels(box, width, height),
-          metadata: {
-            type: box.kind === 'text' ? 'text' : 'obj',
-            text: box.kind === 'text' ? box.text : '',
-            desc: box.caption,
-            palette: []
-          }
-        }))
-      }
-    },
-    class_type: 'CreateBoundingBoxes',
-    _meta: { title: 'Create Bounding Boxes' }
-  };
-
-  prompt['moss_layout'] = {
-    inputs: {
-      prompt: state.positivePrompt,
-      width,
-      height,
-      character_boxes: boxes
-        .flatMap((box, index) => (box.kind === 'character' ? [index + 1] : []))
-        .join(', '),
-      element: ['moss_boxes', 2]
-    },
-    class_type: 'MOSSImageLayoutPrompt',
-    _meta: { title: 'MOSS-Image Layout Prompt' }
-  };
-  return ['moss_layout', 0];
 }
 
 interface SamplerInputs {
@@ -496,7 +446,7 @@ export function buildWorkflowPrompt(
   if (isMoss) {
     prompt['moss_positive'] = {
       inputs: {
-        text: appendMossLayoutStage(prompt, state) ?? positiveText,
+        text: (!isMossEdit && compileMossLayoutPrompt(state)) || positiveText,
         clip: ['28', 0]
       },
       class_type: 'CLIPTextEncode',

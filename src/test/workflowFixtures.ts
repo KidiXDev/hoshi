@@ -15,6 +15,7 @@ export const BASE_STATE: WorkflowState = {
     slgEndPercent: 0.5,
     layoutEnabled: false,
     layoutBoxes: [],
+    layoutSummary: {},
     controlEnabled: false,
     controlAdapter: '',
     controlColorMap: '',
