@@ -147,7 +147,12 @@ describe('useWorkflowStore profiles', () => {
     expect(loadAppData).toHaveBeenCalledWith('workflow_session_state_moss');
     expect(saveAppData).toHaveBeenCalledWith('workflow_profile', 'moss');
     expect(workflow.profile).toBe('moss');
-    expect(workflow.sampler).toMatchObject({ steps: 25, cfg: 2.5 });
+    expect(workflow.sampler).toMatchObject({
+      steps: 25,
+      cfg: 3,
+      samplerName: 'er_sde',
+      scheduler: 'simple'
+    });
     expect(workflow.negativePrompt).toBe(
       'nsfw, worst quality, bad anatomy, watermark, jpeg artifact'
     );

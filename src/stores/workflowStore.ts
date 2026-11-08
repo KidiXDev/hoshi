@@ -224,7 +224,7 @@ const PROFILE_DEFAULTS: Record<WorkflowProfile, ProfileDefaults> = {
       'Digital illustration of a glass bottle holding a swirling purple galaxy, resting on mossy stones in a sunlit meadow.',
     negativePrompt:
       'nsfw, worst quality, bad anatomy, watermark, jpeg artifact',
-    sampler: { steps: 25, cfg: 2.5 },
+    sampler: { steps: 25, cfg: 3, samplerName: 'er_sde', scheduler: 'simple' },
     resolution: {
       preset: '1024 x 1024 (1:1 Square)',
       batchSize: 1,
