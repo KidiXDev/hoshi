@@ -63,7 +63,9 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 
 ### Maya, the AI assistant
 
-An OpenRouter-powered chat assistant that adapts to the active model profile: Anima tags or MOSS-Image captions and layout drafts. Maya can inspect the current prompt and layout, search Animadex and your character library, apply prompt changes and queue generations. It also drives the inline prompt enhancer and auto-names chat sessions, with separate assistant and enhancer instructions for each model profile.
+An OpenRouter-powered image-prompt engineer for drafting, refining, reviewing and troubleshooting prompts. Maya shares one prompt engine with the inline enhancer, adapting to Anima tags and hybrids or MOSS-Image captions and layout drafts. The engine receives the selected diffusion model, canvas size and generation mode, preserves the user's visual intent, and keeps reference material separate from instructions.
+
+Drafts stay in chat. Maya can inspect the studio, research characters, and apply requested prompt edits. It starts image generation only when explicitly requested, using the existing approval or Auto-Apply setting. Assistant and enhancer preferences remain separate for each model profile.
 
 ## Screenshots
 

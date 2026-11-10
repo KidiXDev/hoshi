@@ -324,6 +324,41 @@ describe('useAiStore.sendMessage', () => {
     expect(system).not.toMatch(/\bAnima\b/u);
   });
 
+  it('refreshes model and canvas context from the studio for each request', async () => {
+    const store = await readyStore();
+    const workflow = useWorkflowStore();
+    workflow.models.unetName = 'anima-aesthetic.safetensors';
+    workflow.resolution.width = 768;
+    workflow.resolution.height = 1280;
+
+    await store.sendMessage('Draft a portrait');
+
+    expect(lastStreamCall().system).toContain(
+      JSON.stringify({
+        diffusionModel: 'anima-aesthetic.safetensors',
+        width: 768,
+        height: 1280,
+        generationMode: workflow.imageInput.mode
+      })
+    );
+
+    workflow.models.unetName = 'moss-image-sft.safetensors';
+    workflow.profile = 'moss';
+    workflow.resolution.width = 1024;
+    await store.sendMessage('Draft a poster');
+
+    const { system, tools } = lastStreamCall();
+    expect(system).toContain('Target: MOSS-Image.');
+    expect(system).not.toContain('anima-aesthetic.safetensors');
+    const inspect = tools.inspect_current_prompt;
+    if (!inspect) throw new Error('Missing studio inspection tool');
+    expect(await inspect.execute({})).toMatchObject({
+      diffusionModel: 'moss-image-sft.safetensors',
+      width: 1024,
+      height: 1280
+    });
+  });
+
   it('gives the model Animadex search and lookup tools', async () => {
     const store = await readyStore();
     await store.sendMessage('Hello');

@@ -138,7 +138,7 @@ function saveAiTuning() {
 onMounted(loadAiSettings);
 </script>
 <template>
-  <SettingsSection title="AI Assistant (OpenRouter)">
+  <SettingsSection title="Image Prompt Assistant (OpenRouter)">
     <template #icon>
       <Sparkles class="h-3.5 w-3.5" />
     </template>
@@ -360,7 +360,7 @@ onMounted(loadAiSettings);
         for="ai-auto-apply-switch"
         class="text-foreground flex cursor-pointer items-center text-xs font-medium"
       >
-        Auto-Apply Agentic Actions
+        Auto-Apply Requested Studio Actions
       </Label>
       <Switch
         id="ai-auto-apply-switch"
@@ -382,7 +382,8 @@ onMounted(loadAiSettings);
           Custom Instructions
         </span>
         <span class="text-muted-foreground text-xs">
-          Each model profile keeps its own assistant and enhancer instructions.
+          Each model profile keeps its own preferences. Image-prompting scope
+          and output formats always apply.
         </span>
       </div>
       <ToggleGroup
@@ -411,12 +412,12 @@ onMounted(loadAiSettings);
     <!-- Chatbot Assistant Custom Instructions -->
     <Field class="gap-1.5">
       <FieldLabel class="text-xs">
-        Chatbot Assistant Instructions (Optional)
+        Prompt Assistant Preferences (Optional)
       </FieldLabel>
       <Textarea
         :model-value="aiStore.config[instructionKeys.assistant]"
         rows="3"
-        placeholder="Enter custom instructions..."
+        placeholder="For example: Prefer concise hybrid prompts and restrained lighting."
         class="max-h-96 min-h-32 resize-y font-mono text-xs leading-relaxed"
         @update:model-value="
           (val) => {

@@ -70,12 +70,12 @@ const router = useRouter();
 const STARTERS = {
   anima: {
     intro:
-      'Ask Maya to brainstorm Anima prompts, detail anime character outfits, analyze image styles with Vision, or inspect and queue renders.',
+      'Draft, refine, or review Anima prompts with Maya. Use image references for visual guidance, and generate only when you ask.',
     prompts: [
       {
         label: 'Inspect & optimize for Anima',
         prompt:
-          'Inspect my current studio prompt and optimize it with Anima tag ordering and quality scores.'
+          'Inspect my current studio prompt and refine its clarity, framing, and Anima syntax. Preserve the scene and use quality tags only if they suit the selected variant.'
       },
       {
         label: 'Fantasy mage with detailed outfit',
@@ -85,13 +85,13 @@ const STARTERS = {
       {
         label: 'Create Anima aesthetic prompt',
         prompt:
-          'Generate a high quality Anima aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting.'
+          'Draft an Anima-Aesthetic prompt featuring a swordsman atop a cliff under starlight with dramatic lighting. Keep it ready to copy without rendering.'
       }
     ]
   },
   moss: {
     intro:
-      'Ask Maya to write detailed MOSS-Image captions, design poster layouts with exact text, analyze image styles with Vision, or inspect and queue renders.',
+      'Draft or refine MOSS-Image captions and layouts with Maya. Preserve exact lettering and composition, and generate only when you ask.',
     prompts: [
       {
         label: 'Expand into a MOSS caption',
@@ -101,7 +101,7 @@ const STARTERS = {
       {
         label: 'Design a poster layout',
         prompt:
-          'Design a MOSS-Image Layout for a retro sci-fi movie poster titled "STARFALL" with a lone astronaut and a release date line at the bottom.'
+          'Draft a MOSS-Image Layout for a retro sci-fi poster titled "STARFALL" with a lone astronaut. Use my current canvas size and no other lettering.'
       },
       {
         label: 'Cinematic photo caption',

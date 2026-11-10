@@ -2,7 +2,10 @@ import { isStepCount, streamText, tool } from 'ai';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 import { z } from 'zod';
-import { buildAssistantSystemPrompt } from '../data/aiPrompts';
+import {
+  buildAssistantSystemPrompt,
+  buildPromptStudioContext
+} from '../data/aiPrompts';
 import {
   cutOffMessage,
   DEFAULT_AI_CONFIG,
@@ -487,7 +490,8 @@ export const useAiStore = defineStore('ai', () => {
       const model = getOpenRouterModel(config.value, selectedModelInfo.value);
       const systemPrompt = buildAssistantSystemPrompt(
         profileInstructions(config.value, workflowStore.profile).assistant,
-        workflowStore.profile
+        workflowStore.profile,
+        buildPromptStudioContext(workflowStore)
       );
 
       const getOrCreateInvocation = (
@@ -640,6 +644,7 @@ export const useAiStore = defineStore('ai', () => {
           execute: async () => {
             const layout = isMoss ? mossLayoutToDraft(workflowStore) : null;
             return {
+              ...buildPromptStudioContext(workflowStore),
               positivePrompt: workflowStore.positivePrompt || '',
               negativePrompt: workflowStore.negativePrompt || '',
               ...(layout ? { layout } : {})
@@ -696,7 +701,7 @@ export const useAiStore = defineStore('ai', () => {
         }),
 
         inject_positive_prompt: tool({
-          description: `Use this for requests to create an image or create, improve, replace, or apply the studio positive prompt. Writing prompt text in chat does not apply it. For edits, inspect the current prompt first.${isMoss ? ' A Layout draft JSON object replaces the layout boxes, the scene caption, and the canvas size.' : ''} The UI displays the full prompt and handles approval; after success, confirm briefly without repeating it. Wait for this result before calling generation. Do not use for explicitly text-only drafts or explanations.`,
+          description: `Use only when the user asks to apply a prompt, edit the current studio prompt, or create an image. Requests to write, draft, or create prompt text alone are text-only. Inspect the current prompt before editing it.${isMoss ? ' A Layout draft JSON object replaces the layout boxes, the scene caption, and the canvas size.' : ''} The UI displays the full prompt and handles approval. After success, confirm briefly without repeating it. Wait for this result before calling generation.`,
           inputSchema: z.object({
             prompt: z.string().describe('New or enhanced positive prompt text'),
             reason: z
@@ -797,7 +802,7 @@ export const useAiStore = defineStore('ai', () => {
         tools,
         temperature: config.value.temperature,
         maxOutputTokens: config.value.maxOutputTokens,
-        stopWhen: isStepCount(5),
+        stopWhen: isStepCount(8),
         abortSignal: currentAbortController.signal
       });
 

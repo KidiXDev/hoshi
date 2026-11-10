@@ -1114,7 +1114,7 @@ function previewDynamicRoll(field: PromptField) {
     <!-- AI Prompt Enhancer Diff Dialog -->
     <PromptEnhanceDialog
       v-model:open="isEnhanceDialogOpen"
-      :target="enhanceTarget"
+      v-model:target="enhanceTarget"
       :original-prompt="enhanceOriginalPrompt"
       @apply="handleEnhanceApply"
     />
