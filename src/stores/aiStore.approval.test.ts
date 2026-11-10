@@ -22,7 +22,8 @@ vi.mock('@openrouter/ai-sdk-provider', () => ({
 
 vi.mock(import('../services/aiService'), async (importOriginal) => ({
   ...(await importOriginal()),
-  fetchAvailableModels: vi.fn(async () => [])
+  fetchAvailableModels: vi.fn(async () => []),
+  generateChatTitle: vi.fn(async () => 'Prompt Session')
 }));
 
 vi.mock(import('../services/appStorage'), () => ({
@@ -36,7 +37,7 @@ const usage = {
   outputTokens: { total: 1, text: 1, reasoning: 0 }
 };
 
-function modelCalling(toolName: StudioTool) {
+function modelCalling(toolName: StudioTool, prompt = 'updated') {
   const model = new MockLanguageModelV3({
     doStream: [
       {
@@ -46,7 +47,7 @@ function modelCalling(toolName: StudioTool) {
             toolCallId: 'approval',
             toolName,
             input: JSON.stringify(
-              toolName === 'queue_generation' ? {} : { prompt: 'updated' }
+              toolName === 'queue_generation' ? {} : { prompt }
             )
           },
           {
@@ -115,9 +116,15 @@ function latestReply(store: ReturnType<typeof useAiStore>) {
   return reply;
 }
 
-async function awaitingApproval(toolName: StudioTool, request: string) {
+async function awaitingApproval(
+  toolName: StudioTool,
+  request: string,
+  prompt = 'updated',
+  profile: WorkflowState['profile'] = 'anima'
+) {
   const setup = await studio();
-  const model = modelCalling(toolName);
+  setup.workflow.profile = profile;
+  const model = modelCalling(toolName, prompt);
   const running = setup.store.sendMessage(request);
   await vi.waitUntil(
     () => setup.store.activeMessages.at(-1)?.currentStep === 'awaiting_approval'
@@ -130,6 +137,70 @@ beforeEach(() => {
 });
 
 describe('studio tool approval', () => {
+  it.each(['inject_positive_prompt', 'inject_negative_prompt'] as const)(
+    'decodes escaped paragraph breaks before displaying and applying %s',
+    async (toolName) => {
+      const text = 'First paragraph.\\n\\nSecond paragraph.\\r\\nLast line.';
+      const expected = 'First paragraph.\n\nSecond paragraph.\nLast line.';
+      const { store, workflow, running, reply } = await awaitingApproval(
+        toolName,
+        'Apply this prompt',
+        text
+      );
+
+      expect(reply.toolInvocations?.[0]?.args.prompt).toBe(expected);
+      const card = reply.parts?.find((part) => part.type === 'tool');
+      expect(card?.type === 'tool' && card.invocation.args.prompt).toBe(
+        expected
+      );
+      expect(workflow.positivePrompt).toBe('original');
+      expect(workflow.negativePrompt).toBe('keep this');
+
+      store.applyToolInvocation(reply.id, 'approval');
+      await running;
+
+      expect(
+        toolName === 'inject_positive_prompt'
+          ? workflow.positivePrompt
+          : workflow.negativePrompt
+      ).toBe(expected);
+      expect(reply.toolInvocations?.[0]?.result).toMatchObject({
+        prompt: expected
+      });
+    }
+  );
+
+  it('preserves escaped newlines inside a layout JSON string', async () => {
+    const layout = JSON.stringify({
+      width: 1024,
+      height: 1024,
+      bbox_coord_space: 'abs',
+      bbox_format: 'xyxy',
+      summary: { caption: 'An illustrated poster.' },
+      items: [
+        {
+          label: 'text',
+          caption: 'Large serif lettering.',
+          text: 'NIGHT\nGARDEN',
+          bbox: [64, 64, 960, 256]
+        }
+      ]
+    });
+    const { store, workflow, running, reply } = await awaitingApproval(
+      'inject_positive_prompt',
+      'Apply this layout',
+      layout,
+      'moss'
+    );
+
+    expect(reply.toolInvocations?.[0]?.args.prompt).toBe(layout);
+
+    store.applyToolInvocation(reply.id, 'approval');
+    await running;
+
+    expect(workflow.moss.layoutBoxes[0]?.text).toBe('NIGHT\nGARDEN');
+  });
+
   it('holds the model and the studio until the user decides', async () => {
     const { store, workflow, queueGeneration, model, running } =
       await awaitingApproval('inject_positive_prompt', 'Improve my prompt');

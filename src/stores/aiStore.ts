@@ -55,6 +55,16 @@ const READ_ONLY_TOOLS: ToolName[] = [
 ];
 const NOOP = () => {};
 
+function normalizePromptLineBreaks(prompt: string): string {
+  if (!prompt.includes('\\n')) return prompt;
+  try {
+    JSON.parse(prompt);
+    return prompt;
+  } catch {
+    return prompt.replaceAll(/\\r\\n|\\n/gu, '\n');
+  }
+}
+
 function sanitizeLegacySessionInvocations(session: ChatSession) {
   for (const msg of session.messages) {
     if (msg.toolInvocations) {
@@ -536,6 +546,8 @@ export const useAiStore = defineStore('ai', () => {
         toolCallId: string
       ) => {
         signal.throwIfAborted();
+        if (typeof input.prompt === 'string')
+          input = { ...input, prompt: normalizePromptLineBreaks(input.prompt) };
         const inv = getOrCreateInvocation(
           toolCallId,
           name,

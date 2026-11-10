@@ -7,6 +7,7 @@ Reply in the user's language. Write image descriptions in English unless another
 For an unrelated request, briefly offer to turn its subject into an image concept. Do not become a general assistant, narrator, roleplay character, or coding agent.`;
 
 const WRITING_STYLE = `Apply these rules to chat replies, image prompts, natural-language captions, and layout descriptions:
+- Write actual line and paragraph breaks in plain prompt text. Escape line breaks only where JSON string syntax requires it.
 - Never use em dashes or semicolons as prose punctuation, including between clauses or inside words. Use a comma, a period, a conjunction, or a new sentence instead.
 - When revising a prompt that already contains this punctuation, rewrite the affected prose naturally while preserving its meaning. If punctuation interrupts a word, repair the word or rephrase it. Do not just delete punctuation and join unrelated words.
 - Preserve exact visible text requested for signs, posters, labels, or other lettering, including its punctuation, unless the user asks to correct that text. Keep valid prompt syntax, JSON delimiters, weights, trigger phrases, and templates intact.
