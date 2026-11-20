@@ -17,6 +17,22 @@ const BRIDGE_FILES: &[(&str, &str)] = &[
         include_str!("../../comfyui-koharu-bridge/src/__init__.py"),
     ),
     (
+        "src/accelerators.py",
+        include_str!("../../comfyui-koharu-bridge/src/accelerators.py"),
+    ),
+    (
+        "src/moss_booster.py",
+        include_str!("../../comfyui-koharu-bridge/src/moss_booster.py"),
+    ),
+    (
+        "src/mg_cache.py",
+        include_str!("../../comfyui-koharu-bridge/src/mg_cache.py"),
+    ),
+    (
+        "src/mg_calibration.py",
+        include_str!("../../comfyui-koharu-bridge/src/mg_calibration.py"),
+    ),
+    (
         "src/models.py",
         include_str!("../../comfyui-koharu-bridge/src/models.py"),
     ),

@@ -17,21 +17,86 @@ import {
   appendUltimateUpscaleStage
 } from './ultimateUpscaleWorkflow';
 
+export const MG_CALIBRATE_NODE_ID = 'moss_mg_calibrate';
+
 function samplerNode(state: WorkflowState) {
-  if (!state.sampler.variationEnabled) {
+  const { variationEnabled } = state.sampler;
+  const progressive = state.profile === 'moss' && state.moss.progressiveEnabled;
+  if (!variationEnabled && !progressive) {
     return { inputs: {}, class_type: 'KSampler', _meta: { title: 'KSampler' } };
   }
   return {
     inputs: {
       variation_seed: Math.max(0, Math.trunc(state.sampler.variationSeed)),
-      variation_strength: Math.min(
-        1,
-        Math.max(0, state.sampler.variationStrength || 0)
-      )
+      variation_strength: variationEnabled
+        ? Math.min(1, Math.max(0, state.sampler.variationStrength || 0))
+        : 0,
+      ...(progressive && {
+        progressive_scale: state.moss.progressiveScale,
+        progressive_fraction: state.moss.progressiveFraction
+      })
     },
     class_type: 'KoharuKSampler',
     _meta: { title: 'KSampler (Variation)' }
   };
+}
+
+interface ModelPatchNode {
+  id: string;
+  class_type: string;
+  title: string;
+  inputs: Record<string, unknown>;
+}
+
+function mossMgCacheNode(moss: MossSettings): ModelPatchNode {
+  if (moss.mgCacheMode !== 'calibrate') {
+    return {
+      id: 'moss_mg_cache',
+      class_type: 'KoharuMGCache',
+      title: 'MG-Cache',
+      inputs: {
+        alpha: moss.mgCacheAlpha,
+        beta: moss.mgCacheBeta,
+        calibration: moss.mgCacheCalibration,
+        forecast: moss.mgCacheForecast
+      }
+    };
+  }
+  const name = moss.mgCacheCalibrationName.trim();
+  if (!name) {
+    throw new Error('Name the MG-Cache calibration before generating.');
+  }
+  return {
+    id: MG_CALIBRATE_NODE_ID,
+    class_type: 'KoharuMGCacheCalibrate',
+    title: 'MG-Cache Calibrate',
+    inputs: { name, importance_stride: moss.mgCacheImportanceStride }
+  };
+}
+
+function mossAcceleratorNodes(moss: MossSettings) {
+  const nodes: ModelPatchNode[] = [];
+  if (moss.mgCacheEnabled) nodes.push(mossMgCacheNode(moss));
+  if (moss.textEmbedderCacheEnabled) {
+    nodes.push({
+      id: 'moss_text_embedder_cache',
+      class_type: 'KoharuMossTextEmbedderCache',
+      title: 'MOSS Text Embedder Cache',
+      inputs: {}
+    });
+  }
+  if (moss.guidanceIntervalEnabled) {
+    nodes.push({
+      id: 'moss_guidance_interval',
+      class_type: 'KoharuGuidanceInterval',
+      title: 'Guidance Interval',
+      inputs: {
+        start_percent: moss.guidanceIntervalStart,
+        end_percent: moss.guidanceIntervalEnd
+      }
+    });
+  }
+  return nodes;
 }
 
 export function prepareWorkflowForQueue(
@@ -319,6 +384,20 @@ export function buildWorkflowPrompt(
     lastModelNodeId = loraNodeId;
   });
 
+  if (isMoss && state.moss.boosterEnabled) {
+    prompt['moss_booster'] = {
+      inputs: {
+        bake_lora: state.moss.boosterBakeLora,
+        int8_attention: state.moss.boosterInt8Attention,
+        int8_start_percent: state.moss.boosterInt8StartPercent,
+        model: [lastModelNodeId, 0]
+      },
+      class_type: 'KoharuMossBooster',
+      _meta: { title: 'MOSS Booster' }
+    };
+    lastModelNodeId = 'moss_booster';
+  }
+
   if (!isMoss && state.advanced.cacheDiT.enabled) {
     prompt['cache_dit'] = {
       inputs: {
@@ -410,6 +489,16 @@ export function buildWorkflowPrompt(
       _meta: { title: 'RenormCFG' }
     };
     lastModelNodeId = 'renorm_cfg';
+  }
+
+  let samplerModelNodeId = lastModelNodeId;
+  for (const node of isMoss ? mossAcceleratorNodes(state.moss) : []) {
+    prompt[node.id] = {
+      inputs: { ...node.inputs, model: [samplerModelNodeId, 0] },
+      class_type: node.class_type,
+      _meta: { title: node.title }
+    };
+    samplerModelNodeId = node.id;
   }
 
   // 4. CLIP Loader (Node 28)
@@ -510,7 +599,7 @@ export function buildWorkflowPrompt(
 
   // 9. KSampler (Node 9)
   const samplerInputs: SamplerInputs = {
-    model: [lastModelNodeId, 0],
+    model: [samplerModelNodeId, 0],
     positive: positiveConditioning,
     negative: negativeConditioning
   };

@@ -9,6 +9,7 @@ import { ComfyWsClient } from '../services/comfyWs';
 import { Wildcards } from '../services/wildcards';
 import {
   buildWorkflowPrompt,
+  MG_CALIBRATE_NODE_ID,
   prepareWorkflowForQueue
 } from '../services/workflowBuilder';
 import type {
@@ -158,6 +159,7 @@ export const useComfyStore = defineStore('comfy', () => {
   const isCacheDiTAvailable = ref(false);
   const isSpectrumMossAvailable = ref(false);
   const isUltimateUpscaleAvailable = ref(false);
+  const mgCacheCalibrations = ref<string[]>([]);
   const availableBBoxDetectors = ref<string[]>([]);
   const availableSegmDetectors = ref<string[]>([]);
 
@@ -328,6 +330,7 @@ export const useComfyStore = defineStore('comfy', () => {
     const waiter = generationWaiters.get(promptId);
     generationWaiters.delete(promptId);
     if (status === 'completed') {
+      if (entry.nodes[MG_CALIBRATE_NODE_ID]) void fetchDiscovery();
       const result = await loadGenerationImage(entry);
       if (result) {
         if (
@@ -568,7 +571,8 @@ export const useComfyStore = defineStore('comfy', () => {
         detectorNode,
         cacheDiTNode,
         spectrumNode,
-        ultimateNode
+        ultimateNode,
+        mgCacheNode
       ] = await Promise.all([
         ComfyApi.fetchNodeInfo(launcherStore.config.serverUrl, 'FaceDetailer'),
         ComfyApi.fetchNodeInfo(
@@ -586,10 +590,15 @@ export const useComfyStore = defineStore('comfy', () => {
         ComfyApi.fetchNodeInfo(
           launcherStore.config.serverUrl,
           'UltimateSDUpscale'
-        )
+        ),
+        ComfyApi.fetchNodeInfo(launcherStore.config.serverUrl, 'KoharuMGCache')
       ]);
       const detectorInput = detectorNode?.input.required.model_name?.[0];
       const detectorModels = Array.isArray(detectorInput) ? detectorInput : [];
+      const calibrations = mgCacheNode?.input.required.calibration?.[0];
+      mgCacheCalibrations.value = Array.isArray(calibrations)
+        ? calibrations
+        : [];
       isFaceDetailerAvailable.value = Boolean(faceDetailerNode && detectorNode);
       isCacheDiTAvailable.value = Boolean(cacheDiTNode);
       isSpectrumMossAvailable.value = Boolean(spectrumNode);
@@ -676,6 +685,7 @@ export const useComfyStore = defineStore('comfy', () => {
     isCacheDiTAvailable,
     isSpectrumMossAvailable,
     isUltimateUpscaleAvailable,
+    mgCacheCalibrations,
     availableBBoxDetectors,
     availableSegmDetectors,
     isGenerating,

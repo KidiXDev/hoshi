@@ -41,6 +41,86 @@ def slerp_noise(noise_a, noise_b, strength):
     return torch.where(torch.abs(sin_omega) < 1e-6, lerp, interp).reshape_as(noise_a)
 
 
+class ProgressiveResolutionSampler(comfy.samplers.Sampler):
+    def __init__(self, sampler, scale, low_resolution_fraction):
+        self.sampler = sampler
+        self.scale = scale
+        self.low_resolution_fraction = low_resolution_fraction
+
+    def sample(
+        self,
+        model_wrap,
+        sigmas,
+        extra_args,
+        callback,
+        noise,
+        latent_image=None,
+        denoise_mask=None,
+        disable_pbar=False,
+    ):
+        steps = len(sigmas) - 1
+        low_steps = round(steps * self.low_resolution_fraction)
+        full_size = list(noise.shape[-2:])
+        low_size = [max(1, round(side * self.scale)) for side in full_size]
+        if (
+            denoise_mask is not None
+            or not 0 < low_steps < steps
+            or low_size == full_size
+        ):
+            return self.sampler.sample(
+                model_wrap,
+                sigmas,
+                extra_args,
+                callback,
+                noise,
+                latent_image,
+                denoise_mask,
+                disable_pbar,
+            )
+
+        generator = torch.Generator().manual_seed(extra_args.get("seed") or 0)
+        low_noise = torch.randn((*noise.shape[:-2], *low_size), generator=generator).to(
+            noise
+        )
+        low_latent = torch.nn.functional.interpolate(
+            latent_image, size=low_size, mode="area"
+        )
+        estimate = {}
+
+        def low_callback(step, denoised, x, total_steps):
+            estimate["denoised"] = denoised
+            if callback is not None:
+                callback(step, denoised, x, steps)
+
+        def high_callback(step, denoised, x, total_steps):
+            if callback is not None:
+                callback(step + low_steps, denoised, x, steps)
+
+        self.sampler.sample(
+            model_wrap,
+            sigmas[: low_steps + 1],
+            extra_args,
+            low_callback,
+            low_noise,
+            low_latent,
+            None,
+            disable_pbar,
+        )
+        upsampled = torch.nn.functional.interpolate(
+            estimate["denoised"].to(noise), size=full_size, mode="bicubic"
+        )
+        return self.sampler.sample(
+            model_wrap,
+            sigmas[low_steps:],
+            extra_args,
+            high_callback,
+            noise,
+            upsampled,
+            None,
+            disable_pbar,
+        )
+
+
 class KoharuKSampler:
     @classmethod
     def INPUT_TYPES(cls):
@@ -73,7 +153,17 @@ class KoharuKSampler:
                     "FLOAT",
                     {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01},
                 ),
-            }
+            },
+            "optional": {
+                "progressive_scale": (
+                    "FLOAT",
+                    {"default": 0.5, "min": 0.1, "max": 1.0, "step": 0.05},
+                ),
+                "progressive_fraction": (
+                    "FLOAT",
+                    {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05},
+                ),
+            },
         }
 
     RETURN_TYPES = ("LATENT",)
@@ -94,6 +184,8 @@ class KoharuKSampler:
         negative,
         latent_image,
         denoise=1.0,
+        progressive_scale=0.5,
+        progressive_fraction=0.0,
     ):
         latent = comfy.sample.fix_empty_latent_channels(
             model,
@@ -107,17 +199,28 @@ class KoharuKSampler:
             comfy.sample.prepare_noise(latent, variation_seed, batch_inds),
             variation_strength,
         )
-        samples = comfy.sample.sample(
+        sigmas = comfy.samplers.KSampler(
             model,
-            noise,
             steps,
-            cfg,
+            model.load_device,
             sampler_name,
             scheduler,
+            denoise,
+            model.model_options,
+        ).sigmas
+        samples = comfy.sample.sample_custom(
+            model,
+            noise,
+            cfg,
+            ProgressiveResolutionSampler(
+                comfy.samplers.sampler_object(sampler_name),
+                progressive_scale,
+                progressive_fraction,
+            ),
+            sigmas,
             positive,
             negative,
             latent,
-            denoise=denoise,
             noise_mask=latent_image.get("noise_mask"),
             callback=latent_preview.prepare_callback(model, steps),
             disable_pbar=not comfy.utils.PROGRESS_BAR_ENABLED,

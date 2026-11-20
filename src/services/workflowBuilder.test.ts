@@ -574,6 +574,164 @@ describe('MOSS profile', () => {
     expect(graph.moss_spectrum).toBeUndefined();
   });
 
+  it('places MOSS Booster between the LoRA chain and the model patches', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.boosterEnabled = true;
+        s.moss.boosterInt8StartPercent = 0.2;
+        s.moss.auraFlowEnabled = true;
+        s.loras = [{ ...TEST_LORA }];
+      })
+    );
+
+    expect(graph.moss_booster).toEqual({
+      class_type: 'KoharuMossBooster',
+      inputs: {
+        model: ['101', 0],
+        bake_lora: true,
+        int8_attention: true,
+        int8_start_percent: 0.2
+      },
+      _meta: { title: 'MOSS Booster' }
+    });
+    expect(graph.moss_aura_flow?.inputs.model).toEqual(['moss_booster', 0]);
+  });
+
+  it('ignores MOSS Booster on the Anima profile', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.moss.boosterEnabled = true;
+      })
+    );
+
+    expect(graph.moss_booster).toBeUndefined();
+  });
+
+  it('chains the accelerators after the model patches into the sampler', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.mgCacheEnabled = true;
+        s.moss.mgCacheAlpha = 0.1;
+        s.moss.mgCacheCalibration = 'moss_image_v2.json';
+        s.moss.textEmbedderCacheEnabled = true;
+        s.moss.guidanceIntervalEnabled = true;
+      })
+    );
+
+    expect(graph.moss_mg_cache).toEqual({
+      class_type: 'KoharuMGCache',
+      inputs: {
+        model: ['moss_slg', 0],
+        alpha: 0.1,
+        beta: 0,
+        calibration: 'moss_image_v2.json',
+        forecast: false
+      },
+      _meta: { title: 'MG-Cache' }
+    });
+    expect(graph.moss_text_embedder_cache?.inputs).toEqual({
+      model: ['moss_mg_cache', 0]
+    });
+    expect(graph.moss_guidance_interval?.inputs).toEqual({
+      model: ['moss_text_embedder_cache', 0],
+      start_percent: 0,
+      end_percent: 0.5
+    });
+    expect(graph['9']?.inputs.model).toEqual(['moss_guidance_interval', 0]);
+  });
+
+  it('keeps the accelerators off the face detailer pass', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.mgCacheEnabled = true;
+        s.faceDetailer.enabled = true;
+      })
+    );
+
+    const consumers = Object.entries(graph)
+      .filter(([, node]) =>
+        connections({ node }).some(([id]) => id === 'moss_mg_cache')
+      )
+      .map(([id]) => id);
+    expect(consumers).toEqual(['9']);
+  });
+
+  it('swaps MG-Cache for the calibration recorder in calibrate mode', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.mgCacheEnabled = true;
+        s.moss.mgCacheMode = 'calibrate';
+        s.moss.mgCacheCalibrationName = ' portrait ';
+        s.moss.mgCacheImportanceStride = 5;
+      })
+    );
+
+    expect(graph.moss_mg_cache).toBeUndefined();
+    expect(graph.moss_mg_calibrate?.class_type).toBe('KoharuMGCacheCalibrate');
+    expect(graph.moss_mg_calibrate?.inputs).toEqual({
+      model: ['moss_slg', 0],
+      name: 'portrait',
+      importance_stride: 5
+    });
+  });
+
+  it('rejects an unnamed MG-Cache calibration', () => {
+    const state = mossState((s) => {
+      s.moss.mgCacheEnabled = true;
+      s.moss.mgCacheMode = 'calibrate';
+      s.moss.mgCacheCalibrationName = ' ';
+    });
+
+    expect(() => buildWorkflowPrompt(state)).toThrow('Name the MG-Cache');
+  });
+
+  it('samples progressively through the Koharu sampler without variation', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.progressiveEnabled = true;
+        s.moss.progressiveScale = 0.6;
+        s.sampler.variationStrength = 0.35;
+      })
+    );
+
+    expect(graph['9']?.class_type).toBe('KoharuKSampler');
+    expect(graph['9']?.inputs).toMatchObject({
+      variation_strength: 0,
+      progressive_scale: 0.6,
+      progressive_fraction: 0.4
+    });
+  });
+
+  it('keeps the variation strength when sampling progressively', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.progressiveEnabled = true;
+        s.sampler.variationEnabled = true;
+      })
+    );
+
+    expect(graph['9']?.inputs).toMatchObject({
+      variation_strength: 0.35,
+      progressive_fraction: 0.4
+    });
+  });
+
+  it('ignores the accelerators on the Anima profile', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.moss.mgCacheEnabled = true;
+        s.moss.textEmbedderCacheEnabled = true;
+        s.moss.guidanceIntervalEnabled = true;
+        s.moss.progressiveEnabled = true;
+      })
+    );
+
+    expect(Object.keys(graph).filter((id) => id.startsWith('moss_'))).toEqual(
+      []
+    );
+    expect(graph['9']?.class_type).toBe('KSampler');
+  });
+
   it('treats inpaint mode as img2img instead of the Anima LLLite graph', () => {
     const graph = graphOf(mossState(enableInpaint));
 

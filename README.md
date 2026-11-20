@@ -36,7 +36,7 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 - **MOSS-Image layouts** — draw, move and resize boxes for objects, characters and exact text, with a scene caption and descriptions for each box. Import layout drafts from Maya or the prompt enhancer.
 - **Prompting** — tag autocomplete from a Danbooru tag CSV you drop into the app's `tags` folder (works without ComfyUI running), prompt chips, weight hotkeys, find-in-prompt, negative prompt bundles, and `{a|b}` dynamic prompts and `__wildcards__` (from the app's `wildcards` folder) resolved from the seed.
 - **LoRA chain** — stack LoRAs with per-item strength and pull trigger words from Civitai sidecars or safetensors metadata.
-- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance, temporal score rescaling, AuraFlow sampling and Spectrum acceleration.
+- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance, temporal score rescaling, AuraFlow sampling, Spectrum acceleration and the built-in accelerators (MG-Cache with calibration, guidance interval, text embedder cache, progressive resolution).
 - **Live output** — streaming latent previews, progress, batch queueing, generation history with "reuse settings", and the elapsed-time HUD.
 
 ### Post-process

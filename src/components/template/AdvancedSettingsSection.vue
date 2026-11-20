@@ -21,6 +21,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import HelpTooltip from '../common/HelpTooltip.vue';
+import MossAcceleratorSettings from './MossAcceleratorSettings.vue';
 import WorkflowField from './WorkflowField.vue';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
@@ -245,6 +246,16 @@ const renormCfgModel = computed({
                 Spectrum ON
               </span>
               <span
+                v-if="!isAnima && workflowStore.moss.mgCacheEnabled"
+                class="border-primary/30 bg-primary/10 text-primary rounded border px-2 py-0.5 font-mono text-xs font-bold"
+              >
+                {{
+                  workflowStore.moss.mgCacheMode === 'calibrate'
+                    ? 'MG Calibrate'
+                    : 'MG-Cache ON'
+                }}
+              </span>
+              <span
                 v-if="
                   isAnima &&
                   workflowStore.advanced.cacheDiT.enabled &&
@@ -443,6 +454,8 @@ const renormCfgModel = computed({
               </WorkflowField>
             </div>
           </div>
+
+          <MossAcceleratorSettings v-if="!isAnima" />
 
           <!-- MOSS Temporal Score Rescaling -->
           <div
