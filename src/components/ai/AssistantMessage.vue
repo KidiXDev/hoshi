@@ -329,7 +329,9 @@ function renderMarkdown(content: string): string {
           <div
             v-else-if="
               part.invocation.name === 'search_animadex' ||
-              part.invocation.name === 'retrieve_animadex_tag_by_id'
+              part.invocation.name === 'retrieve_animadex_tag_by_id' ||
+              part.invocation.name === 'search_character_data' ||
+              part.invocation.name === 'roll_character_look'
             "
             class="flex items-center gap-2 text-sm"
           >

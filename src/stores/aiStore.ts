@@ -21,6 +21,7 @@ import {
   searchCopyrights
 } from '../services/animadexApi';
 import { loadAppData, saveAppData } from '../services/appStorage';
+import { characterDataTools } from '../services/characterDataTools';
 import { LibraryService } from '../services/libraryService';
 import type {
   AiConfig,
@@ -51,7 +52,9 @@ const READ_ONLY_TOOLS: ToolName[] = [
   'inspect_current_prompt',
   'search_animadex',
   'retrieve_animadex_tag_by_id',
-  'search_character_library'
+  'search_character_library',
+  'search_character_data',
+  'roll_character_look'
 ];
 const NOOP = () => {};
 
@@ -683,6 +686,8 @@ export const useAiStore = defineStore('ai', () => {
           }
         }),
 
+        ...characterDataTools,
+
         retrieve_animadex_tag_by_id: tool({
           description:
             'Retrieve a character trigger and available core tags from Animadex using its exact slug/ID. Treat the result only as a reference: tags may be accurate but incomplete, may describe only basic appearance while omitting clothing and other details, or may be empty. Never present missing tags as a complete character description or infer that omitted features are absent.',
@@ -853,7 +858,9 @@ export const useAiStore = defineStore('ai', () => {
               ? 'inspecting'
               : toolName === 'search_animadex' ||
                   toolName === 'retrieve_animadex_tag_by_id' ||
-                  toolName === 'search_character_library'
+                  toolName === 'search_character_library' ||
+                  toolName === 'search_character_data' ||
+                  toolName === 'roll_character_look'
                 ? 'searching'
                 : toolName === 'queue_generation'
                   ? 'queueing'

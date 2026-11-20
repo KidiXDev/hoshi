@@ -2217,6 +2217,7 @@ dependencies = [
 name = "koharu"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "hex",
  "image",
  "rayon",

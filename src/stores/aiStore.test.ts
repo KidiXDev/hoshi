@@ -395,6 +395,15 @@ describe('useAiStore.sendMessage', () => {
     });
   });
 
+  it('gives the model the Character Data tools', async () => {
+    const store = await readyStore();
+    await store.sendMessage('Hello');
+
+    expect(Object.keys(lastStreamCall().tools)).toEqual(
+      expect.arrayContaining(['search_character_data', 'roll_character_look'])
+    );
+  });
+
   it('reports an unknown Animadex id to the model as a tool failure', async () => {
     const store = await readyStore();
     await store.sendMessage('Hello');

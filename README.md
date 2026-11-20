@@ -50,6 +50,7 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 
 - **Booru Gallery** — Danbooru, Gelbooru, Safebooru, AI Tag, yande.re and Konachan with per-site credentials, tag autocomplete, a post inspector and a built-in Cloudflare verification window.
 - **Animadex** — explore characters and artists, and push their tags straight into the prompt.
+- **Character Helper** — build a character prompt offline from Danbooru tag statistics: a character's usual look, dice that roll outfit, pose and scene from real pictures, locks and must-include tags. Also a section on the Generation page and a tool for Maya.
 - **Civitai** — browse models, inspect versions and samples, and download files with a background download manager that also accepts direct links, such as Hugging Face files, into a folder you pick.
 - **Danbooru Wiki** — read tag wikis in-app with pinned pages and DText rendering.
 
@@ -131,3 +132,5 @@ On first run, open **Settings → ComfyUI** and point Hoshi at your ComfyUI fold
 ## License
 
 This project is licensed under the [GNU General Public License, version 3](LICENSE).
+
+The Character Helper tag data and selection logic come from [ComfyUI-Character-Helper](https://github.com/Adamovix/ComfyUI-Character-Helper) (MIT, see [its license](src-tauri/src/character_data/data/LICENSE)); tags and counts originate from [Danbooru](https://danbooru.donmai.us).

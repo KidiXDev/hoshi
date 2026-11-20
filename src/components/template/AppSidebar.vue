@@ -5,6 +5,7 @@ import {
   BookOpen,
   ChartColumn,
   Compass,
+  Dices,
   Eraser,
   GalleryVerticalEnd,
   HardDrive,
@@ -137,6 +138,13 @@ const navItems = [
     label: 'Animadex Explore',
     icon: Compass,
     route: '/animadex',
+    group: 'browse'
+  },
+  {
+    id: 'character-helper',
+    label: 'Character Helper',
+    icon: Dices,
+    route: '/character-helper',
     group: 'browse'
   },
   {

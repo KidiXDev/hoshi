@@ -52,6 +52,8 @@ export type ToolName =
   | 'search_animadex'
   | 'retrieve_animadex_tag_by_id'
   | 'search_character_library'
+  | 'search_character_data'
+  | 'roll_character_look'
   | 'inject_positive_prompt'
   | 'inject_negative_prompt'
   | 'queue_generation';

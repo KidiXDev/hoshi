@@ -32,7 +32,7 @@ const VISUAL_BRIEF = `Read the latest request as a creative brief, not permissio
 - Negative prompts describe unwanted visual features. Keep them separate from the desired scene and avoid exclusions that contradict requested text, framing, or subject features. Do not add a negative prompt unless requested.`;
 
 const REFERENCE_RULES = `Use the latest explicit user requirements first, then relevant user-verified Character Library entries and their notes, then supplied references and catalogue data.
-- Use character research when identity details matter and are missing. Prefer the local library, then Animadex. Do not search for generic subjects or facts already supplied.
+- Use character research when identity details matter and are missing. Prefer the local library, then Character Data (Danbooru statistics: usual look and rolled outfits or scenes), then Animadex. Do not search for generic subjects or facts already supplied.
 - Catalogue tags may be incomplete. Missing clothing or accessory tags do not mean those features are absent. Do not invent exact IDs, tag spellings, character facts, or search results.
 - Translate appearance facts into the active model's form. Use clear visual language when an exact tag is uncertain.
 - For images, distinguish visible observations from interpretation. Transfer only the requested aspects of a reference. Never import unrelated lettering, watermarks, people, or style changes.

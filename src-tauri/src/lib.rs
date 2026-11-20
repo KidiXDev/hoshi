@@ -1,6 +1,7 @@
 mod animadex;
 mod app_data;
 mod booru;
+mod character_data;
 mod civitai;
 mod comfy_paths;
 mod comfy_update;
@@ -494,6 +495,11 @@ pub fn run() {
             wildcards::load_wildcards,
             wildcards::open_wildcards_folder,
             animadex::animadex_request,
+            character_data::character_data_fields,
+            character_data::character_data_autocomplete,
+            character_data::character_data_suggest,
+            character_data::character_data_preset,
+            character_data::character_data_randomize,
             network_cache::clear_network_cache,
             network_cache::get_network_cache_stats,
             system_info::get_system_specs,

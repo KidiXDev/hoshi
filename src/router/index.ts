@@ -50,6 +50,11 @@ const router = createRouter({
       component: AnimadexExploreView
     },
     {
+      path: '/character-helper',
+      name: 'character-helper',
+      component: () => import('../views/CharacterHelperView.vue')
+    },
+    {
       path: '/civitai',
       name: 'civitai',
       component: CivitaiBrowserView
