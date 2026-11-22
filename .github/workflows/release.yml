@@ -68,5 +68,6 @@ jobs:
           $archive = "Hoshi_${{ steps.version.outputs.version }}_windows_x64_portable.zip"
           New-Item -ItemType Directory -Force $portableDir | Out-Null
           Copy-Item 'src-tauri/target/release/Hoshi.exe' "$portableDir/Hoshi.exe"
-          Compress-Archive -Path "$portableDir/Hoshi.exe" -DestinationPath $archive
+          Copy-Item 'THIRD_PARTY_NOTICES.md' "$portableDir/THIRD_PARTY_NOTICES.md"
+          Compress-Archive -Path "$portableDir/Hoshi.exe", "$portableDir/THIRD_PARTY_NOTICES.md" -DestinationPath $archive
           gh release upload '${{ github.ref_name }}' $archive --clobber
