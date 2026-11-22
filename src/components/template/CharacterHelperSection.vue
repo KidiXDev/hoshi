@@ -79,6 +79,11 @@ function pickCharacter(item: CharacterSuggestion) {
               <Dices class="size-3.5" /> Roll
             </Button>
           </div>
+          <CharacterFieldInput
+            v-model="store.mustInclude"
+            field=""
+            placeholder="Must include (kept by every roll)..."
+          />
           <p
             class="border-border bg-muted/40 max-h-28 min-h-12 overflow-y-auto rounded-md border p-2 font-mono text-xs break-words select-text"
             :class="{ 'text-muted-foreground': !store.prompt }"
