@@ -1,20 +1,61 @@
+import { flushPromises } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  cancelCharacterDatasetRebuild,
+  getCharacterDatasetStatus,
   getCharacterFields,
   getCharacterPreset,
   randomizeCharacterFields,
-  type CharacterField
+  rebuildCharacterDataset,
+  type CharacterDatasetStatus,
+  type CharacterField,
+  type RebuildListeners,
+  type RebuildProgress,
+  type RebuildSummary
 } from '../services/characterData';
+import { deferred } from '../test/deferred';
 import { useCharacterHelperStore } from './characterHelperStore';
 import { useWorkflowStore } from './workflowStore';
 
+const listeners = vi.hoisted(() => ({
+  current: null as RebuildListeners | null,
+  stop: (() => {}) as () => void
+}));
+
 vi.mock(import('../services/characterData'), async (importOriginal) => ({
   ...(await importOriginal()),
+  getCharacterDatasetStatus: vi.fn(),
   getCharacterFields: vi.fn(),
   getCharacterPreset: vi.fn(),
-  randomizeCharacterFields: vi.fn()
+  randomizeCharacterFields: vi.fn(),
+  rebuildCharacterDataset: vi.fn(),
+  cancelCharacterDatasetRebuild: vi.fn(),
+  listenToCharacterDatasetRebuild: vi.fn(async (handlers) => {
+    listeners.current = handlers;
+    return listeners.stop;
+  })
 }));
+
+const REBUILD_REQUEST = {
+  workingDir: 'D:/ComfyUI',
+  pythonPath: 'python_embeded',
+  downloadDir: 'D:/Temp'
+};
+const SUMMARY: RebuildSummary = {
+  tags: 17_000,
+  characters: 39_000,
+  posts: 160_000,
+  seconds: 720
+};
+const PROGRESS: RebuildProgress = {
+  step: 2,
+  steps: 4,
+  label: 'Downloading posts.parquet (1 of 10)',
+  done: 1_000,
+  total: 4_000,
+  unit: 'bytes'
+};
 
 vi.mock(import('../services/appStorage'), () => ({
   loadAppData: vi.fn(async () => null),
@@ -27,6 +68,15 @@ const field = (id: string, count = 2): CharacterField => ({
   label: id,
   count,
   group: 'looks'
+});
+
+const datasetStatus = (installed: boolean): CharacterDatasetStatus => ({
+  installed,
+  built: installed ? '2026-11-23' : null,
+  loadError: null,
+  configDir: 'C:/config/character_helper',
+  defaultDownloadDir: 'C:/Temp',
+  rebuilding: false
 });
 
 async function loadedStore() {
@@ -44,6 +94,22 @@ async function loadedStore() {
 describe('useCharacterHelperStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    listeners.current = null;
+    listeners.stop = vi.fn();
+    vi.mocked(getCharacterDatasetStatus).mockResolvedValue(datasetStatus(true));
+  });
+
+  it('reports a missing dataset without asking for fields', async () => {
+    vi.mocked(getCharacterDatasetStatus).mockResolvedValue(
+      datasetStatus(false)
+    );
+    const store = useCharacterHelperStore();
+
+    await store.load();
+
+    expect(store.datasetInstalled).toBe(false);
+    expect(store.fieldIds).toEqual([]);
+    expect(getCharacterFields).not.toHaveBeenCalled();
   });
 
   it('starts every field empty with the default dice count', async () => {
@@ -148,5 +214,85 @@ describe('useCharacterHelperStore', () => {
     store.sendToPrompt('append');
 
     expect(workflow.positivePrompt).toBe('masterpiece, long hair, blue hair');
+  });
+
+  it('reloads the fields after a dataset rebuild and keeps edited tags', async () => {
+    const store = await loadedStore();
+    store.setField('hair', ['long_hair']);
+    store.toggleLock('top');
+    const rebuild = deferred<RebuildSummary | null>();
+    vi.mocked(rebuildCharacterDataset).mockReturnValue(rebuild.promise);
+    vi.mocked(getCharacterFields).mockResolvedValue([
+      field('hair', 3),
+      field('pose', 1)
+    ]);
+
+    const done = store.rebuildDataset(REBUILD_REQUEST);
+    await flushPromises();
+    expect(store.rebuilding).toBe(true);
+    rebuild.resolve(SUMMARY);
+    await done;
+
+    expect(store.rebuilding).toBe(false);
+    expect(store.fieldIds).toEqual(['hair', 'pose']);
+    expect(store.fields).toEqual({ hair: ['long_hair'], pose: [] });
+    expect(store.locks).toEqual([]);
+    expect(store.rebuildOutcome).toEqual({ ok: true, summary: SUMMARY });
+  });
+
+  it('tracks progress and warnings while rebuilding, then stops listening', async () => {
+    const store = await loadedStore();
+    const rebuild = deferred<RebuildSummary | null>();
+    vi.mocked(rebuildCharacterDataset).mockReturnValue(rebuild.promise);
+
+    const done = store.rebuildDataset(REBUILD_REQUEST);
+    await flushPromises();
+    listeners.current?.progress(PROGRESS);
+    listeners.current?.warning('Low RAM');
+    listeners.current?.warning('Low RAM');
+
+    expect(store.rebuildProgress).toEqual(PROGRESS);
+    expect(store.rebuildWarnings).toEqual(['Low RAM']);
+    rebuild.resolve(null);
+    await done;
+    expect(store.rebuildProgress).toBeNull();
+    expect(listeners.stop).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the failure message and clears the rebuilding flag', async () => {
+    const store = await loadedStore();
+    vi.mocked(rebuildCharacterDataset).mockRejectedValue('Disk is full');
+
+    await expect(store.rebuildDataset(REBUILD_REQUEST)).rejects.toBe(
+      'Disk is full'
+    );
+
+    expect(store.rebuilding).toBe(false);
+    expect(store.rebuildOutcome).toEqual({
+      ok: false,
+      stopped: false,
+      message: 'Disk is full'
+    });
+  });
+
+  it('marks a rebuild the user stopped as stopped, not failed', async () => {
+    const store = await loadedStore();
+    let endProcess: (reason: string) => void = vi.fn();
+    vi.mocked(rebuildCharacterDataset).mockReturnValue(
+      new Promise((_resolve, reject) => {
+        endProcess = reject;
+      })
+    );
+    vi.mocked(cancelCharacterDatasetRebuild).mockImplementation(async () => {
+      endProcess('Rebuild stopped.');
+    });
+
+    const done = store.rebuildDataset(REBUILD_REQUEST);
+    await flushPromises();
+    await store.stopRebuild();
+    await expect(done).rejects.toBe('Rebuild stopped.');
+
+    expect(store.rebuildOutcome).toMatchObject({ ok: false, stopped: true });
+    expect(store.stopping).toBe(false);
   });
 });

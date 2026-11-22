@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Dices, ExternalLink, Plus, Replace, Shirt } from '@lucide/vue';
+import CharacterDatasetMissing from '@/components/character-helper/CharacterDatasetMissing.vue';
 import CharacterFieldInput from '@/components/character-helper/CharacterFieldInput.vue';
 import CharacterRatingSelect from '@/components/character-helper/CharacterRatingSelect.vue';
 import {
@@ -51,7 +52,8 @@ function pickCharacter(item: CharacterSuggestion) {
         </div>
       </AccordionTrigger>
       <AccordionContent class="px-2.5 pt-2">
-        <div class="flex flex-col gap-2.5">
+        <CharacterDatasetMissing v-if="store.datasetInstalled === false" />
+        <div v-else class="flex flex-col gap-2.5">
           <CharacterFieldInput
             :field="CHARACTER_FIELD"
             :model-value="store.fields[CHARACTER_FIELD] ?? []"

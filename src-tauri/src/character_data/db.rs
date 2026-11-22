@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 // Preset and dice rules
 const PRESET_RULES: [(&str, u8, f64, usize); 13] = [
@@ -48,6 +48,8 @@ pub struct GroupRow {
 
 #[derive(Deserialize)]
 pub struct Meta {
+    #[serde(default)]
+    pub built: Option<String>,
     pub fields: Vec<Field>,
     pub tags: Vec<(String, usize, u64, f32)>,
     pub implies: HashMap<String, Vec<usize>>,
@@ -66,13 +68,12 @@ pub struct CharacterStats {
     pub percent: Vec<u8>,
 }
 
+#[derive(Default)]
 pub struct PostArrays {
     pub indptr: Vec<u32>,
     pub tags: Vec<u16>,
     pub rating: Vec<u8>,
 }
-
-pub type PostSource = Box<dyn Fn() -> Result<PostArrays, String> + Send + Sync>;
 
 // Results
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -304,6 +305,7 @@ fn unique<T: Copy + Eq + std::hash::Hash>(items: impl IntoIterator<Item = T>) ->
 }
 
 pub struct TagDb {
+    built: Option<String>,
     fields: Vec<Field>,
     field_index: HashMap<String, usize>,
     tags: Vec<Tag>,
@@ -319,8 +321,8 @@ pub struct TagDb {
     characters: Vec<Character>,
     char_id: HashMap<String, usize>,
     stats: CharacterStats,
-    post_source: PostSource,
-    pool: OnceLock<Result<Pool, String>>,
+    posts: Mutex<Option<PostArrays>>,
+    pool: OnceLock<Pool>,
     char_weights: OnceLock<Vec<f64>>,
 }
 
@@ -329,7 +331,7 @@ impl TagDb {
         meta: Meta,
         characters: Vec<CharacterRow>,
         stats: CharacterStats,
-        post_source: PostSource,
+        posts: PostArrays,
     ) -> Self {
         let field_index = meta
             .fields
@@ -402,6 +404,7 @@ impl TagDb {
             .collect();
 
         Self {
+            built: meta.built,
             fields: meta.fields,
             field_index,
             tags,
@@ -417,7 +420,7 @@ impl TagDb {
             characters,
             char_id,
             stats,
-            post_source,
+            posts: Mutex::new(Some(posts)),
             pool: OnceLock::new(),
             char_weights: OnceLock::new(),
         }
@@ -427,15 +430,21 @@ impl TagDb {
         &self.fields
     }
 
-    fn pool(&self) -> Result<&Pool, String> {
-        self.pool
-            .get_or_init(|| {
-                let tag_field: Vec<usize> = self.tags.iter().map(|t| t.field).collect();
-                (self.post_source)()
-                    .map(|posts| Pool::build(posts, self.tags.len(), &tag_field, self.fields.len()))
-            })
-            .as_ref()
-            .map_err(Clone::clone)
+    pub fn built(&self) -> Option<&str> {
+        self.built.as_deref()
+    }
+
+    fn pool(&self) -> &Pool {
+        self.pool.get_or_init(|| {
+            let tag_field: Vec<usize> = self.tags.iter().map(|t| t.field).collect();
+            let posts = self
+                .posts
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take()
+                .unwrap_or_default();
+            Pool::build(posts, self.tags.len(), &tag_field, self.fields.len())
+        })
     }
 
     // Helpers
@@ -669,7 +678,7 @@ impl TagDb {
 
         let ctx = self.context_ids(context, &[field, CHARACTER]);
         if !ctx.is_empty() && out.len() < limit {
-            let pool = self.pool()?;
+            let pool = self.pool();
             let (scores, usable) = self.score_posts(pool, &ctx, Some(fi), rating, 1, &[]);
             if usable.iter().any(|&u| u) {
                 let mut counts = vec![0u32; self.tags.len()];
@@ -1054,7 +1063,7 @@ impl TagDb {
         let Some(&fi) = self.field_index.get(field) else {
             return Ok(Vec::new());
         };
-        let pool = self.pool()?;
+        let pool = self.pool();
         let ctx = unique(
             self.context_ids(context, &[field, CHARACTER])
                 .into_iter()
@@ -1134,7 +1143,7 @@ impl TagDb {
             return Ok(self.with_required(out, &req));
         }
 
-        let pool = self.pool()?;
+        let pool = self.pool();
         let ctx = unique(
             self.context_ids(&context, &[CHARACTER])
                 .into_iter()
@@ -1212,6 +1221,7 @@ mod tests {
 
     fn mini_db() -> TagDb {
         let meta = Meta {
+            built: None,
             fields: vec![
                 field("character", "who", 1),
                 field("subject", "who", 2),
@@ -1265,14 +1275,12 @@ mod tests {
             tags: vec![0, 3, 2, 4, 6, 5, 0, 7],
             percent: vec![95, 80, 40, 70, 50, 60, 90, 60],
         };
-        let posts = || {
-            Ok(PostArrays {
-                indptr: vec![0, 4, 8, 11],
-                tags: vec![0, 1, 2, 7, 0, 1, 3, 6, 0, 4, 5],
-                rating: vec![0, 0, 3],
-            })
+        let posts = PostArrays {
+            indptr: vec![0, 4, 8, 11],
+            tags: vec![0, 1, 2, 7, 0, 1, 3, 6, 0, 4, 5],
+            rating: vec![0, 0, 3],
         };
-        TagDb::from_parts(meta, characters, stats, Box::new(posts))
+        TagDb::from_parts(meta, characters, stats, posts)
     }
 
     fn context(pairs: &[(&str, &[&str])]) -> Context {

@@ -1,4 +1,5 @@
 mod db;
+pub mod rebuild;
 
 use db::{
     CharacterRow, CharacterStats, Context, Field, Meta, PostArrays, Preset, Suggestion, TagDb,
@@ -6,19 +7,25 @@ use db::{
 use flate2::read::{DeflateDecoder, GzDecoder};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::fs;
 use std::io::Read;
-use std::sync::OnceLock;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
+use tauri::AppHandle;
 
-const TAGS_JSON: &[u8] = include_bytes!("data/tags.json.gz");
-const CHARACTERS_JSON: &[u8] = include_bytes!("data/characters.json.gz");
-const CHARACTER_TAGS_NPZ: &[u8] = include_bytes!("data/character_tags.npz");
-const POSTS_NPZ: &[u8] = include_bytes!("data/posts.npz");
+const TAGS_JSON: &str = "tags.json.gz";
+const CHARACTERS_JSON: &str = "characters.json.gz";
+const CHARACTER_TAGS_NPZ: &str = "character_tags.npz";
+const POSTS_NPZ: &str = "posts.npz";
+const DATA_FILES: [&str; 4] = [TAGS_JSON, CHARACTERS_JSON, CHARACTER_TAGS_NPZ, POSTS_NPZ];
+const NO_DATASET: &str =
+    "Character Helper has no dataset yet. Build it in Settings > Character Helper.";
 const ZIP_LOCAL_HEADER: &[u8] = b"PK\x03\x04";
 const ZIP_DEFLATE: usize = 8;
 
-static DB: OnceLock<Result<TagDb, String>> = OnceLock::new();
+static DB: Mutex<Option<Arc<TagDb>>> = Mutex::new(None);
 
-// Embedded data decoding
+// Data file decoding
 fn gunzip_json<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
     serde_json::from_reader(GzDecoder::new(bytes)).map_err(|e| e.to_string())
 }
@@ -70,66 +77,164 @@ fn npz_array<T, const N: usize>(
         .collect())
 }
 
-fn load_posts() -> Result<PostArrays, String> {
+fn read_data(dir: &Path, name: &str) -> Result<Vec<u8>, String> {
+    fs::read(dir.join(name)).map_err(|e| format!("{name}: {e}"))
+}
+
+fn load_posts(npz: &[u8]) -> Result<PostArrays, String> {
     Ok(PostArrays {
-        indptr: npz_array(POSTS_NPZ, "indptr", u32::from_le_bytes)?,
-        tags: npz_array(POSTS_NPZ, "tags", u16::from_le_bytes)?,
-        rating: npz_array(POSTS_NPZ, "rating", u8::from_le_bytes)?,
+        indptr: npz_array(npz, "indptr", u32::from_le_bytes)?,
+        tags: npz_array(npz, "tags", u16::from_le_bytes)?,
+        rating: npz_array(npz, "rating", u8::from_le_bytes)?,
     })
 }
 
-fn load_embedded() -> Result<TagDb, String> {
-    let meta: Meta = gunzip_json(TAGS_JSON)?;
-    let characters: Vec<CharacterRow> = gunzip_json(CHARACTERS_JSON)?;
-    let stats = CharacterStats {
-        indptr: npz_array(CHARACTER_TAGS_NPZ, "indptr", u32::from_le_bytes)?,
-        tags: npz_array(CHARACTER_TAGS_NPZ, "tags", u16::from_le_bytes)?,
-        percent: npz_array(CHARACTER_TAGS_NPZ, "percent", u8::from_le_bytes)?,
-    };
-    Ok(TagDb::from_parts(
-        meta,
-        characters,
-        stats,
-        Box::new(load_posts),
-    ))
+fn check_csr(name: &str, indptr: &[u32], rows: usize, values: usize) -> Result<(), String> {
+    let consistent = indptr.len() == rows + 1
+        && indptr.last().is_some_and(|&end| end as usize == values)
+        && indptr.windows(2).all(|w| w[0] <= w[1]);
+    consistent
+        .then_some(())
+        .ok_or_else(|| format!("{name} does not match the other data files"))
 }
 
-fn db() -> Result<&'static TagDb, String> {
-    DB.get_or_init(load_embedded).as_ref().map_err(Clone::clone)
+fn check_ids<'a>(
+    name: &str,
+    ids: impl IntoIterator<Item = &'a usize>,
+    limit: usize,
+) -> Result<(), String> {
+    match ids.into_iter().find(|&&id| id >= limit) {
+        Some(id) => Err(format!(
+            "{name} refers to tag {id}, but only {limit} tags exist"
+        )),
+        None => Ok(()),
+    }
+}
+
+fn check_parts(
+    meta: &Meta,
+    characters: &[CharacterRow],
+    stats: &CharacterStats,
+    posts: &PostArrays,
+) -> Result<(), String> {
+    let tag_count = meta.tags.len();
+    if meta.fields.is_empty() || tag_count == 0 || tag_count > usize::from(u16::MAX) + 1 {
+        return Err(format!("{TAGS_JSON} has no fields or an invalid tag count"));
+    }
+    if let Some((name, ..)) = meta.tags.iter().find(|t| t.1 >= meta.fields.len()) {
+        return Err(format!("{TAGS_JSON}: tag {name} has no field"));
+    }
+    check_ids(TAGS_JSON, meta.implies.values().flatten(), tag_count)?;
+    check_ids(
+        TAGS_JSON,
+        meta.groups
+            .values()
+            .flat_map(|g| g.tags.iter().chain(&g.multi)),
+        tag_count,
+    )?;
+    check_ids(TAGS_JSON, &meta.soft, tag_count)?;
+    check_csr(
+        CHARACTER_TAGS_NPZ,
+        &stats.indptr,
+        characters.len(),
+        stats.tags.len(),
+    )?;
+    if stats.percent.len() != stats.tags.len() {
+        return Err(format!("{CHARACTER_TAGS_NPZ} has mismatched arrays"));
+    }
+    check_csr(
+        POSTS_NPZ,
+        &posts.indptr,
+        posts.rating.len(),
+        posts.tags.len(),
+    )?;
+    let largest = stats
+        .tags
+        .iter()
+        .chain(&posts.tags)
+        .max()
+        .map(|&t| t as usize);
+    check_ids("character and post data", &largest, tag_count)
+}
+
+fn load(dir: PathBuf) -> Result<TagDb, String> {
+    let meta: Meta = gunzip_json(&read_data(&dir, TAGS_JSON)?)?;
+    let characters: Vec<CharacterRow> = gunzip_json(&read_data(&dir, CHARACTERS_JSON)?)?;
+    let stats_npz = read_data(&dir, CHARACTER_TAGS_NPZ)?;
+    let stats = CharacterStats {
+        indptr: npz_array(&stats_npz, "indptr", u32::from_le_bytes)?,
+        tags: npz_array(&stats_npz, "tags", u16::from_le_bytes)?,
+        percent: npz_array(&stats_npz, "percent", u8::from_le_bytes)?,
+    };
+    let posts = load_posts(&read_data(&dir, POSTS_NPZ)?)?;
+    check_parts(&meta, &characters, &stats, &posts)?;
+    Ok(TagDb::from_parts(meta, characters, stats, posts))
+}
+
+pub(crate) fn installed_dir(app: &AppHandle) -> Result<Option<PathBuf>, String> {
+    let dir = rebuild::data_dir(app)?;
+    let complete = DATA_FILES.iter().all(|name| dir.join(name).is_file());
+    Ok(complete.then_some(dir))
+}
+
+pub(crate) fn validate(dir: &Path) -> Result<(), String> {
+    load(dir.to_path_buf()).map(drop)
+}
+
+fn db(app: &AppHandle) -> Result<Arc<TagDb>, String> {
+    let mut slot = DB.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(db) = slot.as_ref() {
+        return Ok(db.clone());
+    }
+    let dir = installed_dir(app)?.ok_or(NO_DATASET)?;
+    let loaded = Arc::new(load(dir).map_err(|e| {
+        format!(
+            "The Character Helper dataset could not be read ({e}). Rebuild it in Settings > Character Helper."
+        )
+    })?);
+    *slot = Some(loaded.clone());
+    Ok(loaded)
+}
+
+fn reset() {
+    DB.lock().unwrap_or_else(PoisonError::into_inner).take();
 }
 
 // Commands
 #[tauri::command(async)]
-pub fn character_data_fields() -> Result<Vec<Field>, String> {
-    Ok(db()?.fields().to_vec())
+pub fn character_data_fields(app: AppHandle) -> Result<Vec<Field>, String> {
+    Ok(db(&app)?.fields().to_vec())
 }
 
 #[tauri::command(async)]
 pub fn character_data_autocomplete(
+    app: AppHandle,
     field: String,
     query: String,
     limit: usize,
 ) -> Result<Vec<Suggestion>, String> {
-    Ok(db()?.autocomplete(&field, &query, limit))
+    Ok(db(&app)?.autocomplete(&field, &query, limit))
 }
 
 #[tauri::command(async)]
 pub fn character_data_suggest(
+    app: AppHandle,
     field: String,
     context: Context,
     limit: usize,
     rating: String,
 ) -> Result<Vec<Suggestion>, String> {
-    db()?.suggest(&field, &context, limit, &rating)
+    db(&app)?.suggest(&field, &context, limit, &rating)
 }
 
 #[tauri::command(async)]
-pub fn character_data_preset(name: String) -> Result<Option<Preset>, String> {
-    Ok(db()?.character_preset(&name))
+pub fn character_data_preset(app: AppHandle, name: String) -> Result<Option<Preset>, String> {
+    Ok(db(&app)?.character_preset(&name))
 }
 
 #[tauri::command(async)]
 pub fn character_data_randomize(
+    app: AppHandle,
     fields: Vec<String>,
     counts: HashMap<String, i64>,
     context: Context,
@@ -137,7 +242,7 @@ pub fn character_data_randomize(
     seed: Option<u64>,
     require: Vec<String>,
 ) -> Result<HashMap<String, Vec<String>>, String> {
-    db()?.randomize(&fields, &counts, &context, &rating, seed, &require)
+    db(&app)?.randomize(&fields, &counts, &context, &rating, seed, &require)
 }
 
 #[cfg(test)]
@@ -161,6 +266,55 @@ mod tests {
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect();
         assert_eq!(values, [1, 2]);
+    }
+
+    fn parts() -> (Meta, Vec<CharacterRow>, CharacterStats, PostArrays) {
+        let meta = serde_json::from_value(serde_json::json!({
+            "built": "2026-11-23",
+            "fields": [{ "id": "hair", "label": "hair", "count": 1, "group": "looks" }],
+            "tags": [["long_hair", 0, 10, 0.0], ["short_hair", 0, 5, 0.0]],
+            "implies": { "1": [0] },
+            "groups": { "hair_length": { "tags": [0, 1], "multi": [] } },
+            "soft": [],
+            "colors": [],
+            "aliases": {},
+            "series": []
+        }))
+        .unwrap();
+        let characters = vec![("miku".into(), 10, "vocaloid".into(), vec![], 1)];
+        let stats = CharacterStats {
+            indptr: vec![0, 2],
+            tags: vec![0, 1],
+            percent: vec![90, 40],
+        };
+        let posts = PostArrays {
+            indptr: vec![0, 1, 2],
+            tags: vec![0, 1],
+            rating: vec![0, 1],
+        };
+        (meta, characters, stats, posts)
+    }
+
+    #[test]
+    fn consistent_data_passes_the_check() {
+        let (meta, characters, stats, posts) = parts();
+        check_parts(&meta, &characters, &stats, &posts).unwrap();
+    }
+
+    #[test]
+    fn consistency_check_rejects_unknown_tag_ids() {
+        let (meta, characters, stats, mut posts) = parts();
+        posts.tags[0] = 7;
+        let error = check_parts(&meta, &characters, &stats, &posts).unwrap_err();
+        assert!(error.contains("only 2 tags exist"), "{error}");
+    }
+
+    #[test]
+    fn consistency_check_rejects_mismatched_offsets() {
+        let (meta, characters, mut stats, posts) = parts();
+        stats.indptr = vec![0, 1];
+        let error = check_parts(&meta, &characters, &stats, &posts).unwrap_err();
+        assert!(error.contains(CHARACTER_TAGS_NPZ), "{error}");
     }
 
     #[test]

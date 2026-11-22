@@ -12,6 +12,7 @@ import {
   Undo2
 } from '@lucide/vue';
 import { toast } from 'vue-sonner';
+import CharacterDatasetMissing from '@/components/character-helper/CharacterDatasetMissing.vue';
 import CharacterFieldInput from '@/components/character-helper/CharacterFieldInput.vue';
 import CharacterRatingSelect from '@/components/character-helper/CharacterRatingSelect.vue';
 import PageLayout from '@/components/layout/PageLayout.vue';
@@ -113,7 +114,11 @@ onMounted(() => store.run(store.load));
       </div>
     </template>
 
-    <div class="grid gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+    <CharacterDatasetMissing
+      v-if="store.datasetInstalled === false"
+      class="mx-auto mt-8 max-w-md"
+    />
+    <div v-else class="grid gap-4 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
       <aside class="flex flex-col gap-3 self-start lg:sticky lg:top-0">
         <section
           class="border-border bg-card flex flex-col gap-3 rounded-xl border p-3.5 shadow-2xs"
@@ -155,7 +160,7 @@ onMounted(() => store.run(store.load));
 
           <button
             type="button"
-            class="border-border bg-muted/40 hover:border-primary/40 min-h-24 rounded-md border p-2.5 text-left font-mono text-xs break-words whitespace-pre-wrap transition-colors"
+            class="border-border bg-muted/40 hover:border-primary/40 min-h-24 rounded-md border p-2.5 text-left font-mono text-xs wrap-break-word whitespace-pre-wrap transition-colors"
             title="Click to copy"
             @click="copyPrompt"
           >

@@ -1,0 +1,55 @@
+// Character Helper build settings.
+// Thresholds used when the dataset is built. Changes apply on the next build:
+// Settings > Character Helper > Rebuild dataset. Reset to defaults restores this file.
+// Lines starting with // are comments.
+{
+  // A general tag needs at least this many posts to be kept. A lower value keeps rarer tags but
+  // makes the database bigger. The database holds at most 65,535 tags.
+  "min_general_count": 150,
+
+  // A character needs at least this many posts to be listed.
+  "min_character_count": 40,
+
+  // A series (copyright tag) needs at least this many posts to be listed.
+  "min_series_count": 40,
+
+  // A character's usual look comes from their solo, General or Sensitive, non-cosplay posts.
+  // With fewer such posts than this, all of their posts are used instead.
+  "canon_min_posts": 25,
+
+  // Most tags stored per field for each character's usual look and suggestions.
+  "char_tags_per_field": 14,
+
+  // A tag must appear on at least this share of a character's posts to be stored (0.08 = 8%).
+  "char_min_freq": 0.08,
+
+  // Dice pictures: lowest Danbooru score a post can have.
+  "pool_min_score": 25,
+
+  // Dice pictures: fewest general tags a post can have. Well-tagged posts make better rolls.
+  "pool_min_general_tags": 22,
+
+  // Dice pictures: fewest tags a post must keep after tags are sorted into fields.
+  "pool_min_kept_tags": 12,
+
+  // Dice pictures kept per rating: g general, s sensitive, q questionable, e explicit.
+  // Higher-scored posts are more likely to be picked.
+  "pool_size": {
+    "g": 60000,
+    "s": 60000,
+    "q": 20000,
+    "e": 20000
+  },
+
+  // Dice pictures must have exactly one of these tags, so each shows one person.
+  "count_tags": [
+    "1girl", "1boy", "1other"
+  ],
+
+  // Random seed for picking dice pictures. The same seed and data give the same database.
+  "pool_seed": 1234,
+
+  // Worker processes for the scan. 0 uses up to 4. Each one needs extra RAM: set 1 if the build
+  // runs out of memory.
+  "jobs": 0
+}

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import BooruSettings from '@/components/settings/BooruSettings.vue';
 import AiSettings from '@/components/settings/AiSettings.vue';
+import CharacterHelperSettings from '@/components/settings/CharacterHelperSettings.vue';
 import SystemInfoSettings from '@/components/settings/SystemInfoSettings.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
+import { useRoute } from 'vue-router';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -13,6 +15,7 @@ import {
   CheckCircle2,
   CloudDownload,
   Cpu,
+  Dices,
   ExternalLink,
   FlaskConical,
   FolderOpen,
@@ -100,11 +103,13 @@ const tabs = [
   { id: 'booru', label: 'Booru gallery', icon: ImageIcon },
   { id: 'civitai', label: 'Civitai', icon: KeyRound },
   { id: 'ai', label: 'AI assistant', icon: Bot },
+  { id: 'character', label: 'Character Helper', icon: Dices },
   { id: 'general', label: 'General', icon: AppWindow },
   { id: 'system', label: 'System Information', icon: MonitorCog }
 ] as const;
 type SettingsTab = (typeof tabs)[number]['id'];
-const activeTab = ref<SettingsTab>('comfyui');
+const requestedTab = tabs.find((tab) => tab.id === useRoute().query.tab)?.id;
+const activeTab = ref<SettingsTab>(requestedTab ?? 'comfyui');
 
 const workingDir = ref(launcherStore.config.workingDir);
 const pythonPath = ref(launcherStore.config.pythonPath);
@@ -1088,6 +1093,9 @@ void loadCacheStats();
 
           <!-- AI -->
           <AiSettings v-show="activeTab === 'ai'" @saved="showSaved" />
+
+          <!-- Character Helper -->
+          <CharacterHelperSettings v-if="activeTab === 'character'" />
 
           <!-- System information -->
           <SystemInfoSettings v-if="activeTab === 'system'" />

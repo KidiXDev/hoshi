@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   formatCharacterTag,
   formatCharacterTags,
-  randomizeCharacterFields
+  randomizeCharacterFields,
+  rebuildCharacterDataset,
+  rebuildPercent
 } from './characterData';
 
 vi.mock(import('@tauri-apps/api/core'), async (importOriginal) => ({
@@ -73,6 +75,47 @@ describe('randomizeCharacterFields', () => {
       rating: 'general',
       seed: undefined,
       require: []
+    });
+  });
+});
+
+describe('rebuildPercent', () => {
+  const progress = {
+    step: 2,
+    steps: 4,
+    label: 'Downloading',
+    done: 50,
+    total: 100,
+    unit: 'bytes' as const
+  };
+
+  it('combines finished steps with the share of the current step', () => {
+    expect(rebuildPercent(progress)).toBe(38);
+  });
+
+  it('counts only finished steps when the current step has no total', () => {
+    expect(rebuildPercent({ ...progress, done: null, total: null })).toBe(25);
+  });
+
+  it('never runs past the current step', () => {
+    expect(rebuildPercent({ ...progress, done: 150 })).toBe(50);
+  });
+});
+
+describe('rebuildCharacterDataset', () => {
+  it('passes the ComfyUI python and the chosen download folder', async () => {
+    vi.mocked(invoke).mockResolvedValue(null);
+
+    await rebuildCharacterDataset({
+      workingDir: 'D:/ComfyUI',
+      pythonPath: 'python_embeded',
+      downloadDir: 'E:/Temp'
+    });
+
+    expect(invoke).toHaveBeenCalledWith('character_data_rebuild', {
+      workingDir: 'D:/ComfyUI',
+      pythonPath: 'python_embeded',
+      downloadDir: 'E:/Temp'
     });
   });
 });

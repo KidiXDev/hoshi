@@ -399,6 +399,9 @@ pub fn run() {
                 .configure(app.path().app_config_dir()?)
                 .map_err(std::io::Error::other)?;
             network_cache::prune_expired_in_background(app.handle());
+            if let Err(error) = character_data::rebuild::ensure_config(app.handle()) {
+                eprintln!("Character Helper config: {error}");
+            }
             build_tray(app)?;
             if let (Some(window), Some(icon)) =
                 (app.get_webview_window("main"), app.default_window_icon())
@@ -500,6 +503,11 @@ pub fn run() {
             character_data::character_data_suggest,
             character_data::character_data_preset,
             character_data::character_data_randomize,
+            character_data::rebuild::character_data_status,
+            character_data::rebuild::character_data_reset_config,
+            character_data::rebuild::character_data_clear_downloads,
+            character_data::rebuild::character_data_rebuild,
+            character_data::rebuild::character_data_cancel_rebuild,
             network_cache::clear_network_cache,
             network_cache::get_network_cache_stats,
             system_info::get_system_specs,
@@ -509,6 +517,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                character_data::rebuild::stop();
                 app.state::<download_manager::DownloadManager>()
                     .suspend_all(app, std::time::Duration::from_secs(5));
             }

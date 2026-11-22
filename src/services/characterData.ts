@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 export const CHARACTER_RATINGS = [
   'general',
@@ -91,6 +92,93 @@ export function randomizeCharacterFields({
     seed,
     require
   });
+}
+
+// Dataset
+export interface CharacterDatasetStatus {
+  installed: boolean;
+  built: string | null;
+  loadError: string | null;
+  configDir: string;
+  defaultDownloadDir: string;
+  rebuilding: boolean;
+}
+
+export interface RebuildRequest {
+  workingDir: string;
+  pythonPath: string;
+  downloadDir: string;
+}
+
+export interface RebuildProgress {
+  step: number;
+  steps: number;
+  label: string;
+  done: number | null;
+  total: number | null;
+  unit: 'bytes' | 'chunks' | null;
+}
+
+export interface RebuildSummary {
+  tags: number;
+  characters: number;
+  posts: number;
+  seconds: number;
+  cleanupError?: string;
+}
+
+export interface RebuildListeners {
+  progress: (progress: RebuildProgress) => void;
+  warning: (message: string) => void;
+}
+
+export function getCharacterDatasetStatus(): Promise<CharacterDatasetStatus> {
+  return invoke('character_data_status');
+}
+
+export function rebuildCharacterDataset(
+  request: RebuildRequest
+): Promise<RebuildSummary | null> {
+  return invoke('character_data_rebuild', { ...request });
+}
+
+export async function listenToCharacterDatasetRebuild({
+  progress,
+  warning
+}: RebuildListeners): Promise<() => void> {
+  const stops = await Promise.all([
+    listen<RebuildProgress>('character-data-progress', (event) =>
+      progress(event.payload)
+    ),
+    listen<string>('character-data-warning', (event) => warning(event.payload))
+  ]);
+  return () => {
+    for (const stop of stops) stop();
+  };
+}
+
+export function rebuildPercent({
+  step,
+  steps,
+  done,
+  total
+}: RebuildProgress): number {
+  const part = total && done !== null ? Math.min(done / total, 1) : 0;
+  return Math.round(((step - 1 + part) / steps) * 100);
+}
+
+export function cancelCharacterDatasetRebuild(): Promise<void> {
+  return invoke('character_data_cancel_rebuild');
+}
+
+export function clearCharacterDatasetDownloads(
+  downloadDir: string
+): Promise<void> {
+  return invoke('character_data_clear_downloads', { downloadDir });
+}
+
+export function resetCharacterDataConfig(): Promise<void> {
+  return invoke('character_data_reset_config');
 }
 
 // Prompt formatting
