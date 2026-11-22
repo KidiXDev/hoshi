@@ -302,7 +302,13 @@ impl Gelbooru {
                     ))
                 }
                 Err(_) if attempt == 0 => thread::sleep(Duration::from_secs(1)),
-                Err(error) => return Err(format!("{} tag lookup failed: {error}", self.source)),
+                Err(error) => {
+                    return Err(format!(
+                        "{} tag lookup {}",
+                        self.source,
+                        super::dns::describe(error)
+                    ))
+                }
             }
         }
         unreachable!()

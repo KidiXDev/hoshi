@@ -1,4 +1,5 @@
 mod danbooru;
+mod dns;
 mod gelbooru;
 mod moebooru;
 mod sources;
@@ -391,13 +392,22 @@ pub(crate) fn provider(source: &str) -> Result<&'static dyn Provider, String> {
     sources::by_id(source)
 }
 
-pub(crate) fn client(timeout: u64) -> Result<Client, String> {
+fn client_builder(timeout: u64) -> reqwest::blocking::ClientBuilder {
     Client::builder()
         .user_agent("Koharu/1.0 (Native Booru Gallery)")
         .connect_timeout(Duration::from_secs(timeout.min(30)))
         .timeout(Duration::from_secs(timeout))
+        .dns_resolver(Arc::new(dns::SecureDns::new()))
+}
+
+pub(crate) fn client(timeout: u64) -> Result<Client, String> {
+    client_builder(timeout)
         .build()
         .map_err(|error| error.to_string())
+}
+
+fn request_error(source: &str, error: reqwest::Error) -> String {
+    format!("{source} request {}", dns::describe(error))
 }
 
 pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, String> {
@@ -469,7 +479,7 @@ pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, 
             Err(error) if attempt < 2 && !error.is_builder() => {
                 thread::sleep(Duration::from_secs((attempt + 1) as u64));
             }
-            Err(error) => return Err(format!("{source} request failed: {}", error.without_url())),
+            Err(error) => return Err(request_error(source, error)),
         }
     }
     unreachable!()
@@ -478,7 +488,7 @@ pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, 
 pub(crate) fn send_status(source: &str, request: RequestBuilder) -> Result<(), String> {
     let response = request
         .send()
-        .map_err(|error| format!("{source} request failed: {}", error.without_url()))?;
+        .map_err(|error| request_error(source, error))?;
     let status = response.status();
     if status.is_success() {
         Ok(())
@@ -1509,10 +1519,7 @@ pub fn handle_media_uri(app: &AppHandle, uri: &str) -> Result<(Vec<u8>, String),
 
 fn download_media(app: &AppHandle, source: &str, url: &str) -> Result<(Vec<u8>, String), String> {
     let settings = settings(app)?;
-    let client = Client::builder()
-        .user_agent("Koharu/1.0 (Native Booru Gallery)")
-        .connect_timeout(Duration::from_secs(settings.timeout.min(30)))
-        .timeout(Duration::from_secs(settings.timeout))
+    let client = client_builder(settings.timeout)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())?;
@@ -1524,7 +1531,9 @@ fn download_media(app: &AppHandle, source: &str, url: &str) -> Result<(Vec<u8>, 
         if let Some(referer) = provider.media_referer() {
             request = request.header(REFERER, referer);
         }
-        let response = request.send().map_err(|e| e.to_string())?;
+        let response = request
+            .send()
+            .map_err(|error| format!("{source} media {}", dns::describe(error)))?;
         if response.status().is_redirection() {
             let location = response
                 .headers()
