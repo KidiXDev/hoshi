@@ -32,35 +32,35 @@ Hoshi is a Tauri v2 (Rust) + Vue 3 application. It talks to ComfyUI over its nor
 
 ### Generate
 
-- **Workflow Generator** — txt2img and img2img for Anima and MOSS-Image, plus Anima inpainting with a built-in mask painter and MOSS-Image prompt-based image editing. Switch model profiles to keep separate generation settings, with resolution presets, sampler/scheduler selection, seed control and variation seeds.
-- **MOSS-Image layouts** — draw, move and resize boxes for objects, characters and exact text, with a scene caption and descriptions for each box. Import layout drafts from Maya or the prompt enhancer.
-- **Prompting** — tag autocomplete from a Danbooru tag CSV you drop into the app's `tags` folder (works without ComfyUI running), prompt chips, weight hotkeys, find-in-prompt, negative prompt bundles, and `{a|b}` dynamic prompts and `__wildcards__` (from the app's `wildcards` folder) resolved from the seed.
-- **LoRA chain** — stack LoRAs with per-item strength and pull trigger words from Civitai sidecars or safetensors metadata.
-- **Pipeline stages** — optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline (adjust/style stages); Anima-specific model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite) and MOSS-Image skip layer guidance, temporal score rescaling, AuraFlow sampling, Spectrum acceleration and the built-in accelerators (MG-Cache with calibration, guidance interval, text embedder cache, progressive resolution).
-- **Live output** — streaming latent previews, progress, batch queueing, generation history with "reuse settings", and the elapsed-time HUD.
+- **Workflow Generator:** txt2img and img2img for Anima and MOSS-Image, plus Anima inpainting with a built-in mask painter and prompt-based image editing for MOSS-Image. Each model profile keeps its own generation settings, with resolution presets, sampler and scheduler selection, seed control and variation seeds.
+- **MOSS-Image layouts:** draw, move and resize boxes for objects, characters and exact text, with a scene caption and a description for each box. Layout drafts can come from Maya or the prompt enhancer.
+- **Prompting:** tag autocomplete from a Danbooru tag CSV you drop into the app's `tags` folder (it works without ComfyUI running), prompt chips, weight hotkeys, find-in-prompt and negative prompt bundles. `{a|b}` dynamic prompts and `__wildcards__` from the app's `wildcards` folder are resolved from the seed.
+- **LoRA chain:** stack LoRAs with their own strength each, and pull trigger words from Civitai sidecars or safetensors metadata.
+- **Pipeline stages:** an optional FaceDetailer pass, Ultimate SD Upscale, plain model upscaling and a PostFX pipeline with adjust and style stages. Anima gets its own model transforms (AuraFlow sampling, RenormCFG, CacheDiT, LLLite). MOSS-Image gets skip layer guidance, temporal score rescaling, AuraFlow sampling, Spectrum acceleration and the built-in accelerators (MG-Cache with calibration, guidance interval, text embedder cache, progressive resolution).
+- **Live output:** streaming latent previews, progress, batch queueing, generation history with "reuse settings", and the elapsed-time HUD.
 
 ### Post-process
 
-- **Upscaler** — standalone upscale-model or Ultimate SD Upscale tool with before/after comparison.
-- **Face Detailer** — run the Impact Pack detailer on any image.
-- **Remove Background** — RMBG and BiRefNet modes with mask settings.
-- **WD Tagger** — tag an image into a ready-to-use prompt.
+- **Upscaler:** a standalone upscale-model or Ultimate SD Upscale tool with a before and after comparison.
+- **Face Detailer:** run the Impact Pack detailer on any image.
+- **Remove Background:** RMBG and BiRefNet modes with mask settings.
+- **WD Tagger:** turn an image into a ready-to-use tag prompt.
 
 ### Browse
 
-- **Booru Gallery** — Danbooru, Gelbooru, Safebooru, AI Tag, yande.re and Konachan with per-site credentials, tag autocomplete, a post inspector and a built-in Cloudflare verification window.
-- **Animadex** — explore characters and artists, and push their tags straight into the prompt.
-- **Character Helper** — build a character prompt offline from Danbooru tag statistics: a character's usual look, dice that roll outfit, pose and scene from real pictures, locks and must-include tags. Also a section on the Generation page and a tool for Maya.
-- **Civitai** — browse models, inspect versions and samples, and download files with a background download manager that also accepts direct links, such as Hugging Face files, into a folder you pick.
-- **Danbooru Wiki** — read tag wikis in-app with pinned pages and DText rendering.
+- **Booru Gallery:** Danbooru, Gelbooru, Safebooru, AI Tag, yande.re and Konachan, with per-site credentials, tag autocomplete, a post inspector and a built-in Cloudflare verification window.
+- **Animadex:** explore characters and artists, and send their tags straight to the prompt.
+- **Character Helper:** build a character prompt offline from Danbooru tag statistics, with a character's usual look, dice that roll outfit, pose and scene from real pictures, locks and must-include tags. It also has a section on the Generation page and a tool for Maya. Build the dataset once in Settings > Character Helper. The build downloads about 4 GB into a temporary folder you choose and keeps a database of about 13 MB.
+- **Civitai:** browse models, inspect versions and samples, and download files with a background download manager. It also takes direct links, such as Hugging Face files, and saves into a folder you pick.
+- **Danbooru Wiki:** read tag wikis in the app, with pinned pages and DText rendering.
 
 ### Manage
 
-- **Gallery** — indexed output viewer with thumbnails, metadata search (`model:` filters, tags), A/B compare modes and a lightbox inspector.
-- **Library** — prompt presets, LoRA presets and character entries (with thumbnails and notes that the assistant can read).
-- **Model Manager** — indexes every ComfyUI model folder (including `extra_model_paths.yaml`), hashes files, syncs metadata and previews from Civitai, checks for updates and manages preview images. Drop model files from File Explorer onto a folder to move them in and sync them.
-- **Embedded ComfyUI editor** — the full ComfyUI frontend inside Hoshi, with one-click "open this generation as a workflow".
-- **Server terminal** — launch/stop ComfyUI with your Python and arguments, ANSI-colored log streaming and a log drawer available on every page.
+- **Gallery:** an indexed output viewer with thumbnails, metadata search (`model:` filters, tags), A/B compare modes and a lightbox inspector.
+- **Library:** prompt presets, LoRA presets and character entries, with thumbnails and notes the assistant can read.
+- **Model Manager:** indexes every ComfyUI model folder (including `extra_model_paths.yaml`), hashes files, syncs metadata and previews from Civitai, checks for updates and manages preview images. Drop model files from File Explorer onto a folder to move them in and sync them.
+- **Embedded ComfyUI editor:** the full ComfyUI frontend inside Hoshi, with one click to "open this generation as a workflow".
+- **Server terminal:** start and stop ComfyUI with your Python and arguments, with ANSI-colored log streaming and a log drawer on every page.
 
 ### Maya, the AI assistant
 
@@ -98,7 +98,7 @@ Browse models, inspect versions and preview samples, with background download ma
 
 ### ComfyUI
 
-- **[v0.43.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.43.0) or later.** Hoshi starts ComfyUI with `--enable-cors-header` and injects its bridge node (`custom_nodes/comfyui-koharu-bridge`) before every launch — no manual install needed.
+- **[v0.43.0](https://github.com/Comfy-Org/ComfyUI/releases/tag/v0.43.0) or later.** Hoshi starts ComfyUI with `--enable-cors-header` and injects its bridge node (`custom_nodes/comfyui-koharu-bridge`) before every launch, so there is nothing to install by hand.
 
 ### Models
 
@@ -106,7 +106,7 @@ Browse models, inspect versions and preview samples, with background download ma
 
 ### External custom nodes
 
-Generated graphs use nodes from these packs. Install them into your ComfyUI `custom_nodes/` directory:
+Generated graphs use nodes from these packs. Install them into your ComfyUI `custom_nodes/` directory (licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)):
 
 - [ComfyUI-WD-Timm-Tagger](https://github.com/bedovyy/ComfyUI-WD-Timm-Tagger)
 - [ComfyUI_UltimateSDUpscale](https://github.com/ssitu/ComfyUI_UltimateSDUpscale)
@@ -133,4 +133,4 @@ On first run, open **Settings → ComfyUI** and point Hoshi at your ComfyUI fold
 
 This project is licensed under the [GNU General Public License, version 3](LICENSE).
 
-The Character Helper tag data and selection logic come from [ComfyUI-Character-Helper](https://github.com/Adamovix/ComfyUI-Character-Helper) (MIT, see [its license](src-tauri/src/character_data/data/LICENSE)); tags and counts originate from [Danbooru](https://danbooru.donmai.us).
+Third-party code, data and required custom nodes are listed with their licences in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
