@@ -158,24 +158,34 @@ export async function rescanLocalModelIndex(
 
 export function useRescanModelsMutation() {
   const { workingDir, args } = useLauncherScan();
+  const comfyStore = useComfyStore();
   return useMutation({
-    mutationFn: () => rescanLocalModelIndex(workingDir.value, args.value)
+    mutationFn: () => rescanLocalModelIndex(workingDir.value, args.value),
+    onSuccess: () => comfyStore.invalidateModelPreviews()
   });
 }
 
 export function useSyncModelMutation() {
+  const comfyStore = useComfyStore();
   return useMutation({
     mutationFn: async (id: string) =>
       syncModelWithCivitai(id, await loadCivitaiApiKey()),
-    onSuccess: (model) => replaceIndexedModel(model)
+    onSuccess: (model) => {
+      replaceIndexedModel(model);
+      comfyStore.invalidateModelPreviews();
+    }
   });
 }
 
 export function useSetModelPreviewMutation() {
+  const comfyStore = useComfyStore();
   return useMutation({
     mutationFn: ({ id, source }: { id: string; source: PreviewSource }) =>
       setModelPreview(id, source),
-    onSuccess: (model) => replaceIndexedModel(model)
+    onSuccess: (model) => {
+      replaceIndexedModel(model);
+      comfyStore.invalidateModelPreviews();
+    }
   });
 }
 

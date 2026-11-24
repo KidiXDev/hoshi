@@ -3,7 +3,8 @@ import { computed, ref, shallowRef, watch } from 'vue';
 import {
   ComfyApi,
   firstOutputImage,
-  historyEntryError
+  historyEntryError,
+  type ModelPreviewCategory
 } from '../services/comfyApi';
 import { ComfyWsClient } from '../services/comfyWs';
 import { Wildcards } from '../services/wildcards';
@@ -155,6 +156,7 @@ export const useComfyStore = defineStore('comfy', () => {
   const objectInfo = shallowRef<ComfyObjectInfo | null>(null);
   const bridgeModels = shallowRef<BridgeModelsResponse | null>(null);
   const bridgeSystem = shallowRef<BridgeSystemResponse | null>(null);
+  const modelPreviewVersion = ref(0);
   const isFaceDetailerAvailable = ref(false);
   const isCacheDiTAvailable = ref(false);
   const isSpectrumMossAvailable = ref(false);
@@ -613,7 +615,26 @@ export const useComfyStore = defineStore('comfy', () => {
       // Server not ready yet
     } finally {
       isChecking.value = false;
+      invalidateModelPreviews();
     }
+  }
+
+  function invalidateModelPreviews() {
+    modelPreviewVersion.value += 1;
+  }
+
+  function modelPreviewUrl(
+    category: ModelPreviewCategory,
+    name: string,
+    res?: number
+  ) {
+    return ComfyApi.getModelPreviewUrl(
+      launcherStore.config.serverUrl,
+      category,
+      name,
+      modelPreviewVersion.value,
+      res
+    );
   }
 
   async function refreshModels() {
@@ -713,6 +734,8 @@ export const useComfyStore = defineStore('comfy', () => {
     init,
     fetchDiscovery,
     refreshModels,
+    invalidateModelPreviews,
+    modelPreviewUrl,
     generateImage,
     queueGeneration,
     waitForGeneration,

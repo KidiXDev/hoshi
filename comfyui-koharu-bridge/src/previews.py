@@ -41,13 +41,9 @@ def find_model_preview(category: str, filename: str) -> str | None:
             base_name = os.path.basename(base)
 
             extensions = [
-                ".png",
-                ".jpg",
-                ".jpeg",
-                ".webp",
-                ".preview.png",
-                ".preview.jpg",
-                ".preview.webp",
+                prefix + ext
+                for prefix in (".preview", "")
+                for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif")
             ]
             for ext in extensions:
                 p = base + ext

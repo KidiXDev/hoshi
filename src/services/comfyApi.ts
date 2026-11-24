@@ -9,6 +9,14 @@ import type {
 } from '../types/comfy';
 import { http, type RequestProgressCallback } from './httpClient';
 
+export type ModelPreviewCategory =
+  | 'checkpoints'
+  | 'unet'
+  | 'diffusion_models'
+  | 'loras'
+  | 'vae'
+  | 'clip';
+
 class PromptLostError extends Error {
   constructor() {
     super(
@@ -295,21 +303,17 @@ export const ComfyApi = {
 
   getModelPreviewUrl(
     serverUrl: string,
-    category:
-      | 'checkpoints'
-      | 'unet'
-      | 'diffusion_models'
-      | 'loras'
-      | 'vae'
-      | 'clip',
+    category: ModelPreviewCategory,
     name: string,
+    version: number,
     res = 300
   ): string {
     const base = this.cleanUrl(serverUrl);
     const params = new URLSearchParams({
       type: category,
       name,
-      res: String(res)
+      res: String(res),
+      v: String(version)
     });
     return `${base}/koharu/model_preview?${params.toString()}`;
   }

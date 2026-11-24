@@ -2085,6 +2085,7 @@ pub async fn set_model_preview(
         let preview = directory.join(format!("{stem}.preview.{extension}"));
         fs::write(&preview, bytes).map_err(|error| error.to_string())?;
         index.clear_thumbnails(&id);
+        model.preview_modified_ms = file_modified_ms(&preview);
         model.preview_path = Some(preview.to_string_lossy().into_owned());
         index.update(model.clone())?;
         Ok(model)

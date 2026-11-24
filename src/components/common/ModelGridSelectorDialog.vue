@@ -35,21 +35,14 @@ import {
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useLocalModelsIndexQuery } from '../../composables/useModelManagerQueries';
-import { ComfyApi } from '../../services/comfyApi';
+import type { ModelPreviewCategory } from '../../services/comfyApi';
 import { useComfyStore } from '../../stores/comfyStore';
-import { useLauncherStore } from '../../stores/launcherStore';
 
 const props = withDefaults(
   defineProps<{
     open: boolean;
     title?: string;
-    category:
-      | 'checkpoints'
-      | 'unet'
-      | 'diffusion_models'
-      | 'loras'
-      | 'vae'
-      | 'clip';
+    category: ModelPreviewCategory;
     models: string[];
     selectedModel?: string;
   }>(),
@@ -65,7 +58,6 @@ const emit = defineEmits<{
 }>();
 
 const comfyStore = useComfyStore();
-const launcherStore = useLauncherStore();
 
 const searchQuery = ref('');
 const activeFolderTab = ref('All');
@@ -74,7 +66,7 @@ const indexQuery = useLocalModelsIndexQuery({ enabled: () => props.open });
 const viewMode = ref<'grid' | 'list'>('grid');
 // Plain Set on purpose: a reactive one re-rendered the whole (unvirtualized)
 // grid on every img load/error, which stalled the dialog's open animation.
-const failedImageSet = new Set<string>();
+const failedPreviewUrls = new Set<string>();
 
 watch(
   () => props.open,
@@ -111,8 +103,8 @@ function baseModelOf(name: string): string | undefined {
   return baseModelByKey.value.get(modelKey(name));
 }
 
-function handleImageError(modelName: string, event: Event) {
-  failedImageSet.add(modelName);
+function handleImageError(url: string, event: Event) {
+  failedPreviewUrls.add(url);
   (event.target as HTMLImageElement).hidden = true;
 }
 
@@ -208,12 +200,7 @@ function selectModel(model: string) {
 }
 
 function getPreviewUrl(model: string, res = 300): string {
-  return ComfyApi.getModelPreviewUrl(
-    launcherStore.config.serverUrl,
-    props.category,
-    model,
-    res
-  );
+  return comfyStore.modelPreviewUrl(props.category, model, res);
 }
 </script>
 
@@ -439,12 +426,13 @@ function getPreviewUrl(model: string, res = 300): string {
                 </div>
 
                 <img
-                  v-if="!failedImageSet.has(model)"
+                  v-if="!failedPreviewUrls.has(getPreviewUrl(model, 300))"
+                  :key="getPreviewUrl(model, 300)"
                   :src="getPreviewUrl(model, 300)"
                   :alt="model"
                   decoding="async"
                   class="absolute inset-0 h-full w-full object-cover"
-                  @error="handleImageError(model, $event)"
+                  @error="handleImageError(getPreviewUrl(model, 300), $event)"
                 />
 
                 <div
@@ -520,13 +508,14 @@ function getPreviewUrl(model: string, res = 300): string {
                   <Sparkles class="h-4 w-4 opacity-50" />
                 </div>
                 <img
-                  v-if="!failedImageSet.has(model)"
+                  v-if="!failedPreviewUrls.has(getPreviewUrl(model, 200))"
+                  :key="getPreviewUrl(model, 200)"
                   :src="getPreviewUrl(model, 200)"
                   :alt="model"
                   loading="lazy"
                   decoding="async"
                   class="absolute inset-0 h-full w-full object-cover"
-                  @error="handleImageError(model, $event)"
+                  @error="handleImageError(getPreviewUrl(model, 200), $event)"
                 />
               </div>
 

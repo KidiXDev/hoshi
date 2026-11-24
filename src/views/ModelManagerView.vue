@@ -105,6 +105,7 @@ import {
   type SyncAllResult
 } from '@/services/modelManager';
 import { isVideoMedia } from '@/services/civitai';
+import { useComfyStore } from '@/stores/comfyStore';
 import { useModelManagerStore } from '@/stores/modelManagerStore';
 import {
   cleanPath,
@@ -141,6 +142,7 @@ const CATEGORY_ORDER = [
 const MODEL_DRAG_MIME = 'application/x-koharu-model-id';
 
 const router = useRouter();
+const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
 const store = useModelManagerStore();
 const { category, search, baseModel, sync, preview, sort, sortDir } =
@@ -171,8 +173,7 @@ const gridWidth = ref(1200);
 const isViewActive = ref(true);
 const dismissedWarnings = ref(false);
 // Thumbnail failed → fall back to the full preview; full failed → placeholder.
-const thumbFailed = ref(new Set<string>());
-const failedImages = ref(new Set<string>());
+const failedPreviewUrls = ref(new Set<string>());
 const busyIds = ref(new Set<string>());
 const indexProgress = ref<ModelIndexProgress | null>(null);
 const syncDialogOpen = ref(false);
@@ -195,7 +196,7 @@ const {
 } = useModelFileDrop({
   targetCategory: () => dropCategory.value ?? category.value,
   markBusy,
-  onSynced: resetImageState
+  onSynced: resetFailedPreviews
 });
 let dragStartTimer: ReturnType<typeof setTimeout> | undefined;
 let resizeObserver: ResizeObserver | null = null;
@@ -331,7 +332,7 @@ async function syncModel(model: LocalModel) {
   markBusy(model.id, true);
   try {
     const synced = await syncDialog.run(model);
-    if (synced) resetImageState(model.id);
+    if (synced) resetFailedPreviews();
   } finally {
     markBusy(model.id, false);
   }
@@ -346,7 +347,6 @@ async function setPreviewFromFile(model: LocalModel) {
       id: model.id,
       source: { kind: 'localPath', path }
     });
-    resetImageState(model.id);
     toast.success('Preview updated');
   } catch (error) {
     toast.error(`Preview update failed: ${String(error)}`);
@@ -371,7 +371,6 @@ async function setPreviewFromCivitai(model: LocalModel) {
       id: model.id,
       source: { kind: 'url', url: sample.url }
     });
-    resetImageState(model.id);
     toast.success('Preview fetched from Civitai');
   } catch (error) {
     toast.error(`Preview update failed: ${String(error)}`);
@@ -496,6 +495,7 @@ async function runSyncAll() {
       true
     );
     await indexQuery.refetch();
+    comfyStore.invalidateModelPreviews();
   } catch (error) {
     syncResult.value = {
       synced: 0,
@@ -519,24 +519,13 @@ function closeSyncDialog(open: boolean) {
 }
 
 function previewSrc(model: LocalModel) {
-  return modelPreviewUrl(model, !thumbFailed.value.has(model.id));
+  if (!model.previewPath) return '';
+  const sources = [modelPreviewUrl(model), modelPreviewUrl(model, false)];
+  return sources.find((src) => !failedPreviewUrls.value.has(src)) ?? '';
 }
 
-function onImageError(model: LocalModel) {
-  if (thumbFailed.value.has(model.id)) {
-    failedImages.value = new Set(failedImages.value).add(model.id);
-  } else {
-    thumbFailed.value = new Set(thumbFailed.value).add(model.id);
-  }
-}
-
-function resetImageState(id: string) {
-  const thumbs = new Set(thumbFailed.value);
-  const failed = new Set(failedImages.value);
-  thumbs.delete(id);
-  failed.delete(id);
-  thumbFailed.value = thumbs;
-  failedImages.value = failed;
+function resetFailedPreviews() {
+  failedPreviewUrls.value.clear();
 }
 
 function isLocalOnly(model: LocalModel) {
@@ -1020,13 +1009,13 @@ onUnmounted(() => {
                   class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
                 >
                   <ModelPreviewImage
-                    v-if="model.previewPath && !failedImages.has(model.id)"
+                    v-if="previewSrc(model)"
                     :key="previewSrc(model)"
                     :src="previewSrc(model)"
                     :alt="`${displayName(model)} preview`"
                     :icon="categoryIcon(model)"
                     fit="cover"
-                    @error="onImageError(model)"
+                    @error="failedPreviewUrls.add(previewSrc(model))"
                   />
                   <div
                     v-else
