@@ -295,4 +295,93 @@ describe('useCharacterHelperStore', () => {
     expect(store.rebuildOutcome).toMatchObject({ ok: false, stopped: true });
     expect(store.stopping).toBe(false);
   });
+
+  it('supports redo after undo and clears redo history on new changes', async () => {
+    const store = await loadedStore();
+    store.setField('hair', ['long_hair']);
+    vi.mocked(randomizeCharacterFields).mockResolvedValue({
+      hair: ['bob_cut']
+    });
+    await store.roll(['hair']);
+
+    store.undo();
+    expect(store.fields.hair).toEqual(['long_hair']);
+    expect(store.canRedo).toBe(true);
+
+    store.redo();
+    expect(store.fields.hair).toEqual(['bob_cut']);
+    expect(store.canRedo).toBe(false);
+
+    store.undo();
+    store.clearField('hair');
+    expect(store.fields.hair).toEqual([]);
+    expect(store.canRedo).toBe(false);
+  });
+
+  it('applies lock presets and reports the active preset', async () => {
+    vi.mocked(getCharacterFields).mockResolvedValue([
+      field('character', 1),
+      field('subject', 2),
+      field('hair', 3),
+      field('outfit', 2),
+      field('pose', 2)
+    ]);
+    const store = useCharacterHelperStore();
+    await store.load();
+
+    expect(store.activeLockPreset).toBe('none');
+
+    store.applyLockPreset('identity');
+    expect(store.locks).toEqual(['character', 'subject', 'hair']);
+    expect(store.activeLockPreset).toBe('identity');
+
+    store.applyLockPreset('outfit');
+    expect(store.locks).toEqual(['character', 'subject', 'hair', 'outfit']);
+    expect(store.activeLockPreset).toBe('outfit');
+
+    store.applyLockPreset('all');
+    expect(store.activeLockPreset).toBe('all');
+
+    store.toggleLock('pose');
+    expect(store.activeLockPreset).toBe('outfit');
+  });
+
+  it('locks, clears, and rolls a group while respecting individual locks', async () => {
+    const store = await loadedStore();
+    store.setField('hair', ['long_hair']);
+    store.setField('top', ['hoodie']);
+
+    store.setGroupLock(['hair', 'top'], true);
+    expect(store.isLocked('hair')).toBe(true);
+    expect(store.isLocked('top')).toBe(true);
+    await expect(store.rollGroup(['hair', 'top'])).rejects.toThrow(
+      'All fields in this group are locked'
+    );
+
+    store.setGroupLock(['top'], false);
+    store.clearGroup(['hair', 'top']);
+    expect(store.fields.hair).toEqual(['long_hair']);
+    expect(store.fields.top).toEqual([]);
+
+    vi.mocked(randomizeCharacterFields).mockResolvedValue({
+      top: ['white_shirt']
+    });
+    await store.rollGroup(['hair', 'top']);
+    expect(randomizeCharacterFields).toHaveBeenCalledWith(
+      expect.objectContaining({ fields: ['top'] })
+    );
+    expect(store.fields.top).toEqual(['white_shirt']);
+  });
+
+  it('tracks custom dice counts and resets them to defaults', async () => {
+    const store = await loadedStore();
+    expect(store.hasCustomCounts).toBe(false);
+
+    store.counts.hair = 6;
+    expect(store.hasCustomCounts).toBe(true);
+
+    store.resetCounts();
+    expect(store.counts.hair).toBe(3);
+    expect(store.hasCustomCounts).toBe(false);
+  });
 });

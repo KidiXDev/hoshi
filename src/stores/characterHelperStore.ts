@@ -25,9 +25,34 @@ const UNDO_STEPS = 100;
 const noop = () => {};
 export const MAX_DICE_COUNT = 10;
 
+export type LockPreset = 'identity' | 'outfit' | 'all' | 'none';
+
+const IDENTITY_LOCK_FIELDS = [
+  CHARACTER_FIELD,
+  'subject',
+  'hair',
+  'eyes',
+  'body'
+] as const;
+
+const OUTFIT_LOCK_FIELDS = [
+  ...IDENTITY_LOCK_FIELDS,
+  'outfit',
+  'top',
+  'bottom',
+  'legwear',
+  'accessories'
+] as const;
+
 export type RebuildOutcome =
   | { ok: true; summary: RebuildSummary | null }
   | { ok: false; stopped: boolean; message: string };
+
+function cloneFields(source: FieldTags): FieldTags {
+  return Object.fromEntries(
+    Object.entries(source).map(([key, list]) => [key, [...list]])
+  );
+}
 
 export const useCharacterHelperStore = defineStore('character-helper', () => {
   const workflow = useWorkflowStore();
@@ -40,6 +65,7 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
   const spaces = ref(true);
   const escape = ref(true);
   const history = ref<FieldTags[]>([]);
+  const future = ref<FieldTags[]>([]);
   const busy = ref(false);
   const datasetInstalled = ref<boolean | null>(null);
   const rebuilding = ref(false);
@@ -61,6 +87,28 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
     })
   );
   const prompt = computed(() => tags.value.join(', '));
+  const canUndo = computed(() => history.value.length > 0);
+  const canRedo = computed(() => future.value.length > 0);
+  const hasCustomCounts = computed(() =>
+    fieldDefs.value.some((f) => counts.value[f.id] !== f.count)
+  );
+  const activeLockPreset = computed<LockPreset | null>(() => {
+    const available = new Set(fieldIds.value);
+    if (available.size === 0) return null;
+    const current = new Set(locks.value.filter((id) => available.has(id)));
+    const matches = (target: readonly string[]) => {
+      const expected = target.filter((id) => available.has(id));
+      return (
+        expected.length === current.size &&
+        expected.every((id) => current.has(id))
+      );
+    };
+    if (current.size === 0) return 'none';
+    if (current.size === available.size) return 'all';
+    if (matches(IDENTITY_LOCK_FIELDS)) return 'identity';
+    if (matches(OUTFIT_LOCK_FIELDS)) return 'outfit';
+    return null;
+  });
 
   let loading: Promise<void> | null = null;
   function load(): Promise<void> {
@@ -88,6 +136,7 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
     await load();
     locks.value = locks.value.filter((id) => fieldIds.value.includes(id));
     history.value = [];
+    future.value = [];
   }
 
   async function rebuildDataset(
@@ -143,7 +192,10 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
   }
 
   function apply(next: FieldTags) {
-    history.value = [...history.value, { ...fields.value }].slice(-UNDO_STEPS);
+    history.value = [...history.value, cloneFields(fields.value)].slice(
+      -UNDO_STEPS
+    );
+    future.value = [];
     fields.value = { ...fields.value, ...next };
   }
 
@@ -168,6 +220,35 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
     locks.value = isLocked(id)
       ? locks.value.filter((l) => l !== id)
       : [...locks.value, id];
+  }
+
+  function setGroupLock(ids: string[], locked: boolean) {
+    const valid = ids.filter((id) => fieldIds.value.includes(id));
+    if (locked) {
+      locks.value = [...new Set([...locks.value, ...valid])];
+    } else {
+      const toRemove = new Set(valid);
+      locks.value = locks.value.filter((id) => !toRemove.has(id));
+    }
+  }
+
+  function applyLockPreset(preset: LockPreset) {
+    const available = new Set(fieldIds.value);
+    if (preset === 'none') {
+      locks.value = [];
+    } else if (preset === 'all') {
+      locks.value = [...fieldIds.value];
+    } else if (preset === 'identity') {
+      locks.value = IDENTITY_LOCK_FIELDS.filter((id) => available.has(id));
+    } else {
+      locks.value = OUTFIT_LOCK_FIELDS.filter((id) => available.has(id));
+    }
+  }
+
+  function resetCounts() {
+    counts.value = Object.fromEntries(
+      fieldDefs.value.map((f) => [f.id, f.count])
+    );
   }
 
   async function usualLook() {
@@ -197,15 +278,52 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
     );
   }
 
+  async function rollGroup(ids: string[]) {
+    const target = ids.filter((id) => !locks.value.includes(id));
+    if (target.length === 0)
+      throw new Error('All fields in this group are locked');
+    await roll(target);
+  }
+
+  function clearField(id: string) {
+    if ((fields.value[id]?.length ?? 0) === 0) return;
+    apply({ [id]: [] });
+  }
+
+  function clearGroup(ids: string[]) {
+    const target = ids.filter(
+      (id) => !locks.value.includes(id) && (fields.value[id]?.length ?? 0) > 0
+    );
+    if (target.length === 0) return;
+    apply(Object.fromEntries(target.map((id) => [id, []])));
+  }
+
   function clearUnlocked() {
-    apply(Object.fromEntries(unlockedIds.value.map((id) => [id, []])));
+    const target = unlockedIds.value.filter(
+      (id) => (fields.value[id]?.length ?? 0) > 0
+    );
+    if (target.length === 0) return;
+    apply(Object.fromEntries(target.map((id) => [id, []])));
   }
 
   function undo() {
     const last = history.value.at(-1);
     if (!last) return;
     history.value = history.value.slice(0, -1);
+    future.value = [...future.value, cloneFields(fields.value)].slice(
+      -UNDO_STEPS
+    );
     fields.value = last;
+  }
+
+  function redo() {
+    const next = future.value.at(-1);
+    if (!next) return;
+    future.value = future.value.slice(0, -1);
+    history.value = [...history.value, cloneFields(fields.value)].slice(
+      -UNDO_STEPS
+    );
+    fields.value = next;
   }
 
   function sendToPrompt(mode: 'append' | 'replace') {
@@ -242,6 +360,7 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
     spaces,
     escape,
     history,
+    future,
     busy,
     datasetInstalled,
     rebuilding,
@@ -251,9 +370,14 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
     rebuildStartedAt,
     stopping,
     fieldIds,
+    unlockedIds,
     character,
     tags,
     prompt,
+    canUndo,
+    canRedo,
+    hasCustomCounts,
+    activeLockPreset,
     load,
     reload,
     rebuildDataset,
@@ -262,10 +386,17 @@ export const useCharacterHelperStore = defineStore('character-helper', () => {
     setCharacter,
     isLocked,
     toggleLock,
+    setGroupLock,
+    applyLockPreset,
+    resetCounts,
     usualLook,
     roll,
+    rollGroup,
+    clearField,
+    clearGroup,
     clearUnlocked,
     undo,
+    redo,
     sendToPrompt,
     run
   };
