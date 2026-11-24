@@ -720,7 +720,11 @@ export const useAiStore = defineStore('ai', () => {
         inject_positive_prompt: tool({
           description: `Use only when the user asks to apply a prompt, edit the current studio prompt, or create an image. Requests to write, draft, or create prompt text alone are text-only. Inspect the current prompt before editing it.${isMoss ? ' A Layout draft JSON object replaces the layout boxes, the scene caption, and the canvas size.' : ''} The UI displays the full prompt and handles approval. After success, confirm briefly without repeating it. Wait for this result before calling generation.`,
           inputSchema: z.object({
-            prompt: z.string().describe('New or enhanced positive prompt text'),
+            prompt: z
+              .string()
+              .describe(
+                'Complete positive prompt containing only drawable detail, readable without the character research, earlier prompt, or request'
+              ),
             reason: z
               .string()
               .optional()

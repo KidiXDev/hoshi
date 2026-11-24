@@ -36,6 +36,7 @@ describe('image prompt engine', () => {
         'role',
         'writing_style',
         'visual_brief',
+        'final_prompt',
         'reference_rules',
         'model_profile'
       ]) {
@@ -67,6 +68,21 @@ describe('image prompt engine', () => {
         expect(style).not.toMatch(/[—;]/u);
         expect(sectionText(prompt, 'response_contract')).toContain(
           'shared writing-style rules'
+        );
+      }
+    }
+  );
+
+  it.each(profiles)(
+    'requires every prompt word to be drawable from the text alone for %s',
+    (profile) => {
+      for (const build of modes) {
+        const prompt = build(undefined, profile);
+        expect(sectionText(prompt, 'final_prompt')).toContain(
+          'could an illustrator who has only this text draw something from it'
+        );
+        expect(sectionText(prompt, 'response_contract')).toContain(
+          'every label that relies on outside knowledge'
         );
       }
     }
