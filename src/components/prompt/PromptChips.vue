@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Plus, X } from '@lucide/vue';
 import { nextTick, ref, watch } from 'vue';
-import { vDraggable } from 'vue-draggable-plus';
+import { useDraggable } from 'vue-draggable-plus';
 import { Button } from '@/components/ui/button';
 import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
 import { usePromptChips } from '@/composables/usePromptChips';
@@ -13,9 +13,18 @@ import {
 import { searchTags, type AutocompleteItem } from '@/services/tagAutocomplete';
 import { useLauncherStore } from '@/stores/launcherStore';
 
-defineProps<{ negative?: boolean }>();
+const props = defineProps<{ negative?: boolean }>();
 const prompt = defineModel<string>({ required: true });
 const { chips, newTag, sync, toggle, remove, add } = usePromptChips(prompt);
+
+const chipList = ref<HTMLElement | null>(null);
+useDraggable(chipList, chips, {
+  animation: 200,
+  ghostClass: props.negative ? 'ghost-chip-negative' : 'ghost-chip',
+  chosenClass: props.negative ? 'chosen-chip-negative' : 'chosen-chip',
+  dragClass: 'drag-chip',
+  onEnd: sync
+});
 
 const launcherStore = useLauncherStore();
 const tagInput = ref<HTMLInputElement | null>(null);
@@ -158,16 +167,7 @@ function handleKeydown(event: KeyboardEvent) {
     class="border-border bg-background flex resize-y flex-col justify-between gap-2.5 overflow-auto rounded-md border p-2.5"
   >
     <div
-      v-draggable="[
-        chips,
-        {
-          animation: 200,
-          ghostClass: negative ? 'ghost-chip-negative' : 'ghost-chip',
-          chosenClass: negative ? 'chosen-chip-negative' : 'chosen-chip',
-          dragClass: 'drag-chip',
-          onEnd: sync
-        }
-      ]"
+      ref="chipList"
       class="flex flex-1 flex-wrap content-start items-start gap-1.5 overflow-y-auto pr-1"
     >
       <div
