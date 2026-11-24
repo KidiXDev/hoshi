@@ -166,7 +166,8 @@ export function usePromptTextEditing(
     searchController?.abort();
     const input = event.target as HTMLTextAreaElement;
     const search =
-      workflowStore.profile === 'moss'
+      launcherStore.config.promptAutocompleteSource[workflowStore.profile] ===
+      'word'
         ? findWordSearch(input)
         : findTagSearch(input);
     if (!search) return closeAutocomplete();

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
+import PromptAutocompleteToggle from '@/components/prompt/PromptAutocompleteToggle.vue';
 import PromptChips from '@/components/prompt/PromptChips.vue';
 import PromptEditorFrame from '@/components/prompt/PromptEditorFrame.vue';
 import PromptFindHighlight, {
@@ -617,6 +618,8 @@ function previewDynamicRoll(field: PromptField) {
             <span>{{ isPositiveChipsMode ? 'Text' : 'Chips' }}</span>
           </button>
 
+          <PromptAutocompleteToggle v-if="!isPositiveChipsMode" />
+
           <!-- AI Enhance Button -->
           <button
             type="button"
@@ -911,6 +914,8 @@ function previewDynamicRoll(field: PromptField) {
             <Tags class="h-3 w-3" />
             <span>{{ isNegativeChipsMode ? 'Text' : 'Chips' }}</span>
           </button>
+
+          <PromptAutocompleteToggle v-if="!isNegativeChipsMode" />
 
           <!-- AI Enhance Button -->
           <button
