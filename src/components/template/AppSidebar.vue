@@ -16,6 +16,7 @@ import {
   Scaling,
   ScanFace,
   Settings,
+  Shapes,
   Terminal
 } from '@lucide/vue';
 import appLogoUrl from '@/assets/app-logo.png';
@@ -138,6 +139,13 @@ const navItems = [
     label: 'Animadex Explore',
     icon: Compass,
     route: '/animadex',
+    group: 'browse'
+  },
+  {
+    id: 'moss-catalog',
+    label: 'MOSS Catalog',
+    icon: Shapes,
+    route: '/moss-catalog',
     group: 'browse'
   },
   {

@@ -54,6 +54,7 @@ export type ToolName =
   | 'search_character_library'
   | 'search_character_data'
   | 'roll_character_look'
+  | 'search_moss_catalog'
   | 'inject_positive_prompt'
   | 'inject_negative_prompt'
   | 'queue_generation';
@@ -77,7 +78,7 @@ export interface ChatMessageAttachment {
 
 export interface ChatMessageMention {
   id: string;
-  source: 'booru' | 'animadex-character' | 'library-character';
+  source: 'booru' | 'animadex-character' | 'library-character' | 'moss-catalog';
   sourceId: string;
   label: string;
   detail: string;

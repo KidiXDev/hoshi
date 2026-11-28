@@ -53,6 +53,15 @@ tags, aliases and counts in them come from [Danbooru](https://danbooru.donmai.us
 If ComfyUI's Python doesn't have [pyarrow](https://arrow.apache.org/docs/python/) (Apache 2.0), the
 build installs it into its temporary download folder and deletes it when the build is done.
 
+## MOSS Catalog
+
+The MOSS Catalog page reads
+[hide1/MOSS-Image-Character-Catalog](https://huggingface.co/datasets/hide1/MOSS-Image-Character-Catalog)
+from Hugging Face. Nothing from it is shipped with Hoshi. The compressed catalog index is downloaded
+and cached on your computer, and images load one at a time as you browse. The MIT licence of that
+dataset covers its maintainer's viewer code and documents only. The characters, artworks and
+generated sample images keep their own rights, as its `NOTICE.md` explains.
+
 ## Required, installed separately
 
 Hoshi uses these through ComfyUI. They are not bundled with Hoshi. You install them yourself, and

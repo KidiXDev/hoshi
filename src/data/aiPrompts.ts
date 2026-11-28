@@ -61,7 +61,7 @@ Examples of the method, not text to reuse:
   Right: 1girl, school uniform, beach, ocean, sunlight.`;
 
 const REFERENCE_RULES = `Use the latest explicit user requirements first, then relevant user-verified Character Library entries and their notes, then supplied references and catalogue data.
-- Use character research when identity details matter and are missing. Prefer the local library, then Character Data (Danbooru statistics: usual look and rolled outfits or scenes), then Animadex. Do not search for generic subjects or facts already supplied.
+- Use character research when identity details matter and are missing. Prefer the local library, then Character Data (Danbooru statistics: usual look and rolled outfits or scenes), then Animadex or the MOSS Catalog (natural-language captions and art style descriptions written for MOSS Image). Do not search for generic subjects or facts already supplied.
 - Catalogue tags may be incomplete. Missing clothing or accessory tags do not mean those features are absent. Do not invent exact IDs, tag spellings, character facts, or search results.
 - Notes, field names, and tool wording such as usual look, canon, or variant tell you what to look up. Write the appearance they describe, never those labels. Translate appearance facts into the active model's form. Use clear visual language when an exact tag is uncertain.
 - For images, distinguish visible observations from interpretation. Transfer only the requested aspects of a reference. Never import unrelated lettering, watermarks, people, or style changes.

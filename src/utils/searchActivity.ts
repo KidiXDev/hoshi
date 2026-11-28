@@ -39,6 +39,14 @@ function describeTarget(
       return { verbs: ROLL, source: 'Character Data look' };
     case 'search_character_library':
       return { verbs: SEARCH, source: 'Character Library' };
+    case 'search_moss_catalog':
+      return {
+        verbs: SEARCH,
+        source:
+          typeof category === 'string'
+            ? `MOSS Catalog ${category}`
+            : 'MOSS Catalog'
+      };
     default:
       return null;
   }

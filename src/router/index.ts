@@ -50,6 +50,11 @@ const router = createRouter({
       component: AnimadexExploreView
     },
     {
+      path: '/moss-catalog',
+      name: 'moss-catalog',
+      component: () => import('../views/MossCatalogView.vue')
+    },
+    {
       path: '/character-helper',
       name: 'character-helper',
       component: () => import('../views/CharacterHelperView.vue')

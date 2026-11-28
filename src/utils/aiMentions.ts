@@ -3,9 +3,11 @@ import {
   type BooruPostDetail,
   type BooruSettings
 } from '@/services/booruGallery';
+import { MOSS_CATALOG_NOTE, mossImageUrl } from '@/services/mossCatalog';
 import type { ChatMessageMention, OpenRouterModel } from '@/types/ai';
 import type { AnimaDexCharacter } from '@/types/animadex';
 import type { CharacterLibraryItem } from '@/types/library';
+import type { MossCatalogEntry } from '@/types/mossCatalog';
 
 export function supportsVision(model?: OpenRouterModel | null) {
   return Boolean(model?.architecture?.input_modalities?.includes('image'));
@@ -75,6 +77,32 @@ export function createAnimadexMention(
       .filter(Boolean)
       .join('\n'),
     imageUrl: character.img_url || character.thumb_url,
+    includeImage: false
+  };
+}
+
+export function createMossCatalogMention(
+  entry: MossCatalogEntry
+): ChatMessageMention {
+  const isStyle = entry.kind === 'style';
+  return {
+    id: `moss:${entry.id}`,
+    source: 'moss-catalog',
+    sourceId: entry.id,
+    label: entry.name,
+    detail: isStyle ? 'MOSS Catalog style' : entry.copyright,
+    metadata: [
+      isStyle ? `Art style: ${entry.name}` : `Character: ${entry.name}`,
+      isStyle ? '' : `Series: ${entry.copyright}`,
+      entry.tags && !isStyle ? `Tags: ${entry.tags}` : '',
+      entry.caption
+        ? `${isStyle ? 'Style description' : 'Caption'}: ${entry.caption}`
+        : '',
+      MOSS_CATALOG_NOTE
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    imageUrl: mossImageUrl(entry),
     includeImage: false
   };
 }

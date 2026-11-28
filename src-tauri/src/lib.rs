@@ -12,6 +12,7 @@ mod dropped_files;
 mod image_gallery;
 mod library_manager;
 mod model_manager;
+mod moss_catalog;
 mod network_cache;
 mod process_manager;
 mod prompt_suggestions;
@@ -389,6 +390,15 @@ pub fn run() {
                 });
             },
         )
+        .register_asynchronous_uri_scheme_protocol(
+            "koharu-moss",
+            move |_context, request, responder| {
+                let path = request.uri().path().trim_matches('/').to_string();
+                respond_in_background(responder, "public, max-age=2592000, immutable", move || {
+                    moss_catalog::media(&path)
+                });
+            },
+        )
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let gallery_cache_dir = app.path().app_config_dir()?.join(".cache").join("gallery");
@@ -498,6 +508,8 @@ pub fn run() {
             wildcards::load_wildcards,
             wildcards::open_wildcards_folder,
             animadex::animadex_request,
+            moss_catalog::moss_catalog_search,
+            moss_catalog::moss_catalog_facets,
             character_data::character_data_fields,
             character_data::character_data_autocomplete,
             character_data::character_data_suggest,

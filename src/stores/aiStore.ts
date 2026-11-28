@@ -23,6 +23,7 @@ import {
 import { loadAppData, saveAppData } from '../services/appStorage';
 import { characterDataTools } from '../services/characterDataTools';
 import { LibraryService } from '../services/libraryService';
+import { mossCatalogTools } from '../services/mossCatalogTools';
 import type {
   AiConfig,
   ChatMessage,
@@ -54,7 +55,8 @@ const READ_ONLY_TOOLS: ToolName[] = [
   'retrieve_animadex_tag_by_id',
   'search_character_library',
   'search_character_data',
-  'roll_character_look'
+  'roll_character_look',
+  'search_moss_catalog'
 ];
 const NOOP = () => {};
 
@@ -688,6 +690,8 @@ export const useAiStore = defineStore('ai', () => {
 
         ...characterDataTools,
 
+        ...mossCatalogTools,
+
         retrieve_animadex_tag_by_id: tool({
           description:
             'Retrieve a character trigger and available core tags from Animadex using its exact slug/ID. Treat the result only as a reference: tags may be accurate but incomplete, may describe only basic appearance while omitting clothing and other details, or may be empty. Never present missing tags as a complete character description or infer that omitted features are absent.',
@@ -860,11 +864,7 @@ export const useAiStore = defineStore('ai', () => {
           assistantMsg.currentStep =
             toolName === 'inspect_current_prompt'
               ? 'inspecting'
-              : toolName === 'search_animadex' ||
-                  toolName === 'retrieve_animadex_tag_by_id' ||
-                  toolName === 'search_character_library' ||
-                  toolName === 'search_character_data' ||
-                  toolName === 'roll_character_look'
+              : READ_ONLY_TOOLS.includes(toolName)
                 ? 'searching'
                 : toolName === 'queue_generation'
                   ? 'queueing'
