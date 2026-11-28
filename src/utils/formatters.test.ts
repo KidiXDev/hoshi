@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { formatElapsed, formatFileSize, formatShortDate } from './formatters';
+import {
+  formatElapsed,
+  formatFileSize,
+  formatShortDate,
+  formatTitle
+} from './formatters';
+
+describe('formatTitle', () => {
+  it('capitalizes words split by underscores or spaces', () => {
+    expect(formatTitle('raiden_shogun')).toBe('Raiden Shogun');
+    expect(formatTitle('fate (series)')).toBe('Fate (series)');
+  });
+});
 
 describe('formatFileSize', () => {
   it('formats byte sizes with one decimal above bytes', () => {

@@ -9,6 +9,14 @@ export function formatFileSize(bytes: number): string {
   return `${Number((bytes / 1024 ** unit).toFixed(unit ? 1 : 0))} ${FILE_SIZE_UNITS[unit]}`;
 }
 
+export function formatTitle(text: string): string {
+  return text
+    .split(/[_\s]+/u)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 export function formatShortDate(timestamp: number): string {
   if (!timestamp) return '';
   return new Date(timestamp).toLocaleDateString(undefined, {
