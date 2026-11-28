@@ -13,11 +13,9 @@ import {
   ComboboxEmpty
 } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
-import { ComfyApi } from '../../services/comfyApi';
-import { useLauncherStore } from '../../stores/launcherStore';
+import type { ModelPreviewCategory } from '../../services/comfyApi';
+import { useComfyStore } from '../../stores/comfyStore';
 import ModelGridSelectorDialog from './ModelGridSelectorDialog.vue';
-
-type PreviewCategory = Parameters<typeof ComfyApi.getModelPreviewUrl>[1];
 
 const model = defineModel<string>({ default: '' });
 const props = withDefaults(
@@ -27,20 +25,20 @@ const props = withDefaults(
     disabled?: boolean;
     class?: HTMLAttributes['class'];
     /** Model folder category — enables hover previews + grid browse button. */
-    previewCategory?: PreviewCategory;
+    previewCategory?: ModelPreviewCategory;
     gridTitle?: string;
   }>(),
   { placeholder: 'Select...' }
 );
 
-const launcherStore = useLauncherStore();
+const comfyStore = useComfyStore();
 const isGridOpen = ref(false);
 const isOpen = ref(false);
 const hovered = ref<{ name: string; url: string; x: number; y: number } | null>(
   null
 );
 watch(isOpen, (open) => !open && hidePreview());
-const failedPreviews = ref(new Set<string>());
+const failedPreviewUrls = ref(new Set<string>());
 
 // 3:4 portrait, matches the grid dialog cards
 const PREVIEW_W = 180;
@@ -49,18 +47,14 @@ const PREVIEW_H = 240;
 // Items linger through the close animation; ignore hovers once the list is closing.
 function showPreview(name: string, event: PointerEvent) {
   hidePreview();
-  if (!isOpen.value || !props.previewCategory || failedPreviews.value.has(name))
-    return;
+  if (!isOpen.value || !props.previewCategory) return;
+  const url = comfyStore.modelPreviewUrl(props.previewCategory, name);
+  if (failedPreviewUrls.value.has(url)) return;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const fitsRight = rect.right + 8 + PREVIEW_W <= window.innerWidth;
   hovered.value = {
     name,
-    url: ComfyApi.getModelPreviewUrl(
-      launcherStore.config.serverUrl,
-      props.previewCategory,
-      name,
-      300
-    ),
+    url,
     x: fitsRight ? rect.right + 8 : rect.left - 8 - PREVIEW_W,
     y: Math.min(rect.top, window.innerHeight - PREVIEW_H - 8)
   };
@@ -154,7 +148,7 @@ function hidePreview() {
             decoding="async"
             class="h-full w-full object-cover"
             @error="
-              failedPreviews.add(hovered.name);
+              failedPreviewUrls.add(hovered.url);
               hidePreview();
             "
           />

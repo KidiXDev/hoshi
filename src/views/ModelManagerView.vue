@@ -74,9 +74,11 @@ import {
   TooltipContent,
   TooltipTrigger
 } from '@/components/ui/tooltip';
+import ModelImportDialog from '@/components/models/ModelImportDialog.vue';
 import ModelPreviewImage from '@/components/models/ModelPreviewImage.vue';
 import ModelSyncDialog from '@/components/models/ModelSyncDialog.vue';
 import { useConfirmDialog } from '@/composables/useConfirmDialog';
+import { useModelFileDrop } from '@/composables/useModelFileDrop';
 import { useModelSyncDialog } from '@/composables/useModelSyncDialog';
 import {
   loadCivitaiApiKey,
@@ -103,6 +105,7 @@ import {
   type SyncAllResult
 } from '@/services/modelManager';
 import { isVideoMedia } from '@/services/civitai';
+import { useComfyStore } from '@/stores/comfyStore';
 import { useModelManagerStore } from '@/stores/modelManagerStore';
 import {
   cleanPath,
@@ -139,6 +142,7 @@ const CATEGORY_ORDER = [
 const MODEL_DRAG_MIME = 'application/x-koharu-model-id';
 
 const router = useRouter();
+const comfyStore = useComfyStore();
 const launcherStore = useLauncherStore();
 const store = useModelManagerStore();
 const { category, search, baseModel, sync, preview, sort, sortDir } =
@@ -169,8 +173,7 @@ const gridWidth = ref(1200);
 const isViewActive = ref(true);
 const dismissedWarnings = ref(false);
 // Thumbnail failed → fall back to the full preview; full failed → placeholder.
-const thumbFailed = ref(new Set<string>());
-const failedImages = ref(new Set<string>());
+const failedPreviewUrls = ref(new Set<string>());
 const busyIds = ref(new Set<string>());
 const indexProgress = ref<ModelIndexProgress | null>(null);
 const syncDialogOpen = ref(false);
@@ -181,6 +184,20 @@ const syncRunning = ref(false);
 const syncIssues = ref<{ file: string; reason: string }[]>([]);
 const draggingId = ref<string>();
 const dropCategory = ref<string>();
+const {
+  isFileDrag,
+  importStatus,
+  isImportDialogOpen,
+  cancelImport,
+  closeImport,
+  onFileDragOver,
+  onFileDragLeave,
+  onFileDrop
+} = useModelFileDrop({
+  targetCategory: () => dropCategory.value ?? category.value,
+  markBusy,
+  onSynced: resetFailedPreviews
+});
 let dragStartTimer: ReturnType<typeof setTimeout> | undefined;
 let resizeObserver: ResizeObserver | null = null;
 let savedScrollTop = 0;
@@ -217,7 +234,7 @@ const draggedModel = computed(() =>
   allModels.value.find((model) => model.id === draggingId.value)
 );
 const categoryPills = computed(() =>
-  draggedModel.value ? moveTargets.value : categories.value
+  draggedModel.value || isFileDrag.value ? moveTargets.value : categories.value
 );
 // Sort once per sort change; filtering (every keystroke) preserves that order.
 const sortedModels = computed(() =>
@@ -315,7 +332,7 @@ async function syncModel(model: LocalModel) {
   markBusy(model.id, true);
   try {
     const synced = await syncDialog.run(model);
-    if (synced) resetImageState(model.id);
+    if (synced) resetFailedPreviews();
   } finally {
     markBusy(model.id, false);
   }
@@ -330,7 +347,6 @@ async function setPreviewFromFile(model: LocalModel) {
       id: model.id,
       source: { kind: 'localPath', path }
     });
-    resetImageState(model.id);
     toast.success('Preview updated');
   } catch (error) {
     toast.error(`Preview update failed: ${String(error)}`);
@@ -355,7 +371,6 @@ async function setPreviewFromCivitai(model: LocalModel) {
       id: model.id,
       source: { kind: 'url', url: sample.url }
     });
-    resetImageState(model.id);
     toast.success('Preview fetched from Civitai');
   } catch (error) {
     toast.error(`Preview update failed: ${String(error)}`);
@@ -417,21 +432,30 @@ function onModelDragEnd() {
 }
 
 function canDropOn(target: string) {
-  return Boolean(draggedModel.value && draggedModel.value.category !== target);
+  return (
+    isFileDrag.value ||
+    Boolean(draggedModel.value && draggedModel.value.category !== target)
+  );
 }
 
 function onCategoryDragOver(event: DragEvent, target: string) {
   if (!canDropOn(target)) return;
+  dropCategory.value = target;
+  if (isFileDrag.value) return;
   event.preventDefault();
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-  dropCategory.value = target;
 }
 
 function onCategoryDragLeave(target: string) {
   if (dropCategory.value === target) dropCategory.value = undefined;
 }
 
+watch(isFileDrag, (active) => {
+  if (!active) dropCategory.value = undefined;
+});
+
 function onCategoryDrop(event: DragEvent, target: string) {
+  if (isFileDrag.value) return;
   const model = draggedModel.value;
   onModelDragEnd();
   if (!model || model.category === target) return;
@@ -471,6 +495,7 @@ async function runSyncAll() {
       true
     );
     await indexQuery.refetch();
+    comfyStore.invalidateModelPreviews();
   } catch (error) {
     syncResult.value = {
       synced: 0,
@@ -494,24 +519,13 @@ function closeSyncDialog(open: boolean) {
 }
 
 function previewSrc(model: LocalModel) {
-  return modelPreviewUrl(model, !thumbFailed.value.has(model.id));
+  if (!model.previewPath) return '';
+  const sources = [modelPreviewUrl(model), modelPreviewUrl(model, false)];
+  return sources.find((src) => !failedPreviewUrls.value.has(src)) ?? '';
 }
 
-function onImageError(model: LocalModel) {
-  if (thumbFailed.value.has(model.id)) {
-    failedImages.value = new Set(failedImages.value).add(model.id);
-  } else {
-    thumbFailed.value = new Set(thumbFailed.value).add(model.id);
-  }
-}
-
-function resetImageState(id: string) {
-  const thumbs = new Set(thumbFailed.value);
-  const failed = new Set(failedImages.value);
-  thumbs.delete(id);
-  failed.delete(id);
-  thumbFailed.value = thumbs;
-  failedImages.value = failed;
+function resetFailedPreviews() {
+  failedPreviewUrls.value.clear();
 }
 
 function isLocalOnly(model: LocalModel) {
@@ -587,6 +601,9 @@ onUnmounted(() => {
     title="Model Manager"
     subtitle="Installed checkpoints, LoRAs, VAEs and more — synced with Civitai"
     content-class="flex flex-col overflow-hidden p-0"
+    @dragover="onFileDragOver"
+    @dragleave="onFileDragLeave"
+    @drop="onFileDrop"
   >
     <template #icon>
       <HardDrive class="h-4 w-4" />
@@ -992,13 +1009,13 @@ onUnmounted(() => {
                   class="bg-muted/40 relative aspect-3/4 w-full overflow-hidden select-none"
                 >
                   <ModelPreviewImage
-                    v-if="model.previewPath && !failedImages.has(model.id)"
+                    v-if="previewSrc(model)"
                     :key="previewSrc(model)"
                     :src="previewSrc(model)"
                     :alt="`${displayName(model)} preview`"
                     :icon="categoryIcon(model)"
                     fit="cover"
-                    @error="onImageError(model)"
+                    @error="failedPreviewUrls.add(previewSrc(model))"
                   />
                   <div
                     v-else
@@ -1270,5 +1287,12 @@ onUnmounted(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ModelImportDialog
+      :open="isImportDialogOpen"
+      :status="importStatus"
+      @cancel="cancelImport"
+      @close="closeImport"
+    />
   </PageLayout>
 </template>

@@ -23,6 +23,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import DownloadUrlForm from './DownloadUrlForm.vue';
 import { formatFileSize, formatShortDate } from '@/utils/formatters';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useLauncherStore } from '@/stores/launcherStore';
@@ -33,7 +34,7 @@ import { isVideoMedia } from '@/services/civitai';
 const downloadStore = useDownloadStore();
 const launcherStore = useLauncherStore();
 
-const activeTab = ref<'active' | 'history'>('active');
+const activeTab = ref<'active' | 'history' | 'url'>('active');
 const reDownloadingGids = ref<Set<string>>(new Set());
 
 const activeDownloads = computed(() =>
@@ -73,12 +74,18 @@ async function handleClearHistory() {
 async function handleRedownload(item: DownloadRecord) {
   try {
     reDownloadingGids.value.add(item.gid);
-    const settings = await loadAppData<{ apiKey?: string }>('civitai_settings');
-    await downloadStore.enqueueCivitai({
-      versionId: item.versionId,
-      workingDir: launcherStore.config.workingDir,
-      apiKey: settings?.apiKey?.trim() ?? ''
-    });
+    if (item.versionId === 0) {
+      await downloadStore.retry(item.gid);
+    } else {
+      const settings = await loadAppData<{ apiKey?: string }>(
+        'civitai_settings'
+      );
+      await downloadStore.enqueueCivitai({
+        versionId: item.versionId,
+        workingDir: launcherStore.config.workingDir,
+        apiKey: settings?.apiKey?.trim() ?? ''
+      });
+    }
     activeTab.value = 'active';
   } catch (error) {
     downloadStore.errorMessage =
@@ -137,7 +144,7 @@ async function handleRedownload(item: DownloadRecord) {
         class="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
         <div class="border-border shrink-0 border-b px-3 py-2">
-          <TabsList class="grid w-full grid-cols-2">
+          <TabsList class="grid w-full grid-cols-3">
             <TabsTrigger value="active" class="gap-1.5 text-xs">
               <span>Active</span>
               <Badge
@@ -158,6 +165,7 @@ async function handleRedownload(item: DownloadRecord) {
                 {{ historyDownloads.length }}
               </Badge>
             </TabsTrigger>
+            <TabsTrigger value="url" class="text-xs">Add URL</TabsTrigger>
           </TabsList>
         </div>
 
@@ -451,6 +459,13 @@ async function handleRedownload(item: DownloadRecord) {
               </div>
             </ScrollArea>
           </template>
+        </TabsContent>
+
+        <TabsContent
+          value="url"
+          class="m-0 min-h-0 flex-1 overflow-y-auto focus-visible:outline-none"
+        >
+          <DownloadUrlForm @queued="activeTab = 'active'" />
         </TabsContent>
       </Tabs>
     </PopoverContent>

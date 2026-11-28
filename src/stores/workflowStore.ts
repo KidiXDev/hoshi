@@ -178,13 +178,50 @@ const DEFAULT_MOSS: MossSettings = {
   slgEndPercent: 0.5,
   layoutEnabled: false,
   layoutBoxes: [],
+  layoutSummary: {},
   controlEnabled: false,
   controlAdapter: '',
   controlColorMap: '',
   controlDepthMap: '',
   controlStrength: 1,
   controlStartPercent: 0,
-  controlEndPercent: 1
+  controlEndPercent: 1,
+  spectrumEnabled: false,
+  spectrumMode: 'adaptive',
+  spectrumWarmupSteps: 8,
+  spectrumTailActualSteps: 1,
+  spectrumCacheDevice: 'main_device',
+  spectrumDetailGuardSteps: 8,
+  spectrumPostGuardHorizonCap: 6,
+  spectrumErrorTolerance: 1,
+  spectrumMaxConsecutiveForecasts: 2,
+  boosterEnabled: false,
+  boosterBakeLora: true,
+  boosterInt8Attention: true,
+  boosterInt8StartPercent: 0,
+  mgCacheEnabled: false,
+  mgCacheMode: 'cache',
+  mgCacheAlpha: 0.05,
+  mgCacheBeta: 0,
+  mgCacheCalibration: 'none',
+  mgCacheForecast: false,
+  mgCacheCalibrationName: 'moss_image',
+  mgCacheImportanceStride: 0,
+  textEmbedderCacheEnabled: false,
+  guidanceIntervalEnabled: false,
+  guidanceIntervalStart: 0,
+  guidanceIntervalEnd: 0.5,
+  progressiveEnabled: false,
+  progressiveScale: 0.5,
+  progressiveFraction: 0.4,
+  tsrEnabled: false,
+  tsrK: 0.95,
+  tsrSigma: 1,
+  auraFlowEnabled: false,
+  auraFlowShift: 5,
+  editLora: 'moss_image_edit_lora_rank_64_bf16.safetensors',
+  editFormat: 'Moss-Image-Edit',
+  editImageStrength: 1
 };
 
 interface ProfileDefaults {
@@ -206,7 +243,7 @@ const PROFILE_DEFAULTS: Record<WorkflowProfile, ProfileDefaults> = {
       'Digital illustration of a glass bottle holding a swirling purple galaxy, resting on mossy stones in a sunlit meadow.',
     negativePrompt:
       'nsfw, worst quality, bad anatomy, watermark, jpeg artifact',
-    sampler: { steps: 25, cfg: 2.5 },
+    sampler: { steps: 25, cfg: 3, samplerName: 'er_sde', scheduler: 'simple' },
     resolution: {
       preset: '1024 x 1024 (1:1 Square)',
       batchSize: 1,
@@ -256,7 +293,8 @@ export function normalizeWorkflowState(
       ...state.moss,
       layoutBoxes: Array.isArray(state.moss?.layoutBoxes)
         ? state.moss.layoutBoxes
-        : []
+        : [],
+      layoutSummary: { ...state.moss?.layoutSummary }
     },
     positivePrompt:
       typeof state.positivePrompt === 'string'
@@ -312,6 +350,12 @@ async function migrateLegacyLoraPresets() {
     });
   }
   await deleteAppData(LEGACY_PRESETS_STORAGE_KEY);
+}
+
+function saveActiveProfile(target: WorkflowProfile) {
+  return saveAppData(PROFILE_STORAGE_KEY, target).catch((err) =>
+    console.error('Failed to save workflow profile:', err)
+  );
 }
 
 export const useWorkflowStore = defineStore('workflow', () => {
@@ -375,12 +419,6 @@ export const useWorkflowStore = defineStore('workflow', () => {
     } catch (err) {
       console.error('Failed to save workflow session state:', err);
     }
-  }
-
-  function saveActiveProfile(target: WorkflowProfile) {
-    return saveAppData(PROFILE_STORAGE_KEY, target).catch((err) =>
-      console.error('Failed to save workflow profile:', err)
-    );
   }
 
   let profileSwitch = Promise.resolve();
@@ -536,7 +574,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     moss.value = {
       ...moss.value,
       layoutEnabled: true,
-      layoutBoxes: layout.boxes
+      layoutBoxes: layout.boxes,
+      layoutSummary: layout.summary
     };
     return true;
   }

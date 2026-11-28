@@ -17,8 +17,32 @@ const BRIDGE_FILES: &[(&str, &str)] = &[
         include_str!("../../comfyui-koharu-bridge/src/__init__.py"),
     ),
     (
+        "src/accelerators.py",
+        include_str!("../../comfyui-koharu-bridge/src/accelerators.py"),
+    ),
+    (
+        "src/moss_booster.py",
+        include_str!("../../comfyui-koharu-bridge/src/moss_booster.py"),
+    ),
+    (
+        "src/mg_cache.py",
+        include_str!("../../comfyui-koharu-bridge/src/mg_cache.py"),
+    ),
+    (
+        "src/mg_calibration.py",
+        include_str!("../../comfyui-koharu-bridge/src/mg_calibration.py"),
+    ),
+    (
         "src/models.py",
         include_str!("../../comfyui-koharu-bridge/src/models.py"),
+    ),
+    (
+        "src/nodes.py",
+        include_str!("../../comfyui-koharu-bridge/src/nodes.py"),
+    ),
+    (
+        "src/postfx.py",
+        include_str!("../../comfyui-koharu-bridge/src/postfx.py"),
     ),
     (
         "src/previews.py",
@@ -47,7 +71,7 @@ pub struct LogPayload {
     pub timestamp: u64,
 }
 
-pub(crate) fn emit_sys_log(app_handle: &AppHandle, message: String) {
+pub(crate) fn emit_log(app_handle: &AppHandle, stream: &str, message: String) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -56,11 +80,15 @@ pub(crate) fn emit_sys_log(app_handle: &AppHandle, message: String) {
     let _ = app_handle.emit(
         "comfyui-log",
         LogPayload {
-            stream: "system".to_string(),
+            stream: stream.to_string(),
             message,
             timestamp: now,
         },
     );
+}
+
+pub(crate) fn emit_sys_log(app_handle: &AppHandle, message: String) {
+    emit_log(app_handle, "system", message);
 }
 
 fn auto_inject_bridge_node(comfy_dir: &Path, app_handle: &AppHandle) {
@@ -229,7 +257,7 @@ pub(crate) fn hide_command_window(command: &mut Command) {
 #[cfg(not(windows))]
 pub(crate) fn hide_command_window(_command: &mut Command) {}
 
-fn kill_process_tree(child: &mut Child) -> std::io::Result<()> {
+pub(crate) fn kill_process_tree(child: &mut Child) -> std::io::Result<()> {
     if cfg!(windows) {
         let mut taskkill = Command::new("taskkill");
         taskkill

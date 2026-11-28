@@ -4,10 +4,12 @@ import {
   AlertTriangle,
   Check,
   Copy,
+  Dices,
   Download,
   History,
   Image as ImageIcon,
   Loader2,
+  Lock,
   Maximize2,
   MoreHorizontal,
   Scaling,
@@ -141,12 +143,12 @@ const cfgText = computed(() =>
     : workflowStore.sampler.cfg
 );
 
-const seedText = computed(() => {
-  if (workflowStore.sampler.randomizeSeed) {
-    return 'RANDOM';
-  }
-  return String(workflowStore.sampler.seed);
-});
+const isSeedFixed = computed(
+  () => !workflowStore.sampler.randomizeSeed && workflowStore.sampler.seed >= 0
+);
+const seedText = computed(() =>
+  isSeedFixed.value ? String(workflowStore.sampler.seed) : 'RANDOM'
+);
 
 const durationText = computed(() => {
   if (comfyStore.isGenerating) {
@@ -488,9 +490,9 @@ const durationText = computed(() => {
 
       <!-- Bottom Info / Monospace Stats Overlay Bar -->
       <div
-        class="border-border/40 bg-card/80 text-muted-foreground absolute right-0 bottom-0 left-0 z-20 flex items-center justify-between border-t px-3 py-2 font-mono text-xs backdrop-blur-xs select-none"
+        class="border-border/40 bg-card/80 text-muted-foreground absolute right-0 bottom-0 left-0 z-20 flex items-center justify-between gap-3 border-t px-3 py-1.5 font-mono text-xs backdrop-blur-xs select-none"
       >
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
           <div class="flex items-center gap-1">
             <span class="text-muted-foreground/70">RES</span>
             <span class="text-foreground font-bold">{{ resolutionText }}</span>
@@ -503,14 +505,27 @@ const durationText = computed(() => {
             <span class="text-muted-foreground/70">CFG</span>
             <span class="text-foreground font-bold">{{ cfgText }}</span>
           </div>
-          <div class="flex items-center gap-1">
-            <span class="text-muted-foreground/70">SEED</span>
-            <span class="text-foreground font-bold">{{ seedText }}</span>
+          <div
+            :title="isSeedFixed ? 'Fixed seed' : 'Random seed'"
+            class="flex items-center gap-1 rounded-md border px-1.5 py-0.5 transition-colors"
+            :class="
+              isSeedFixed
+                ? 'border-amber-500/60 bg-amber-500/20 text-amber-300'
+                : 'border-border/60 bg-muted/40 text-foreground'
+            "
+          >
+            <component :is="isSeedFixed ? Lock : Dices" class="h-3 w-3" />
+            <span class="sr-only">{{
+              isSeedFixed ? 'Fixed seed' : 'Seed'
+            }}</span>
+            <span class="font-bold">{{ seedText }}</span>
           </div>
         </div>
 
         <div class="flex items-center gap-3">
-          <span class="text-muted-foreground">{{ durationText }}</span>
+          <span class="text-muted-foreground whitespace-nowrap">{{
+            durationText
+          }}</span>
         </div>
       </div>
     </div>

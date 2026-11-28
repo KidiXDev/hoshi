@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { createWorkflowSnapshot } from '../composables/useComfyUiWorkspace';
-import type { LayoutBox, LoraItem, WorkflowState } from '../types/workflow';
+import {
+  BASE_STATE,
+  connections,
+  createState,
+  enableInpaint,
+  enableModelPatches,
+  enableTurboFaceDetailer,
+  enableUpscale,
+  graphOf,
+  inpaintState,
+  MODES,
+  mossState,
+  TEST_LORA,
+  withControl,
+  withLayout,
+  type Graph
+} from '../test/workflowFixtures';
+import type { WorkflowState } from '../types/workflow';
 import { buildFaceDetailerPrompt } from './faceDetailerWorkflow';
 import { buildUltimateUpscalePrompt } from './ultimateUpscaleWorkflow';
 import {
@@ -8,217 +25,15 @@ import {
   prepareWorkflowForQueue
 } from './workflowBuilder';
 
-type Graph = Record<
-  string,
-  { class_type: string; inputs: Record<string, unknown> }
->;
-
-const BASE_STATE: WorkflowState = {
-  profile: 'anima',
-  moss: {
-    skipLayerGuidance: true,
-    slgSingleLayers: '22',
-    slgStartPercent: 0,
-    slgEndPercent: 0.5,
-    layoutEnabled: false,
-    layoutBoxes: [],
-    controlEnabled: false,
-    controlAdapter: '',
-    controlColorMap: '',
-    controlDepthMap: '',
-    controlStrength: 1,
-    controlStartPercent: 0,
-    controlEndPercent: 1
-  },
-  positivePrompt: 'test',
-  negativePrompt: 'bad',
-  models: {
-    unetName: 'anima.safetensors',
-    clipName: 'clip.safetensors',
-    vaeName: 'vae.safetensors',
-    shift: 2.5
-  },
-  advanced: {
-    auraFlowEnabled: false,
-    cacheDiT: {
-      enabled: false,
-      modelType: 'Auto',
-      warmupSteps: 0,
-      skipInterval: 0,
-      printSummary: true,
-      threshold: 0.25,
-      noiseScale: 0.001,
-      strategy: 'adaptive'
-    },
-    renormCfg: { enabled: false, cfgTrunc: 100, renormCfg: 1 }
-  },
-  loras: [],
-  sampler: {
-    steps: 20,
-    cfg: 4,
-    samplerName: 'euler',
-    scheduler: 'simple',
-    denoise: 0.7,
-    seed: 1,
-    randomizeSeed: false,
-    variationEnabled: false,
-    variationSeed: 2,
-    variationStrength: 0.35
-  },
-  imageInput: {
-    mode: 'img2img',
-    imageName: 'input.png',
-    imageWidth: 512,
-    imageHeight: 768,
-    maskName: '',
-    modelPatch: 'patch.safetensors',
-    llliteStrength: 1,
-    llliteStart: 0,
-    llliteEnd: 1,
-    turboEnabled: true,
-    turboLora: 'turbo.safetensors',
-    inpaintSteps: 30,
-    inpaintCfg: 4,
-    turboSteps: 8,
-    turboCfg: 1
-  },
-  resolution: {
-    preset: 'Custom',
-    batchSize: 1,
-    width: 512,
-    height: 768,
-    isCustom: true
-  },
-  postfx: {
-    enabled: false,
-    styleStage: {
-      enabled: false,
-      vignetteStrength: 0,
-      vignetteSoftness: 0.5,
-      filmGrain: 0,
-      bloomStrength: 0,
-      bloomRadius: 1.5,
-      bloomThreshold: 0.7,
-      chromaticAberration: 0
-    },
-    adjustStage: {
-      enabled: false,
-      brightness: 0,
-      contrast: 1,
-      saturation: 1,
-      sharpness: 0
-    },
-    upscale: {
-      enabled: false,
-      upscaleModel: '',
-      upscaleBy: 1,
-      ultimate: {
-        enabled: false,
-        steps: 20,
-        cfg: 4,
-        samplerName: 'euler',
-        scheduler: 'simple',
-        denoise: 0.2,
-        modeType: 'Chess',
-        tileWidth: 1024,
-        tileHeight: 1024,
-        maskBlur: 8,
-        tilePadding: 32,
-        seamFixMode: 'None',
-        seamFixDenoise: 1,
-        seamFixWidth: 64,
-        seamFixMaskBlur: 8,
-        seamFixPadding: 16,
-        forceUniformTiles: true,
-        tiledDecode: false,
-        batchSize: 1,
-        turboEnabled: false,
-        turboLora: 'turbo.safetensors',
-        turboSteps: 8
-      }
-    }
-  },
-  faceDetailer: {
-    positivePrompt: '',
-    negativePrompt: '',
-    enabled: false,
-    bboxModel: 'bbox/face.pt',
-    segmModel: '',
-    steps: 20,
-    turboSteps: 8,
-    cfg: 4,
-    samplerName: 'euler',
-    scheduler: 'simple',
-    bboxThreshold: 0.5,
-    denoise: 0.31,
-    feather: 5,
-    guideSize: 512,
-    turboEnabled: false,
-    turboLora: 'turbo.safetensors'
-  }
-};
-
-const TEST_LORA: LoraItem = {
-  id: '1',
-  name: 'test.safetensors',
-  strength: 1,
-  enabled: true
-};
-
-const MODES = ['text2img', 'img2img', 'inpaint'] as const;
-
-function createState(configure?: (state: WorkflowState) => void) {
-  const state = structuredClone(BASE_STATE);
-  configure?.(state);
-  return state;
-}
-
-function enableModelPatches(state: WorkflowState) {
-  state.loras = [{ ...TEST_LORA }];
-  state.advanced.cacheDiT.enabled = true;
-  state.advanced.auraFlowEnabled = true;
-  state.advanced.renormCfg.enabled = true;
-}
-
-function enableTurboFaceDetailer(state: WorkflowState) {
-  state.faceDetailer.enabled = true;
-  state.faceDetailer.turboEnabled = true;
-}
-
-function enableInpaint(state: WorkflowState) {
-  state.imageInput.mode = 'inpaint';
-  state.imageInput.maskName = 'mask.png';
-}
-
-function enableUpscale(state: WorkflowState) {
-  state.imageInput.mode = 'text2img';
-  state.loras = [{ ...TEST_LORA }];
-  state.postfx.enabled = true;
-  state.postfx.upscale.enabled = true;
-  state.postfx.upscale.upscaleModel = 'up.safetensors';
-  state.postfx.upscale.upscaleBy = 6;
-}
-
-function withControl(state: WorkflowState) {
-  state.moss.controlEnabled = true;
-  state.moss.controlAdapter = 'moss-control.safetensors';
-  state.moss.controlColorMap = 'color.png';
-  state.moss.controlDepthMap = 'depth.png';
-  state.moss.controlStrength = 0.8;
-  state.moss.controlStartPercent = 0.1;
-  state.moss.controlEndPercent = 0.6;
-}
-
-const graphOf = (state: WorkflowState) => buildWorkflowPrompt(state) as Graph;
-
-function connections(graph: Graph) {
-  return Object.values(graph)
-    .flatMap((node) => Object.values(node.inputs))
-    .filter(
-      (input): input is [string, number] =>
-        Array.isArray(input) && typeof input[0] === 'string'
-    );
-}
+const layoutPromptOf = (configure?: (s: WorkflowState) => void) =>
+  JSON.parse(
+    graphOf(
+      mossState((s) => {
+        withLayout(s);
+        configure?.(s);
+      })
+    ).moss_positive?.inputs.text as string
+  ) as Record<string, unknown>;
 
 describe('prepareWorkflowForQueue', () => {
   it('draws a random seed without mutating the editor state', () => {
@@ -238,6 +53,32 @@ describe('prepareWorkflowForQueue', () => {
     expect(
       prepareWorkflowForQueue(createState()).promptTemplates
     ).toBeUndefined();
+  });
+
+  it('draws a concrete variation seed for a random one', () => {
+    const state = createState((s) => {
+      s.sampler.variationEnabled = true;
+      s.sampler.variationSeed = -1;
+    });
+
+    const queued = prepareWorkflowForQueue(state);
+
+    expect(state.sampler.variationSeed).toBe(-1);
+    expect(queued.sampler.variationSeed).toBeGreaterThanOrEqual(0);
+  });
+
+  it('expands wildcards from the seed and keeps the template', () => {
+    const state = createState((s) => {
+      s.positivePrompt = '1girl, __Hair/Color__';
+    });
+    const wildcards = { 'hair/color': ['red hair', 'blue hair'] };
+
+    const first = prepareWorkflowForQueue(state, wildcards);
+    const second = prepareWorkflowForQueue(state, wildcards);
+
+    expect(first.positivePrompt).toMatch(/^1girl, (red|blue) hair$/u);
+    expect(second.positivePrompt).toBe(first.positivePrompt);
+    expect(first.promptTemplates?.positivePrompt).toBe('1girl, __Hair/Color__');
   });
 
   describe('dynamic prompts', () => {
@@ -274,8 +115,8 @@ describe('prepareWorkflowForQueue', () => {
 
       const graph = graphOf(queued);
 
-      expect(graph['21']?.inputs.prompt).toBe(queued.positivePrompt);
-      expect(graph['17']?.inputs.prompt).toBe(queued.negativePrompt);
+      expect(graph['21']?.inputs.text).toBe(queued.positivePrompt);
+      expect(graph['17']?.inputs.text).toBe(queued.negativePrompt);
       expect(JSON.stringify(graph)).not.toContain('{red');
     });
 
@@ -316,38 +157,95 @@ describe('buildWorkflowPrompt', () => {
     expect(graph['9']?.inputs.model).toEqual(['renorm_cfg', 0]);
   });
 
-  describe('variation seed', () => {
-    it('switches to the variation sampler', () => {
-      const graph = graphOf(
-        createState((s) => {
-          s.sampler.variationEnabled = true;
-        })
-      );
+  it('switches to the bridge variation sampler', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.sampler.variationEnabled = true;
+      })
+    );
 
-      expect(graph['9']?.class_type).toBe('YEKSampler');
-      expect(graph['9']?.inputs).toMatchObject({
-        variation_seed: 2,
-        variation_strength: 0.35
-      });
+    expect(graph['9']?.class_type).toBe('KoharuKSampler');
+    expect(graph['9']?.inputs).toMatchObject({
+      seed: 1,
+      variation_seed: 2,
+      variation_strength: 0.35
     });
+  });
 
-    it('passes a random variation seed through for ComfyUI to draw', () => {
-      const graph = graphOf(
-        createState((s) => {
-          s.sampler.variationEnabled = true;
-          s.sampler.variationSeed = -1;
-        })
-      );
+  it('encodes formatted prompts and drops negatives already in the positive', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.positivePrompt = ' 1girl ,, blue hair ';
+        s.negativePrompt = 'Blue Hair, lowres';
+      })
+    );
 
-      expect(graph['9']?.inputs.variation_seed).toBe(-1);
+    expect(graph['21']?.class_type).toBe('CLIPTextEncode');
+    expect(graph['21']?.inputs.text).toBe('1girl, blue hair');
+    expect(graph['17']?.inputs.text).toBe('lowres');
+    expect(graph['9']?.inputs).toMatchObject({
+      positive: ['21', 0],
+      negative: ['17', 0]
     });
+  });
+
+  it('starts text2img from an empty latent at the resolution size', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.imageInput.mode = 'text2img';
+        s.resolution = {
+          preset: '1216 x 832 (19:13 Landscape)',
+          batchSize: 2,
+          width: 1216,
+          height: 832,
+          isCustom: false
+        };
+      })
+    );
+
+    expect(graph['19']?.class_type).toBe('EmptyLatentImage');
+    expect(graph['19']?.inputs).toEqual({
+      width: 1216,
+      height: 832,
+      batch_size: 2
+    });
+  });
+
+  it('saves with A1111 metadata through the bridge save node', () => {
+    const graph = graphOf(createState());
+
+    expect(graph['5']?.class_type).toBe('KoharuSaveImage');
+    expect(graph['5']?.inputs).toMatchObject({
+      positive: 'test',
+      negative: 'bad',
+      seed: 1,
+      steps: 20,
+      cfg: 4,
+      sampler_name: 'euler',
+      scheduler: 'simple',
+      denoise: 0.7,
+      model_name: 'anima.safetensors'
+    });
+  });
+
+  it('runs PostFX as one bridge node', () => {
+    const graph = graphOf(createState(enableUpscale));
+
+    expect(graph['4']?.class_type).toBe('KoharuPostFX');
+    expect(graph['4']?.inputs).toMatchObject({
+      image: ['8', 0],
+      style_enabled: false,
+      adjust_enabled: false,
+      contrast: 1
+    });
+    expect(graph['5']?.inputs.images).toEqual(['4', 0]);
   });
 
   it('runs the face detailer with turbo settings and zeroed empty prompts', () => {
     const graph = graphOf(createState(enableTurboFaceDetailer));
 
     expect(graph.face_detailer_apply?.class_type).toBe('FaceDetailer');
-    expect(graph.face_detailer_turbo?.class_type).toBe('YELoadLoraModel');
+    expect(graph.face_detailer_turbo?.class_type).toBe('LoraLoaderModelOnly');
     expect(graph.face_detailer_apply?.inputs).toMatchObject({
       steps: 8,
       cfg: 1,
@@ -357,23 +255,15 @@ describe('buildWorkflowPrompt', () => {
   });
 
   describe('inpaint', () => {
-    const inpaintState = (turbo: boolean) =>
-      createState((s) => {
-        enableModelPatches(s);
-        enableInpaint(s);
-        s.sampler.variationEnabled = true;
-        s.imageInput.turboEnabled = turbo;
-      });
-
     it('patches the model with LLLite and the turbo LoRA, bypassing model patches', () => {
       const graph = graphOf(inpaintState(true));
 
       expect(graph['31']?.class_type).toBe('LoadImageMask');
       expect(graph['33']?.class_type).toBe('AnimaLLLiteApply');
       expect(graph['34']?.class_type).toBe('LoraLoaderModelOnly');
-      expect(graph['21']?.class_type).toBe('YEClipTextEncodePrompt');
-      expect(graph['17']?.class_type).toBe('YEClipTextEncodePrompt');
-      expect(graph['9']?.class_type).toBe('YEKSampler');
+      expect(graph['21']?.class_type).toBe('CLIPTextEncode');
+      expect(graph['17']?.class_type).toBe('CLIPTextEncode');
+      expect(graph['9']?.class_type).toBe('KoharuKSampler');
       expect(graph['9']?.inputs).toMatchObject({
         model: ['34', 0],
         steps: 8,
@@ -428,6 +318,29 @@ describe('buildWorkflowPrompt', () => {
       }
     );
 
+    it.each([false, true])(
+      'emits no yet_essential nodes (upscale with Ultimate: %s)',
+      (ultimate) => {
+        const graph = graphOf(
+          createState((s) => {
+            enableModelPatches(s);
+            enableTurboFaceDetailer(s);
+            enableUpscale(s);
+            enableInpaint(s);
+            s.imageInput.mode = mode;
+            s.sampler.variationEnabled = true;
+            s.postfx.upscale.ultimate.enabled = ultimate;
+            s.postfx.upscale.ultimate.turboEnabled = ultimate;
+          })
+        );
+
+        const yeNodes = Object.values(graph).filter((node) =>
+          node.class_type.startsWith('YE')
+        );
+        expect(yeNodes).toEqual([]);
+      }
+    );
+
     it.each([
       ['', '   '],
       ['', 'face negative'],
@@ -467,43 +380,6 @@ describe('buildWorkflowPrompt', () => {
 });
 
 describe('MOSS profile', () => {
-  const LAYOUT_BOXES: LayoutBox[] = [
-    {
-      id: 'title',
-      kind: 'text',
-      x: 0,
-      y: 0,
-      width: 1,
-      height: 0.25,
-      caption: 'cream serif capitals',
-      text: 'MOSS'
-    },
-    {
-      id: 'knight',
-      kind: 'character',
-      x: 0.25,
-      y: 0.25,
-      width: 0.5,
-      height: 0.75,
-      caption: 'a kneeling knight',
-      text: 'ignored'
-    }
-  ];
-
-  const mossState = (configure?: (state: WorkflowState) => void) =>
-    createState((s) => {
-      s.profile = 'moss';
-      s.imageInput.mode = 'text2img';
-      configure?.(s);
-    });
-
-  const withLayout = (s: WorkflowState) => {
-    s.resolution.width = 1024;
-    s.resolution.height = 512;
-    s.moss.layoutEnabled = true;
-    s.moss.layoutBoxes = structuredClone(LAYOUT_BOXES);
-  };
-
   it('loads the MOSS text encoder and a Flux 2 latent', () => {
     const graph = graphOf(mossState());
 
@@ -546,6 +422,51 @@ describe('MOSS profile', () => {
     expect(graph['9']?.inputs.model).toEqual(['moss_slg', 0]);
   });
 
+  it('leaves TSR and AuraFlow out by default', () => {
+    const graph = graphOf(mossState());
+
+    expect(graph.moss_tsr).toBeUndefined();
+    expect(graph.moss_aura_flow).toBeUndefined();
+    expect(graph.moss_slg?.inputs.model).toEqual(['29', 0]);
+  });
+
+  it('chains TSR and AuraFlow between the LoRAs and skip layer guidance', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.loras = [{ ...TEST_LORA }];
+        s.moss.tsrEnabled = true;
+        s.moss.tsrK = 0.9;
+        s.moss.tsrSigma = 2;
+        s.moss.auraFlowEnabled = true;
+        s.moss.auraFlowShift = 6;
+      })
+    );
+
+    expect(graph.moss_tsr?.class_type).toBe('TemporalScoreRescaling');
+    expect(graph.moss_tsr?.inputs).toEqual({
+      tsr_k: 0.9,
+      tsr_sigma: 2,
+      model: ['101', 0]
+    });
+    expect(graph.moss_aura_flow?.class_type).toBe('ModelSamplingAuraFlow');
+    expect(graph.moss_aura_flow?.inputs).toEqual({
+      shift: 6,
+      model: ['moss_tsr', 0]
+    });
+    expect(graph.moss_slg?.inputs.model).toEqual(['moss_aura_flow', 0]);
+  });
+
+  it('ignores the Anima shift settings', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.advanced.auraFlowEnabled = true;
+      })
+    );
+
+    expect(graph['13']).toBeUndefined();
+    expect(graph.moss_aura_flow).toBeUndefined();
+  });
+
   it('passes the configured skip layer guidance layers and range', () => {
     const graph = graphOf(
       mossState((s) => {
@@ -574,6 +495,243 @@ describe('MOSS profile', () => {
     expect(graph['9']?.inputs.model).toEqual(['29', 0]);
   });
 
+  it('chains adaptive Spectrum after skip layer guidance into the sampler', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.spectrumEnabled = true;
+        s.moss.spectrumErrorTolerance = 1.2;
+      })
+    );
+
+    expect(graph.moss_spectrum?.class_type).toBe('SpectrumMOSSImageAdaptive');
+    expect(graph.moss_spectrum?.inputs).toEqual({
+      model: ['moss_slg', 0],
+      warmup_steps: 8,
+      detail_guard_steps: 8,
+      tail_actual_steps: 1,
+      post_guard_horizon_cap: 6,
+      window_size: 2,
+      flex_window: 0.5,
+      cache_device: 'main_device',
+      error_tolerance: 1.2,
+      debug: false,
+      warn_unverified_sampler: true
+    });
+    expect(graph['9']?.inputs.model).toEqual(['moss_spectrum', 0]);
+  });
+
+  it('builds the manual Spectrum node with its predictor defaults', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.spectrumEnabled = true;
+        s.moss.spectrumMode = 'manual';
+        s.moss.spectrumMaxConsecutiveForecasts = 3;
+        s.moss.spectrumCacheDevice = 'cpu';
+      })
+    );
+
+    expect(graph.moss_spectrum?.class_type).toBe('SpectrumMOSSImageManual');
+    expect(graph.moss_spectrum?.inputs).toEqual({
+      model: ['moss_slg', 0],
+      warmup_steps: 8,
+      tail_actual_steps: 1,
+      window_size: 2,
+      flex_window: 0.75,
+      max_consecutive_forecasts: 3,
+      history_points: 8,
+      chebyshev_degree: 4,
+      ridge_lambda: 0.1,
+      blend_weight: 0.5,
+      cache_device: 'cpu',
+      force_actual_on_control: true,
+      debug: false,
+      warn_unverified_sampler: true
+    });
+  });
+
+  it('forces the full skip layer guidance range while Spectrum is on', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.spectrumEnabled = true;
+        s.moss.slgStartPercent = 0.1;
+        s.moss.slgEndPercent = 0.5;
+      })
+    );
+
+    expect(graph.moss_slg?.inputs).toMatchObject({
+      start_percent: 0,
+      end_percent: 1
+    });
+  });
+
+  it('ignores Spectrum on the Anima profile', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.moss.spectrumEnabled = true;
+      })
+    );
+
+    expect(graph.moss_spectrum).toBeUndefined();
+  });
+
+  it('places MOSS Booster between the LoRA chain and the model patches', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.boosterEnabled = true;
+        s.moss.boosterInt8StartPercent = 0.2;
+        s.moss.auraFlowEnabled = true;
+        s.loras = [{ ...TEST_LORA }];
+      })
+    );
+
+    expect(graph.moss_booster).toEqual({
+      class_type: 'KoharuMossBooster',
+      inputs: {
+        model: ['101', 0],
+        bake_lora: true,
+        int8_attention: true,
+        int8_start_percent: 0.2
+      },
+      _meta: { title: 'MOSS Booster' }
+    });
+    expect(graph.moss_aura_flow?.inputs.model).toEqual(['moss_booster', 0]);
+  });
+
+  it('ignores MOSS Booster on the Anima profile', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.moss.boosterEnabled = true;
+      })
+    );
+
+    expect(graph.moss_booster).toBeUndefined();
+  });
+
+  it('chains the accelerators after the model patches into the sampler', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.mgCacheEnabled = true;
+        s.moss.mgCacheAlpha = 0.1;
+        s.moss.mgCacheCalibration = 'moss_image_v2.json';
+        s.moss.textEmbedderCacheEnabled = true;
+        s.moss.guidanceIntervalEnabled = true;
+      })
+    );
+
+    expect(graph.moss_mg_cache).toEqual({
+      class_type: 'KoharuMGCache',
+      inputs: {
+        model: ['moss_slg', 0],
+        alpha: 0.1,
+        beta: 0,
+        calibration: 'moss_image_v2.json',
+        forecast: false
+      },
+      _meta: { title: 'MG-Cache' }
+    });
+    expect(graph.moss_text_embedder_cache?.inputs).toEqual({
+      model: ['moss_mg_cache', 0]
+    });
+    expect(graph.moss_guidance_interval?.inputs).toEqual({
+      model: ['moss_text_embedder_cache', 0],
+      start_percent: 0,
+      end_percent: 0.5
+    });
+    expect(graph['9']?.inputs.model).toEqual(['moss_guidance_interval', 0]);
+  });
+
+  it('keeps the accelerators off the face detailer pass', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.mgCacheEnabled = true;
+        s.faceDetailer.enabled = true;
+      })
+    );
+
+    const consumers = Object.entries(graph)
+      .filter(([, node]) =>
+        connections({ node }).some(([id]) => id === 'moss_mg_cache')
+      )
+      .map(([id]) => id);
+    expect(consumers).toEqual(['9']);
+  });
+
+  it('swaps MG-Cache for the calibration recorder in calibrate mode', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.mgCacheEnabled = true;
+        s.moss.mgCacheMode = 'calibrate';
+        s.moss.mgCacheCalibrationName = ' portrait ';
+        s.moss.mgCacheImportanceStride = 5;
+      })
+    );
+
+    expect(graph.moss_mg_cache).toBeUndefined();
+    expect(graph.moss_mg_calibrate?.class_type).toBe('KoharuMGCacheCalibrate');
+    expect(graph.moss_mg_calibrate?.inputs).toEqual({
+      model: ['moss_slg', 0],
+      name: 'portrait',
+      importance_stride: 5
+    });
+  });
+
+  it('rejects an unnamed MG-Cache calibration', () => {
+    const state = mossState((s) => {
+      s.moss.mgCacheEnabled = true;
+      s.moss.mgCacheMode = 'calibrate';
+      s.moss.mgCacheCalibrationName = ' ';
+    });
+
+    expect(() => buildWorkflowPrompt(state)).toThrow('Name the MG-Cache');
+  });
+
+  it('samples progressively through the Koharu sampler without variation', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.progressiveEnabled = true;
+        s.moss.progressiveScale = 0.6;
+        s.sampler.variationStrength = 0.35;
+      })
+    );
+
+    expect(graph['9']?.class_type).toBe('KoharuKSampler');
+    expect(graph['9']?.inputs).toMatchObject({
+      variation_strength: 0,
+      progressive_scale: 0.6,
+      progressive_fraction: 0.4
+    });
+  });
+
+  it('keeps the variation strength when sampling progressively', () => {
+    const graph = graphOf(
+      mossState((s) => {
+        s.moss.progressiveEnabled = true;
+        s.sampler.variationEnabled = true;
+      })
+    );
+
+    expect(graph['9']?.inputs).toMatchObject({
+      variation_strength: 0.35,
+      progressive_fraction: 0.4
+    });
+  });
+
+  it('ignores the accelerators on the Anima profile', () => {
+    const graph = graphOf(
+      createState((s) => {
+        s.moss.mgCacheEnabled = true;
+        s.moss.textEmbedderCacheEnabled = true;
+        s.moss.guidanceIntervalEnabled = true;
+        s.moss.progressiveEnabled = true;
+      })
+    );
+
+    expect(Object.keys(graph).filter((id) => id.startsWith('moss_'))).toEqual(
+      []
+    );
+    expect(graph['9']?.class_type).toBe('KSampler');
+  });
+
   it('treats inpaint mode as img2img instead of the Anima LLLite graph', () => {
     const graph = graphOf(mossState(enableInpaint));
 
@@ -581,60 +739,86 @@ describe('MOSS profile', () => {
     expect(graph['19']?.class_type).toBe('VAEEncode');
   });
 
-  it('turns layout boxes into bounding boxes and a layout prompt', () => {
-    const graph = graphOf(mossState(withLayout));
-
-    expect(graph.moss_boxes?.inputs).toEqual({
-      width: 1024,
-      height: 512,
-      editor_state: {
-        __value__: [
+  describe('layout prompt', () => {
+    it('compiles the boxes into centered yxyx pixel edges', () => {
+      expect(layoutPromptOf()).toEqual({
+        summary: { caption: 'test' },
+        items: [
           {
-            x: 0,
-            y: 0,
-            width: 1024,
-            height: 128,
-            metadata: {
-              type: 'text',
-              text: 'MOSS',
-              desc: 'cream serif capitals',
-              palette: []
-            }
+            label: 'text',
+            caption: 'cream serif capitals',
+            text: 'MOSS',
+            bbox: [-256, -512, -128, 512]
           },
           {
-            x: 256,
-            y: 128,
-            width: 512,
-            height: 384,
-            metadata: {
-              type: 'obj',
-              text: '',
-              desc: 'a kneeling knight',
-              palette: []
-            }
+            label: 'character',
+            caption: 'a kneeling knight',
+            bbox: [-128, -256, 256, 256]
           }
-        ]
-      }
+        ],
+        bbox_coord_space: 'abs_centralized',
+        bbox_format: 'yxyx'
+      });
     });
-    expect(graph.moss_layout?.inputs).toEqual({
-      prompt: 'test',
-      width: 1024,
-      height: 512,
-      character_boxes: '2',
-      element: ['moss_boxes', 2]
+
+    it('encloses fractional box edges in whole pixels', () => {
+      const prompt = layoutPromptOf((s) => {
+        Object.assign(s.moss.layoutBoxes[1] ?? {}, {
+          x: 0.1004,
+          y: 0.3001,
+          width: 0.2,
+          height: 0.2
+        });
+      });
+
+      expect(prompt.items).toMatchObject([{}, { bbox: [-103, -410, 1, -204] }]);
     });
-    expect(graph.moss_positive?.inputs.text).toEqual(['moss_layout', 0]);
-  });
 
-  it('sends the plain prompt when the layout has no boxes', () => {
-    const graph = graphOf(
-      mossState((s) => {
-        s.moss.layoutEnabled = true;
-      })
-    );
+    it('keeps meta, canvas, palette and tags', () => {
+      const prompt = layoutPromptOf((s) => {
+        s.moss.layoutSummary = {
+          meta: ['poster'],
+          canvas: 'single',
+          palette: ['#112233']
+        };
+        Object.assign(s.moss.layoutBoxes[1] ?? {}, {
+          tags: ['armor'],
+          palette: ['silver']
+        });
+      });
 
-    expect(graph.moss_boxes).toBeUndefined();
-    expect(graph.moss_positive?.inputs.text).toBe('test');
+      expect(prompt.summary).toEqual({
+        meta: ['poster'],
+        canvas: 'single',
+        caption: 'test',
+        palette: ['#112233']
+      });
+      expect(prompt.items).toMatchObject([
+        {},
+        { tags: ['armor'], palette: ['silver'] }
+      ]);
+    });
+
+    it('rejects a box without a description', () => {
+      const state = mossState((s) => {
+        withLayout(s);
+        Object.assign(s.moss.layoutBoxes[1] ?? {}, { caption: ' ' });
+      });
+
+      expect(() => buildWorkflowPrompt(state)).toThrow(
+        /item 2 needs a caption/u
+      );
+    });
+
+    it('sends the plain prompt when the layout has no boxes', () => {
+      const graph = graphOf(
+        mossState((s) => {
+          s.moss.layoutEnabled = true;
+        })
+      );
+
+      expect(graph.moss_positive?.inputs.text).toBe('test');
+    });
   });
 
   describe('color/depth control', () => {
@@ -725,7 +909,7 @@ describe('MOSS profile', () => {
     });
   });
 
-  it.each(['text2img', 'img2img'] as const)(
+  it.each(['text2img', 'img2img', 'edit'] as const)(
     'connects every input to an emitted node (%s)',
     (mode) => {
       const graph = graphOf(
@@ -821,10 +1005,22 @@ describe('buildFaceDetailerPrompt', () => {
 });
 
 describe('Ultimate SD Upscale', () => {
-  it('keeps the plain upscaler when Ultimate is off', () => {
-    expect(graphOf(createState(enableUpscale))['8']?.class_type).toBe(
-      'YEImageUpscale'
-    );
+  it('upscales with the model, then scales to the factor, when Ultimate is off', () => {
+    const graph = graphOf(createState(enableUpscale));
+
+    expect(graph['8_loader']?.inputs).toEqual({
+      model_name: 'up.safetensors'
+    });
+    expect(graph['8_upscale']?.inputs).toEqual({
+      upscale_model: ['8_loader', 0],
+      image: ['6', 0]
+    });
+    expect(graph['8']?.class_type).toBe('KoharuScaleToReference');
+    expect(graph['8']?.inputs).toEqual({
+      image: ['8_upscale', 0],
+      reference: ['6', 0],
+      scale_by: 6
+    });
   });
 
   it('replaces the upscaler node in the generation chain', () => {
@@ -839,9 +1035,9 @@ describe('Ultimate SD Upscale', () => {
     expect(graph['8_model']?.class_type).toBe('UpscaleModelLoader');
     expect(graph['8']?.inputs).toMatchObject({
       upscale_by: 4,
-      seed: ['14', 0],
-      positive: ['18', 0],
-      negative: ['18', 1],
+      seed: 1,
+      positive: ['21', 0],
+      negative: ['17', 0],
       model: ['101', 0],
       upscale_model: ['8_model', 0],
       mode_type: 'Chess'
@@ -858,7 +1054,7 @@ describe('Ultimate SD Upscale', () => {
       })
     );
 
-    expect(graph['8_turbo']?.class_type).toBe('YELoadLoraModel');
+    expect(graph['8_turbo']?.class_type).toBe('LoraLoaderModelOnly');
     expect(graph['8_turbo']?.inputs.model).toEqual(['101', 0]);
     expect(graph['8']?.inputs).toMatchObject({
       model: ['8_turbo', 0],

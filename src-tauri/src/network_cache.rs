@@ -54,7 +54,7 @@ fn cache_root(app_handle: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn entry_path(root: &Path, namespace: &str, key: &str) -> PathBuf {
-    let digest = format!("{:x}", Sha256::digest(key.as_bytes()));
+    let digest = hex::encode(Sha256::digest(key.as_bytes()));
     root.join(namespace).join(format!("{digest}.json"))
 }
 

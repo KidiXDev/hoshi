@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   countDynamicVariants,
+  expandWildcards,
   findDynamicGroups,
   hasDynamicPrompt,
+  hasWildcards,
   resolveDynamicPrompt,
   resolveDynamicPromptWithSeed
 } from './dynamicPrompt';
@@ -130,5 +132,48 @@ describe('createSeededRandom', () => {
   it('differs across seeds and salts', () => {
     expect(createSeededRandom(0)()).not.toBe(createSeededRandom(1)());
     expect(createSeededRandom(7, 'a')()).not.toBe(createSeededRandom(7, 'b')());
+  });
+});
+
+describe('wildcards', () => {
+  const wildcards = {
+    pose: ['standing', 'sitting'],
+    'outfit/dress': ['__color__ dress'],
+    color: ['red', 'blue']
+  };
+
+  it('detects wildcard tokens', () => {
+    expect(hasWildcards('1girl, __pose__')).toBe(true);
+    expect(hasWildcards('long_hair, blue_eyes')).toBe(false);
+  });
+
+  it('expands nested wildcards case-insensitively', () => {
+    expect(expandWildcards('__Outfit/Dress__', wildcards, always(0.9))).toBe(
+      'blue dress'
+    );
+  });
+
+  it('keeps unknown wildcards', () => {
+    expect(expandWildcards('__missing__, __pose__', wildcards, always(0))).toBe(
+      '__missing__, standing'
+    );
+  });
+
+  it('resolves wildcards and groups reproducibly from the seed', () => {
+    const text = '__pose__, {smile|frown}';
+    const first = resolveDynamicPromptWithSeed(text, 99, 'positive', wildcards);
+
+    expect(first).toMatch(/^(standing|sitting), (smile|frown)$/u);
+    expect(resolveDynamicPromptWithSeed(text, 99, 'positive', wildcards)).toBe(
+      first
+    );
+  });
+
+  it('leaves group picks unchanged when a prompt has no wildcards', () => {
+    const text = '{a|b|c}, {d|e}';
+
+    expect(resolveDynamicPromptWithSeed(text, 5, 'positive', wildcards)).toBe(
+      resolveDynamicPrompt(text, createSeededRandom(5, 'positive'))
+    );
   });
 });

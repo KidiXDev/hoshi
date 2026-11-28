@@ -5,7 +5,9 @@ import { loadAppData } from '../services/appStorage';
 import {
   checkModelUpdate,
   deleteModel,
+  droppedFilePaths,
   findLocalModel,
+  importModelFiles,
   listLocalModelsIndex,
   moveModel,
   readModelMetadata,
@@ -156,24 +158,34 @@ export async function rescanLocalModelIndex(
 
 export function useRescanModelsMutation() {
   const { workingDir, args } = useLauncherScan();
+  const comfyStore = useComfyStore();
   return useMutation({
-    mutationFn: () => rescanLocalModelIndex(workingDir.value, args.value)
+    mutationFn: () => rescanLocalModelIndex(workingDir.value, args.value),
+    onSuccess: () => comfyStore.invalidateModelPreviews()
   });
 }
 
 export function useSyncModelMutation() {
+  const comfyStore = useComfyStore();
   return useMutation({
     mutationFn: async (id: string) =>
       syncModelWithCivitai(id, await loadCivitaiApiKey()),
-    onSuccess: (model) => replaceIndexedModel(model)
+    onSuccess: (model) => {
+      replaceIndexedModel(model);
+      comfyStore.invalidateModelPreviews();
+    }
   });
 }
 
 export function useSetModelPreviewMutation() {
+  const comfyStore = useComfyStore();
   return useMutation({
     mutationFn: ({ id, source }: { id: string; source: PreviewSource }) =>
       setModelPreview(id, source),
-    onSuccess: (model) => replaceIndexedModel(model)
+    onSuccess: (model) => {
+      replaceIndexedModel(model);
+      comfyStore.invalidateModelPreviews();
+    }
   });
 }
 
@@ -199,6 +211,32 @@ export function useMoveModelMutation() {
     onSuccess: (model, { id }) => {
       replaceIndexedModel(model, id);
       queryClient.removeQueries({ queryKey: queryKeys.models.metadata(id) });
+      if (comfyStore.isConnected) void comfyStore.refreshModels();
+      void civitaiStore.refreshLocalModels();
+    }
+  });
+}
+
+export function useImportModelsMutation() {
+  const { workingDir, args } = useLauncherScan();
+  const comfyStore = useComfyStore();
+  const civitaiStore = useCivitaiStore();
+  return useMutation({
+    mutationFn: async ({
+      files,
+      category
+    }: {
+      files: File[];
+      category: string;
+    }) => {
+      const paths = await droppedFilePaths(files);
+      const result = await importModelFiles(paths, category);
+      if (result.imported.length > 0)
+        await rescanLocalModelIndex(workingDir.value, args.value);
+      return result;
+    },
+    onSuccess: ({ imported }) => {
+      if (imported.length === 0) return;
       if (comfyStore.isConnected) void comfyStore.refreshModels();
       void civitaiStore.refreshLocalModels();
     }

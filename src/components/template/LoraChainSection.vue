@@ -14,18 +14,16 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
 import LoraPresetDialog from '../common/LoraPresetDialog.vue';
 import ModelGridSelectorDialog from '../common/ModelGridSelectorDialog.vue';
 import LoraTriggerWords from './LoraTriggerWords.vue';
-import { ComfyApi } from '../../services/comfyApi';
 import { appendPromptTerms, removePromptTerm } from '../../utils/promptTools';
 import { useComfyStore } from '../../stores/comfyStore';
-import { useLauncherStore } from '../../stores/launcherStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
 
 const comfyStore = useComfyStore();
-const launcherStore = useLauncherStore();
 const workflowStore = useWorkflowStore();
 const stack = defineModel<LoraItem[]>('loras');
 const loras = computed({
@@ -57,7 +55,15 @@ function removeTriggerWord(word: string) {
 const isLoraPresetManagerOpen = ref(false);
 const isLoraGridOpen = ref(false);
 const editingLoraIndex = ref<number | null>(null);
-const failedImageSet = ref(new Set<string>());
+const failedPreviewUrls = ref(new Set<string>());
+
+const allLorasEnabled = computed({
+  get: () =>
+    loras.value.length > 0 && loras.value.every((lora) => lora.enabled),
+  set: (enabled: boolean) => {
+    for (const lora of loras.value) lora.enabled = enabled;
+  }
+});
 
 const loraOptions = computed(() => {
   if (comfyStore.availableLoras.length > 0) {
@@ -81,12 +87,7 @@ function handleLoraSelect(model: string) {
 }
 
 function getLoraPreviewUrl(name: string, res = 200): string {
-  return ComfyApi.getModelPreviewUrl(
-    launcherStore.config.serverUrl,
-    'loras',
-    name,
-    res
-  );
+  return comfyStore.modelPreviewUrl('loras', name, res);
 }
 
 // Floating preview on thumbnail hover — same geometry as SearchableSelect
@@ -95,7 +96,7 @@ const PREVIEW_H = 240;
 const hovered = ref<{ name: string; x: number; y: number } | null>(null);
 
 function showPreview(name: string, event: PointerEvent) {
-  if (failedImageSet.value.has(name)) return;
+  if (failedPreviewUrls.value.has(getLoraPreviewUrl(name))) return;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const fitsRight = rect.right + 8 + PREVIEW_W <= window.innerWidth;
   hovered.value = {
@@ -131,6 +132,13 @@ function showPreview(name: string, event: PointerEvent) {
         >
           LOCKED
         </span>
+        <Switch
+          v-if="loras.length > 0"
+          v-model="allLorasEnabled"
+          :disabled="!comfyStore.isConnected"
+          title="Toggle all LoRAs"
+          aria-label="Toggle all LoRAs"
+        />
       </div>
 
       <div class="flex items-center gap-1.5">
@@ -244,13 +252,14 @@ function showPreview(name: string, event: PointerEvent) {
               @pointerleave="hovered = null"
             >
               <img
-                v-if="!failedImageSet.has(lora.name)"
-                :src="getLoraPreviewUrl(lora.name, 200)"
+                v-if="!failedPreviewUrls.has(getLoraPreviewUrl(lora.name))"
+                :key="lora.name"
+                :src="getLoraPreviewUrl(lora.name)"
                 :alt="lora.name"
                 loading="lazy"
                 decoding="async"
                 class="h-full w-full object-cover"
-                @error="failedImageSet.add(lora.name)"
+                @error="failedPreviewUrls.add(getLoraPreviewUrl(lora.name))"
               />
               <div
                 v-else

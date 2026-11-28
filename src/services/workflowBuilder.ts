@@ -1,48 +1,138 @@
-import type { WorkflowState } from '../types/workflow';
+import type { MossSettings, WorkflowState } from '../types/workflow';
 import {
   hasDynamicPrompt,
-  resolveDynamicPromptWithSeed
+  hasWildcards,
+  resolveDynamicPromptWithSeed,
+  type WildcardMap
 } from '../utils/dynamicPrompt';
-import { boxPixels, layoutCanvasSize } from '../utils/mossLayout';
+import { compileMossLayoutPrompt } from '../utils/mossLayout';
+import { formatPrompt, removeNegativeOverlap } from '../utils/promptFormat';
 import { randomSeed } from '../utils/seed';
 import {
   appendFaceDetailerStage,
   type WorkflowNodeRef
 } from './faceDetailerWorkflow';
-import { appendUltimateUpscaleStage } from './ultimateUpscaleWorkflow';
+import {
+  appendModelUpscaleStage,
+  appendUltimateUpscaleStage
+} from './ultimateUpscaleWorkflow';
 
-function variationInputs(state: WorkflowState) {
-  if (!state.sampler.variationEnabled) return {};
+export const MG_CALIBRATE_NODE_ID = 'moss_mg_calibrate';
+
+function samplerNode(state: WorkflowState) {
+  const { variationEnabled } = state.sampler;
+  const progressive = state.profile === 'moss' && state.moss.progressiveEnabled;
+  if (!variationEnabled && !progressive) {
+    return { inputs: {}, class_type: 'KSampler', _meta: { title: 'KSampler' } };
+  }
   return {
-    variation_seed: Math.max(-1, Math.trunc(state.sampler.variationSeed)),
-    variation_strength: Math.min(
-      1,
-      Math.max(0, state.sampler.variationStrength || 0)
-    )
+    inputs: {
+      variation_seed: Math.max(0, Math.trunc(state.sampler.variationSeed)),
+      variation_strength: variationEnabled
+        ? Math.min(1, Math.max(0, state.sampler.variationStrength || 0))
+        : 0,
+      ...(progressive && {
+        progressive_scale: state.moss.progressiveScale,
+        progressive_fraction: state.moss.progressiveFraction
+      })
+    },
+    class_type: 'KoharuKSampler',
+    _meta: { title: 'KSampler (Variation)' }
   };
 }
 
-export function prepareWorkflowForQueue(state: WorkflowState): WorkflowState {
+interface ModelPatchNode {
+  id: string;
+  class_type: string;
+  title: string;
+  inputs: Record<string, unknown>;
+}
+
+function mossMgCacheNode(moss: MossSettings): ModelPatchNode {
+  if (moss.mgCacheMode !== 'calibrate') {
+    return {
+      id: 'moss_mg_cache',
+      class_type: 'KoharuMGCache',
+      title: 'MG-Cache',
+      inputs: {
+        alpha: moss.mgCacheAlpha,
+        beta: moss.mgCacheBeta,
+        calibration: moss.mgCacheCalibration,
+        forecast: moss.mgCacheForecast
+      }
+    };
+  }
+  const name = moss.mgCacheCalibrationName.trim();
+  if (!name) {
+    throw new Error('Name the MG-Cache calibration before generating.');
+  }
+  return {
+    id: MG_CALIBRATE_NODE_ID,
+    class_type: 'KoharuMGCacheCalibrate',
+    title: 'MG-Cache Calibrate',
+    inputs: { name, importance_stride: moss.mgCacheImportanceStride }
+  };
+}
+
+function mossAcceleratorNodes(moss: MossSettings) {
+  const nodes: ModelPatchNode[] = [];
+  if (moss.mgCacheEnabled) nodes.push(mossMgCacheNode(moss));
+  if (moss.textEmbedderCacheEnabled) {
+    nodes.push({
+      id: 'moss_text_embedder_cache',
+      class_type: 'KoharuMossTextEmbedderCache',
+      title: 'MOSS Text Embedder Cache',
+      inputs: {}
+    });
+  }
+  if (moss.guidanceIntervalEnabled) {
+    nodes.push({
+      id: 'moss_guidance_interval',
+      class_type: 'KoharuGuidanceInterval',
+      title: 'Guidance Interval',
+      inputs: {
+        start_percent: moss.guidanceIntervalStart,
+        end_percent: moss.guidanceIntervalEnd
+      }
+    });
+  }
+  return nodes;
+}
+
+export function prepareWorkflowForQueue(
+  state: WorkflowState,
+  wildcards: WildcardMap = {}
+): WorkflowState {
   const queuedState = structuredClone(state);
   if (queuedState.sampler.randomizeSeed || queuedState.sampler.seed < 0) {
     queuedState.sampler.seed = randomSeed();
   }
-  resolveDynamicPrompts(queuedState);
+  if (
+    queuedState.sampler.variationEnabled &&
+    queuedState.sampler.variationSeed < 0
+  ) {
+    queuedState.sampler.variationSeed = randomSeed();
+  }
+  resolveDynamicPrompts(queuedState, wildcards);
   return queuedState;
 }
 
 /**
- * Resolves `{a|b}` groups in every prompt field using the (now concrete) seed,
- * remembering the templates so history can restore them.
+ * Resolves `__wildcards__` and `{a|b}` groups in every prompt field using the
+ * (now concrete) seed, remembering the templates so history can restore them.
  */
-function resolveDynamicPrompts(state: WorkflowState) {
+function resolveDynamicPrompts(state: WorkflowState, wildcards: WildcardMap) {
   const templates = {
     positivePrompt: state.positivePrompt,
     negativePrompt: state.negativePrompt,
     faceDetailerPositivePrompt: state.faceDetailer?.positivePrompt ?? '',
     faceDetailerNegativePrompt: state.faceDetailer?.negativePrompt ?? ''
   };
-  if (!Object.values(templates).some((text) => hasDynamicPrompt(text))) {
+  if (
+    !Object.values(templates).some(
+      (text) => hasDynamicPrompt(text) || hasWildcards(text)
+    )
+  ) {
     delete state.promptTemplates;
     return;
   }
@@ -51,69 +141,29 @@ function resolveDynamicPrompts(state: WorkflowState) {
   state.positivePrompt = resolveDynamicPromptWithSeed(
     templates.positivePrompt,
     seed,
-    'positive'
+    'positive',
+    wildcards
   );
   state.negativePrompt = resolveDynamicPromptWithSeed(
     templates.negativePrompt,
     seed,
-    'negative'
+    'negative',
+    wildcards
   );
   if (state.faceDetailer) {
     state.faceDetailer.positivePrompt = resolveDynamicPromptWithSeed(
       templates.faceDetailerPositivePrompt,
       seed,
-      'fd-positive'
+      'fd-positive',
+      wildcards
     );
     state.faceDetailer.negativePrompt = resolveDynamicPromptWithSeed(
       templates.faceDetailerNegativePrompt,
       seed,
-      'fd-negative'
+      'fd-negative',
+      wildcards
     );
   }
-}
-
-function appendMossLayoutStage(
-  prompt: Record<string, unknown>,
-  state: WorkflowState
-): WorkflowNodeRef | null {
-  const boxes = state.moss.layoutBoxes;
-  if (!state.moss.layoutEnabled || boxes.length === 0) return null;
-  const { width, height } = layoutCanvasSize(state);
-
-  prompt['moss_boxes'] = {
-    inputs: {
-      width,
-      height,
-      editor_state: {
-        __value__: boxes.map((box) => ({
-          ...boxPixels(box, width, height),
-          metadata: {
-            type: box.kind === 'text' ? 'text' : 'obj',
-            text: box.kind === 'text' ? box.text : '',
-            desc: box.caption,
-            palette: []
-          }
-        }))
-      }
-    },
-    class_type: 'CreateBoundingBoxes',
-    _meta: { title: 'Create Bounding Boxes' }
-  };
-
-  prompt['moss_layout'] = {
-    inputs: {
-      prompt: state.positivePrompt,
-      width,
-      height,
-      character_boxes: boxes
-        .flatMap((box, index) => (box.kind === 'character' ? [index + 1] : []))
-        .join(', '),
-      element: ['moss_boxes', 2]
-    },
-    class_type: 'MOSSImageLayoutPrompt',
-    _meta: { title: 'MOSS-Image Layout Prompt' }
-  };
-  return ['moss_layout', 0];
 }
 
 interface SamplerInputs {
@@ -183,10 +233,110 @@ function appendMossControlStage(
   };
 }
 
+function appendMossEditStage(
+  prompt: Record<string, unknown>,
+  state: WorkflowState,
+  sampler: SamplerInputs,
+  texts: { positive: string; negative: string }
+): SamplerInputs {
+  const { moss } = state;
+  if (!moss.editLora) {
+    throw new Error('Select a MOSS edit LoRA before generating.');
+  }
+
+  prompt['moss_edit_scale'] = {
+    inputs: {
+      upscale_method: 'lanczos',
+      megapixels: 1,
+      resolution_steps: 16,
+      image: ['30', 0]
+    },
+    class_type: 'ImageScaleToTotalPixels',
+    _meta: { title: 'Scale MOSS Edit Reference' }
+  };
+
+  prompt['moss_edit_size'] = {
+    inputs: { image: ['moss_edit_scale', 0] },
+    class_type: 'GetImageSize',
+    _meta: { title: 'Get MOSS Edit Size' }
+  };
+
+  prompt['moss_edit_lora'] = {
+    inputs: {
+      lora_name: moss.editLora,
+      strength_model: 1,
+      model: sampler.model
+    },
+    class_type: 'LoraLoaderModelOnly',
+    _meta: { title: 'Load MOSS Edit LoRA' }
+  };
+
+  const encodeEdit = (text: string, title: string) => ({
+    inputs: {
+      prompt: text,
+      edit_format: moss.editFormat,
+      image_strength: moss.editImageStrength,
+      clip: ['28', 0],
+      vae: ['27', 0],
+      'images.image_0': ['moss_edit_scale', 0]
+    },
+    class_type: 'TextEncodeMOSSImageEdit',
+    _meta: { title }
+  });
+  prompt['moss_edit_positive'] = encodeEdit(texts.positive, 'Edit Instruction');
+  prompt['moss_edit_negative'] = encodeEdit(texts.negative, 'Negative Prompt');
+
+  return {
+    model: ['moss_edit_lora', 0],
+    positive: ['moss_edit_positive', 0],
+    negative: ['moss_edit_negative', 0]
+  };
+}
+
+function mossSpectrumNode(moss: MossSettings, model: WorkflowNodeRef) {
+  const shared = {
+    model,
+    warmup_steps: moss.spectrumWarmupSteps,
+    tail_actual_steps: moss.spectrumTailActualSteps,
+    window_size: 2,
+    cache_device: moss.spectrumCacheDevice,
+    debug: false,
+    warn_unverified_sampler: true
+  };
+  if (moss.spectrumMode === 'manual') {
+    return {
+      inputs: {
+        ...shared,
+        flex_window: 0.75,
+        max_consecutive_forecasts: moss.spectrumMaxConsecutiveForecasts,
+        history_points: 8,
+        chebyshev_degree: 4,
+        ridge_lambda: 0.1,
+        blend_weight: 0.5,
+        force_actual_on_control: true
+      },
+      class_type: 'SpectrumMOSSImageManual',
+      _meta: { title: 'Spectrum MOSS-Image (Manual)' }
+    };
+  }
+  return {
+    inputs: {
+      ...shared,
+      flex_window: 0.5,
+      detail_guard_steps: moss.spectrumDetailGuardSteps,
+      post_guard_horizon_cap: moss.spectrumPostGuardHorizonCap,
+      error_tolerance: moss.spectrumErrorTolerance
+    },
+    class_type: 'SpectrumMOSSImageAdaptive',
+    _meta: { title: 'Spectrum MOSS-Image (Adaptive)' }
+  };
+}
+
 export function buildWorkflowPrompt(
   state: WorkflowState
 ): Record<string, unknown> {
   const isMoss = state.profile === 'moss';
+  const isMossEdit = isMoss && state.imageInput.mode === 'edit';
   if (state.imageInput.mode === 'inpaint' && !isMoss) {
     return buildInpaintPrompt(state);
   }
@@ -228,11 +378,25 @@ export function buildWorkflowPrompt(
         strength_model: lora.strength,
         model: [lastModelNodeId, 0]
       },
-      class_type: 'YELoadLoraModel',
-      _meta: { title: `YE Load LoRA (${lora.name})` }
+      class_type: 'LoraLoaderModelOnly',
+      _meta: { title: `Load LoRA (${lora.name})` }
     };
     lastModelNodeId = loraNodeId;
   });
+
+  if (isMoss && state.moss.boosterEnabled) {
+    prompt['moss_booster'] = {
+      inputs: {
+        bake_lora: state.moss.boosterBakeLora,
+        int8_attention: state.moss.boosterInt8Attention,
+        int8_start_percent: state.moss.boosterInt8StartPercent,
+        model: [lastModelNodeId, 0]
+      },
+      class_type: 'KoharuMossBooster',
+      _meta: { title: 'MOSS Booster' }
+    };
+    lastModelNodeId = 'moss_booster';
+  }
 
   if (!isMoss && state.advanced.cacheDiT.enabled) {
     prompt['cache_dit'] = {
@@ -253,19 +417,53 @@ export function buildWorkflowPrompt(
     lastModelNodeId = 'cache_dit';
   }
 
+  if (isMoss && state.moss.tsrEnabled) {
+    prompt['moss_tsr'] = {
+      inputs: {
+        tsr_k: state.moss.tsrK,
+        tsr_sigma: state.moss.tsrSigma,
+        model: [lastModelNodeId, 0]
+      },
+      class_type: 'TemporalScoreRescaling',
+      _meta: { title: 'TSR - Temporal Score Rescaling' }
+    };
+    lastModelNodeId = 'moss_tsr';
+  }
+
+  if (isMoss && state.moss.auraFlowEnabled) {
+    prompt['moss_aura_flow'] = {
+      inputs: {
+        shift: state.moss.auraFlowShift,
+        model: [lastModelNodeId, 0]
+      },
+      class_type: 'ModelSamplingAuraFlow',
+      _meta: { title: 'ModelSamplingAuraFlow' }
+    };
+    lastModelNodeId = 'moss_aura_flow';
+  }
+
   if (isMoss && state.moss.skipLayerGuidance) {
+    const fullRange = state.moss.spectrumEnabled || isMossEdit;
     prompt['moss_slg'] = {
       inputs: {
         double_layers: '',
         single_layers: state.moss.slgSingleLayers,
-        start_percent: state.moss.slgStartPercent,
-        end_percent: state.moss.slgEndPercent,
+        start_percent: fullRange ? 0 : state.moss.slgStartPercent,
+        end_percent: fullRange ? 1 : state.moss.slgEndPercent,
         model: [lastModelNodeId, 0]
       },
       class_type: 'SkipLayerGuidanceDiTSimple',
       _meta: { title: 'MOSS Skip Layer Guidance' }
     };
     lastModelNodeId = 'moss_slg';
+  }
+
+  if (isMoss && state.moss.spectrumEnabled) {
+    prompt['moss_spectrum'] = mossSpectrumNode(state.moss, [
+      lastModelNodeId,
+      0
+    ]);
+    lastModelNodeId = 'moss_spectrum';
   }
 
   if (!isMoss && state.advanced.auraFlowEnabled) {
@@ -293,6 +491,16 @@ export function buildWorkflowPrompt(
     lastModelNodeId = 'renorm_cfg';
   }
 
+  let samplerModelNodeId = lastModelNodeId;
+  for (const node of isMoss ? mossAcceleratorNodes(state.moss) : []) {
+    prompt[node.id] = {
+      inputs: { ...node.inputs, model: [samplerModelNodeId, 0] },
+      class_type: node.class_type,
+      _meta: { title: node.title }
+    };
+    samplerModelNodeId = node.id;
+  }
+
   // 4. CLIP Loader (Node 28)
   prompt['28'] = {
     inputs: {
@@ -313,72 +521,48 @@ export function buildWorkflowPrompt(
     _meta: { title: 'Load VAE' }
   };
 
-  // 6. Positive Prompt (Node 21)
-  prompt['21'] = {
-    inputs: {
-      prompt: state.positivePrompt
-    },
-    class_type: 'YEPrompt',
-    _meta: { title: 'YE Positive Prompt' }
-  };
+  // 6. Prompts
+  const positiveText = isMoss
+    ? state.positivePrompt
+    : formatPrompt(state.positivePrompt);
+  const negativeText = isMoss
+    ? state.negativePrompt
+    : removeNegativeOverlap(positiveText, formatPrompt(state.negativePrompt));
 
-  // 7. Negative Prompt (Node 17)
-  prompt['17'] = {
-    inputs: {
-      prompt: state.negativePrompt
-    },
-    class_type: 'YEPrompt',
-    _meta: { title: 'YE Negative Prompt' }
-  };
-
-  // 8. Conditioning
-  let positiveConditioning: WorkflowNodeRef = ['18', 0];
-  let negativeConditioning: WorkflowNodeRef = ['18', 1];
+  // 7. Conditioning (Nodes 21, 17)
+  let positiveConditioning: WorkflowNodeRef = ['21', 0];
+  let negativeConditioning: WorkflowNodeRef = ['17', 0];
   if (isMoss) {
     prompt['moss_positive'] = {
       inputs: {
-        text: appendMossLayoutStage(prompt, state) ?? state.positivePrompt,
+        text: (!isMossEdit && compileMossLayoutPrompt(state)) || positiveText,
         clip: ['28', 0]
       },
       class_type: 'CLIPTextEncode',
       _meta: { title: 'Positive Prompt' }
     };
     prompt['moss_negative'] = {
-      inputs: { text: state.negativePrompt, clip: ['28', 0] },
+      inputs: { text: negativeText, clip: ['28', 0] },
       class_type: 'CLIPTextEncode',
       _meta: { title: 'Negative Prompt' }
     };
     positiveConditioning = ['moss_positive', 0];
     negativeConditioning = ['moss_negative', 0];
   } else {
-    prompt['18'] = {
-      inputs: {
-        format_prompt: true,
-        clip: ['28', 0],
-        positive: ['21', 1],
-        negative: ['17', 1]
-      },
-      class_type: 'YEClipTextUtil',
-      _meta: { title: 'YE Clip Text Util' }
+    prompt['21'] = {
+      inputs: { text: positiveText, clip: ['28', 0] },
+      class_type: 'CLIPTextEncode',
+      _meta: { title: 'Positive Prompt' }
+    };
+    prompt['17'] = {
+      inputs: { text: negativeText, clip: ['28', 0] },
+      class_type: 'CLIPTextEncode',
+      _meta: { title: 'Negative Prompt' }
     };
   }
 
-  // 9. Seed Generator (Node 14)
-  prompt['14'] = {
-    inputs: {
-      seed: state.sampler.seed
-    },
-    class_type: 'YESeedGenerator',
-    _meta: { title: 'YE Seed Generator' }
-  };
-
-  // 10. Empty Latent Image (Node 19)
-  const isCustomResolution =
-    state.resolution.preset === 'Custom' ||
-    state.resolution.preset.toLowerCase().startsWith('custom') ||
-    state.resolution.isCustom;
-
-  if (usesInputImage) {
+  // 8. Empty Latent Image (Node 19)
+  if (usesInputImage && !isMossEdit) {
     prompt['19'] = {
       inputs: {
         pixels: ['30', 0],
@@ -390,14 +574,18 @@ export function buildWorkflowPrompt(
   } else if (isMoss) {
     prompt['19'] = {
       inputs: {
-        width: state.resolution.width || 1024,
-        height: state.resolution.height || 1024,
+        width: isMossEdit
+          ? ['moss_edit_size', 0]
+          : state.resolution.width || 1024,
+        height: isMossEdit
+          ? ['moss_edit_size', 1]
+          : state.resolution.height || 1024,
         batch_size: state.resolution.batchSize
       },
       class_type: 'EmptyFlux2LatentImage',
       _meta: { title: 'Empty Flux 2 Latent' }
     };
-  } else if (isCustomResolution) {
+  } else {
     prompt['19'] = {
       inputs: {
         width: state.resolution.width || 1024,
@@ -407,44 +595,38 @@ export function buildWorkflowPrompt(
       class_type: 'EmptyLatentImage',
       _meta: { title: 'Empty Latent Image' }
     };
-  } else {
-    prompt['19'] = {
-      inputs: {
-        preset: state.resolution.preset,
-        batch_size: state.resolution.batchSize
-      },
-      class_type: 'YEEmptyLatentImage',
-      _meta: { title: 'YE Empty Latent Image' }
-    };
   }
 
-  // 11. KSampler (Node 9)
+  // 9. KSampler (Node 9)
   const samplerInputs: SamplerInputs = {
-    model: [lastModelNodeId, 0],
+    model: [samplerModelNodeId, 0],
     positive: positiveConditioning,
     negative: negativeConditioning
   };
+  const appendMossSamplerStage = () =>
+    isMossEdit
+      ? appendMossEditStage(prompt, state, samplerInputs, {
+          positive: positiveText,
+          negative: negativeText
+        })
+      : appendMossControlStage(prompt, state, samplerInputs);
+  const sampler = samplerNode(state);
   prompt['9'] = {
+    ...sampler,
     inputs: {
-      seed: ['14', 0],
+      seed: state.sampler.seed,
       steps: state.sampler.steps,
       cfg: state.sampler.cfg,
       sampler_name: state.sampler.samplerName,
       scheduler: state.sampler.scheduler,
-      denoise: state.sampler.denoise,
-      ...(isMoss
-        ? appendMossControlStage(prompt, state, samplerInputs)
-        : samplerInputs),
+      denoise: isMossEdit ? 1 : state.sampler.denoise,
+      ...(isMoss ? appendMossSamplerStage() : samplerInputs),
       latent_image: ['19', 0],
-      ...variationInputs(state)
-    },
-    class_type: state.sampler.variationEnabled ? 'YEKSampler' : 'KSampler',
-    _meta: {
-      title: state.sampler.variationEnabled ? 'YE KSampler' : 'KSampler'
+      ...sampler.inputs
     }
   };
 
-  // 12. VAE Decode (Node 6)
+  // 10. VAE Decode (Node 6)
   prompt['6'] = {
     inputs: {
       samples: ['9', 0],
@@ -465,7 +647,7 @@ export function buildWorkflowPrompt(
     });
   }
 
-  // 13. Preview Image (Node 7)
+  // 11. Preview Image (Node 7)
   prompt['7'] = {
     inputs: {
       images: decodedImageSource
@@ -474,7 +656,7 @@ export function buildWorkflowPrompt(
     _meta: { title: 'Preview Image' }
   };
 
-  // 14. Upscale (Node 8)
+  // 12. Upscale (Node 8)
   let imageSourceForPostFx: WorkflowNodeRef = decodedImageSource;
   if (
     state.postfx.upscale.enabled &&
@@ -492,7 +674,7 @@ export function buildWorkflowPrompt(
         vae: ['27', 0],
         upscaleModel: state.postfx.upscale.upscaleModel,
         upscaleBy: state.postfx.upscale.upscaleBy,
-        seed: ['14', 0]
+        seed: state.sampler.seed
       },
       '8'
     );
@@ -500,90 +682,65 @@ export function buildWorkflowPrompt(
     state.postfx.upscale.enabled &&
     state.postfx.upscale.upscaleModel
   ) {
-    prompt['8'] = {
-      inputs: {
-        upscale_model: state.postfx.upscale.upscaleModel,
-        upscale_by: state.postfx.upscale.upscaleBy,
-        image: decodedImageSource
+    imageSourceForPostFx = appendModelUpscaleStage(
+      prompt,
+      {
+        image: decodedImageSource,
+        upscaleModel: state.postfx.upscale.upscaleModel,
+        upscaleBy: state.postfx.upscale.upscaleBy
       },
-      class_type: 'YEImageUpscale',
-      _meta: { title: 'YE Image Upscale' }
-    };
-    imageSourceForPostFx = ['8', 0];
+      '8'
+    );
   }
 
-  // 15. PostFX Pipeline
+  // 13. PostFX (Node 4)
   let finalImageSource = imageSourceForPostFx;
 
   if (state.postfx.enabled) {
-    prompt['3'] = {
-      inputs: {
-        enabled: state.postfx.styleStage.enabled,
-        vignette_strength: state.postfx.styleStage.vignetteStrength,
-        vignette_softness: state.postfx.styleStage.vignetteSoftness,
-        film_grain: state.postfx.styleStage.filmGrain,
-        grain_seed: 0,
-        chromatic_aberration: state.postfx.styleStage.chromaticAberration,
-        ca_angle: 0,
-        bloom_strength: state.postfx.styleStage.bloomStrength,
-        bloom_radius: state.postfx.styleStage.bloomRadius,
-        bloom_threshold: state.postfx.styleStage.bloomThreshold
-      },
-      class_type: 'YEPostFXAddStyleStage',
-      _meta: { title: 'YE PostFX - Add Style Stage' }
-    };
-
-    prompt['11'] = {
-      inputs: {
-        enabled: state.postfx.adjustStage.enabled,
-        brightness: state.postfx.adjustStage.brightness,
-        contrast: state.postfx.adjustStage.contrast,
-        saturation: state.postfx.adjustStage.saturation,
-        sharpness: state.postfx.adjustStage.sharpness,
-        pipeline: ['3', 0]
-      },
-      class_type: 'YEPostFXAddAdjustStage',
-      _meta: { title: 'YE PostFX - Add Adjust Stage' }
-    };
-
+    const { styleStage, adjustStage } = state.postfx;
     prompt['4'] = {
       inputs: {
         image: imageSourceForPostFx,
-        pipeline: ['11', 0]
+        style_enabled: styleStage.enabled,
+        vignette_strength: styleStage.vignetteStrength,
+        vignette_softness: styleStage.vignetteSoftness,
+        film_grain: styleStage.filmGrain,
+        grain_seed: 0,
+        chromatic_aberration: styleStage.chromaticAberration,
+        ca_angle: 0,
+        bloom_strength: styleStage.bloomStrength,
+        bloom_radius: styleStage.bloomRadius,
+        bloom_threshold: styleStage.bloomThreshold,
+        adjust_enabled: adjustStage.enabled,
+        brightness: adjustStage.brightness,
+        contrast: adjustStage.contrast,
+        saturation: adjustStage.saturation,
+        sharpness: adjustStage.sharpness
       },
-      class_type: 'YEPostFXApplyPipeline',
-      _meta: { title: 'YE PostFX - Apply Pipeline' }
+      class_type: 'KoharuPostFX',
+      _meta: { title: 'PostFX' }
     };
 
     finalImageSource = ['4', 0];
   }
 
-  // 16. Metadata Connector (Node 1)
-  prompt['1'] = {
+  // 14. Save Image With Metadata (Node 5)
+  prompt['5'] = {
     inputs: {
-      positive: ['21', 0],
-      negative: ['17', 0],
-      seed: ['14', 0],
+      filename_prefix: 'ComfyUI',
+      images: finalImageSource,
+      positive: positiveText,
+      negative: negativeText,
+      seed: state.sampler.seed,
       steps: state.sampler.steps,
       cfg: state.sampler.cfg,
       sampler_name: state.sampler.samplerName,
       scheduler: state.sampler.scheduler,
       denoise: state.sampler.denoise,
-      model: ['29', 0]
+      model_name: state.models.unetName
     },
-    class_type: 'YEImageMetadataConnector',
-    _meta: { title: 'YE Image Metadata Connector' }
-  };
-
-  // 17. Save Image (Node 5)
-  prompt['5'] = {
-    inputs: {
-      filename_prefix: 'ComfyUI',
-      images: finalImageSource,
-      metadata_pipe: ['1', 0]
-    },
-    class_type: 'YEImageSave',
-    _meta: { title: 'YE Save Image' }
+    class_type: 'KoharuSaveImage',
+    _meta: { title: 'Save Image' }
   };
 
   return prompt;
@@ -604,6 +761,7 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
   const cfg = state.imageInput.turboEnabled
     ? state.imageInput.turboCfg
     : state.imageInput.inpaintCfg;
+  const sampler = samplerNode(state);
   const prompt: Record<string, unknown> = {
     '29': {
       inputs: { unet_name: state.models.unetName, weight_dtype: 'default' },
@@ -653,22 +811,14 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
       _meta: { title: 'Apply Anima LLLite Inpainting' }
     },
     '21': {
-      inputs: {
-        prompt: state.positivePrompt,
-        clip: ['28', 0],
-        format_prompt: true
-      },
-      class_type: 'YEClipTextEncodePrompt',
-      _meta: { title: 'YE Clip Text Encode (Positive Prompt)' }
+      inputs: { text: formatPrompt(state.positivePrompt), clip: ['28', 0] },
+      class_type: 'CLIPTextEncode',
+      _meta: { title: 'Positive Prompt' }
     },
     '17': {
-      inputs: {
-        prompt: state.negativePrompt,
-        clip: ['28', 0],
-        format_prompt: true
-      },
-      class_type: 'YEClipTextEncodePrompt',
-      _meta: { title: 'YE Clip Text Encode (Negative Prompt)' }
+      inputs: { text: formatPrompt(state.negativePrompt), clip: ['28', 0] },
+      class_type: 'CLIPTextEncode',
+      _meta: { title: 'Negative Prompt' }
     },
     '19': {
       inputs: {
@@ -680,6 +830,7 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
       _meta: { title: 'Empty Latent Image' }
     },
     '9': {
+      ...sampler,
       inputs: {
         seed: state.sampler.seed,
         steps,
@@ -691,11 +842,7 @@ function buildInpaintPrompt(state: WorkflowState): Record<string, unknown> {
         positive: ['21', 0],
         negative: ['17', 0],
         latent_image: ['19', 0],
-        ...variationInputs(state)
-      },
-      class_type: state.sampler.variationEnabled ? 'YEKSampler' : 'KSampler',
-      _meta: {
-        title: state.sampler.variationEnabled ? 'YE KSampler' : 'KSampler'
+        ...sampler.inputs
       }
     },
     '6': {

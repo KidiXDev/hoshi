@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadAppData } from '../services/appStorage';
 import {
   cleanPath,
   parseLauncherArgs,
@@ -10,6 +11,11 @@ import {
 vi.mock(import('@tauri-apps/api/core'), async (importOriginal) => ({
   ...(await importOriginal()),
   invoke: vi.fn()
+}));
+
+vi.mock(import('../services/appStorage'), async (importOriginal) => ({
+  ...(await importOriginal()),
+  loadAppData: vi.fn()
 }));
 
 describe('useLauncherStore', () => {
@@ -35,6 +41,20 @@ describe('useLauncherStore', () => {
     launcher.config.pythonPath = '';
 
     expect(launcher.localSetupMessage).toContain('Python executable');
+  });
+
+  it('fills the missing profile autocomplete source from defaults', async () => {
+    vi.mocked(loadAppData).mockResolvedValue({
+      promptAutocompleteSource: { anima: 'word' }
+    });
+    const launcher = useLauncherStore();
+
+    await launcher.loadConfig();
+
+    expect(launcher.config.promptAutocompleteSource).toEqual({
+      anima: 'word',
+      moss: 'word'
+    });
   });
 });
 

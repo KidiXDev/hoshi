@@ -3,11 +3,14 @@ import { computed, ref, shallowRef, watch } from 'vue';
 import {
   ComfyApi,
   firstOutputImage,
-  historyEntryError
+  historyEntryError,
+  type ModelPreviewCategory
 } from '../services/comfyApi';
 import { ComfyWsClient } from '../services/comfyWs';
+import { Wildcards } from '../services/wildcards';
 import {
   buildWorkflowPrompt,
+  MG_CALIBRATE_NODE_ID,
   prepareWorkflowForQueue
 } from '../services/workflowBuilder';
 import type {
@@ -122,14 +125,12 @@ function getFriendlyStageName(
     '27': 'Loading VAE Model',
     '21': 'Encoding Positive Prompt',
     '17': 'Encoding Negative Prompt',
-    '18': 'Processing Prompt Conditioning',
-    '14': 'Preparing Sampling Seed',
     '19': 'Initializing Latent Space',
     '13': 'Configuring Sampling Parameters',
     '9': 'Sampling & Denoising',
     '6': 'Decoding Latents to Pixels',
     '7': 'Finalizing Output Image',
-    '8': 'Connecting Metadata'
+    '8': 'Upscaling Image'
   };
 
   if (defaultMap[nodeId]) return defaultMap[nodeId];
@@ -151,14 +152,16 @@ export const useComfyStore = defineStore('comfy', () => {
 
   const clientId = ref(`koharu-${Math.random().toString(36).slice(2, 10)}`);
   const isConnected = ref(false);
-  const isYetEssentialAvailable = ref(false);
   const isChecking = ref(false);
   const objectInfo = shallowRef<ComfyObjectInfo | null>(null);
   const bridgeModels = shallowRef<BridgeModelsResponse | null>(null);
   const bridgeSystem = shallowRef<BridgeSystemResponse | null>(null);
+  const modelPreviewVersion = ref(0);
   const isFaceDetailerAvailable = ref(false);
   const isCacheDiTAvailable = ref(false);
+  const isSpectrumMossAvailable = ref(false);
   const isUltimateUpscaleAvailable = ref(false);
+  const mgCacheCalibrations = ref<string[]>([]);
   const availableBBoxDetectors = ref<string[]>([]);
   const availableSegmDetectors = ref<string[]>([]);
 
@@ -220,13 +223,13 @@ export const useComfyStore = defineStore('comfy', () => {
   const availableVaes = modelChoices('vaes', ['VAELoader'], ['vae_name']);
   const availableLoras = modelChoices(
     'loras',
-    ['YELoadLoraModel', 'LoraLoader'],
+    ['LoraLoaderModelOnly', 'LoraLoader'],
     ['lora_name']
   );
   const availableUpscaleModels = modelChoices(
     'upscale_models',
-    ['YEImageUpscale', 'UpscaleModelLoader'],
-    ['upscale_model', 'model_name']
+    ['UpscaleModelLoader'],
+    ['model_name']
   );
   const availableSamplers = modelChoices(
     'samplers',
@@ -258,7 +261,8 @@ export const useComfyStore = defineStore('comfy', () => {
 
   function activateNextGeneration() {
     const next = pendingGenerations.values().next().value as
-      PendingGeneration | undefined;
+      | PendingGeneration
+      | undefined;
     if (next) activateGeneration(next);
     else {
       currentPromptId.value = null;
@@ -328,6 +332,7 @@ export const useComfyStore = defineStore('comfy', () => {
     const waiter = generationWaiters.get(promptId);
     generationWaiters.delete(promptId);
     if (status === 'completed') {
+      if (entry.nodes[MG_CALIBRATE_NODE_ID]) void fetchDiscovery();
       const result = await loadGenerationImage(entry);
       if (result) {
         if (
@@ -436,9 +441,9 @@ export const useComfyStore = defineStore('comfy', () => {
   }
 
   function resetCapabilities() {
-    isYetEssentialAvailable.value = false;
     isFaceDetailerAvailable.value = false;
     isCacheDiTAvailable.value = false;
+    isSpectrumMossAvailable.value = false;
     isUltimateUpscaleAvailable.value = false;
   }
 
@@ -485,10 +490,6 @@ export const useComfyStore = defineStore('comfy', () => {
       if (!isConnected.value)
         wsClient?.connect(launcherStore.config.serverUrl, clientId.value);
       setConnected(true);
-      if (!isYetEssentialAvailable.value)
-        isYetEssentialAvailable.value = await ComfyApi.checkTagAutocomplete(
-          launcherStore.config.serverUrl
-        );
       return true;
     })().finally(() => {
       healthCheck = null;
@@ -567,29 +568,42 @@ export const useComfyStore = defineStore('comfy', () => {
         );
       }
 
-      const [faceDetailerNode, detectorNode, cacheDiTNode, ultimateNode] =
-        await Promise.all([
-          ComfyApi.fetchNodeInfo(
-            launcherStore.config.serverUrl,
-            'FaceDetailer'
-          ),
-          ComfyApi.fetchNodeInfo(
-            launcherStore.config.serverUrl,
-            'UltralyticsDetectorProvider'
-          ),
-          ComfyApi.fetchNodeInfo(
-            launcherStore.config.serverUrl,
-            'CacheDiT_Model_Optimizer'
-          ),
-          ComfyApi.fetchNodeInfo(
-            launcherStore.config.serverUrl,
-            'UltimateSDUpscale'
-          )
-        ]);
+      const [
+        faceDetailerNode,
+        detectorNode,
+        cacheDiTNode,
+        spectrumNode,
+        ultimateNode,
+        mgCacheNode
+      ] = await Promise.all([
+        ComfyApi.fetchNodeInfo(launcherStore.config.serverUrl, 'FaceDetailer'),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'UltralyticsDetectorProvider'
+        ),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'CacheDiT_Model_Optimizer'
+        ),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'SpectrumMOSSImageAdaptive'
+        ),
+        ComfyApi.fetchNodeInfo(
+          launcherStore.config.serverUrl,
+          'UltimateSDUpscale'
+        ),
+        ComfyApi.fetchNodeInfo(launcherStore.config.serverUrl, 'KoharuMGCache')
+      ]);
       const detectorInput = detectorNode?.input.required.model_name?.[0];
       const detectorModels = Array.isArray(detectorInput) ? detectorInput : [];
+      const calibrations = mgCacheNode?.input.required.calibration?.[0];
+      mgCacheCalibrations.value = Array.isArray(calibrations)
+        ? calibrations
+        : [];
       isFaceDetailerAvailable.value = Boolean(faceDetailerNode && detectorNode);
       isCacheDiTAvailable.value = Boolean(cacheDiTNode);
+      isSpectrumMossAvailable.value = Boolean(spectrumNode);
       isUltimateUpscaleAvailable.value = Boolean(ultimateNode);
       availableBBoxDetectors.value = detectorModels.filter((model) =>
         model.startsWith('bbox/')
@@ -601,7 +615,26 @@ export const useComfyStore = defineStore('comfy', () => {
       // Server not ready yet
     } finally {
       isChecking.value = false;
+      invalidateModelPreviews();
     }
+  }
+
+  function invalidateModelPreviews() {
+    modelPreviewVersion.value += 1;
+  }
+
+  function modelPreviewUrl(
+    category: ModelPreviewCategory,
+    name: string,
+    res?: number
+  ) {
+    return ComfyApi.getModelPreviewUrl(
+      launcherStore.config.serverUrl,
+      category,
+      name,
+      modelPreviewVersion.value,
+      res
+    );
   }
 
   async function refreshModels() {
@@ -615,7 +648,11 @@ export const useComfyStore = defineStore('comfy', () => {
     executionError.value = null;
 
     try {
-      const queuedWorkflowState = prepareWorkflowForQueue(workflowState);
+      const wildcards = await Wildcards.load().catch(() => ({}));
+      const queuedWorkflowState = prepareWorkflowForQueue(
+        workflowState,
+        wildcards
+      );
       const promptPayload = buildWorkflowPrompt(queuedWorkflowState);
       const res = await ComfyApi.queuePrompt(
         launcherStore.config.serverUrl,
@@ -661,14 +698,15 @@ export const useComfyStore = defineStore('comfy', () => {
   return {
     clientId,
     isConnected,
-    isYetEssentialAvailable,
     isChecking,
     objectInfo,
     bridgeModels,
     bridgeSystem,
     isFaceDetailerAvailable,
     isCacheDiTAvailable,
+    isSpectrumMossAvailable,
     isUltimateUpscaleAvailable,
+    mgCacheCalibrations,
     availableBBoxDetectors,
     availableSegmDetectors,
     isGenerating,
@@ -696,6 +734,8 @@ export const useComfyStore = defineStore('comfy', () => {
     init,
     fetchDiscovery,
     refreshModels,
+    invalidateModelPreviews,
+    modelPreviewUrl,
     generateImage,
     queueGeneration,
     waitForGeneration,

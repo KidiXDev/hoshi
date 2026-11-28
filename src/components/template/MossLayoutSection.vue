@@ -8,6 +8,7 @@ import { ref } from 'vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import HelpTooltip from '../common/HelpTooltip.vue';
 import LayoutEditorDialog from '../common/LayoutEditorDialog.vue';
 import { useWorkflowStore } from '../../stores/workflowStore';
 
@@ -25,12 +26,16 @@ const isEditorOpen = ref(false);
           <LayoutDashboard class="h-4 w-4" />
         </div>
         <div>
-          <h3 class="text-xs font-bold tracking-wider uppercase">
-            Layout Boxes
-          </h3>
+          <div class="flex items-center gap-1.5">
+            <h3 class="text-xs font-bold tracking-wider uppercase">
+              Layout Boxes
+            </h3>
+            <HelpTooltip
+              text="Position objects, characters and exact text. The positive prompt becomes the scene caption. Without boxes it is sent as a plain caption."
+            />
+          </div>
           <p class="text-muted-foreground text-xs">
-            Place objects, characters and exact text with bounding boxes; the
-            positive prompt becomes the scene caption
+            Place elements with bounding boxes
           </p>
         </div>
       </div>
@@ -72,9 +77,7 @@ const isEditorOpen = ref(false);
         class="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-400"
       >
         <AlertCircle class="h-4 w-4 shrink-0" />
-        <span>
-          No boxes yet. Without boxes the prompt is sent as a plain caption.
-        </span>
+        <span>No boxes yet.</span>
       </div>
 
       <Button

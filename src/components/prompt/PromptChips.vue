@@ -1,25 +1,32 @@
 <script setup lang="ts">
 import { Plus, X } from '@lucide/vue';
 import { nextTick, ref, watch } from 'vue';
-import { vDraggable } from 'vue-draggable-plus';
+import { useDraggable } from 'vue-draggable-plus';
 import { Button } from '@/components/ui/button';
 import PromptSuggestionOptions from '@/components/prompt/PromptSuggestionOptions.vue';
 import { usePromptChips } from '@/composables/usePromptChips';
-import { ComfyApi, type AutocompleteItem } from '@/services/comfyApi';
 import {
   getPromptTokenRange,
   replacePromptToken,
   type PromptTokenRange
 } from '@/services/promptAutocomplete';
-import { useComfyStore } from '@/stores/comfyStore';
+import { searchTags, type AutocompleteItem } from '@/services/tagAutocomplete';
 import { useLauncherStore } from '@/stores/launcherStore';
 
-defineProps<{ negative?: boolean }>();
+const props = defineProps<{ negative?: boolean }>();
 const prompt = defineModel<string>({ required: true });
 const { chips, newTag, sync, toggle, remove, add } = usePromptChips(prompt);
 
+const chipList = ref<HTMLElement | null>(null);
+useDraggable(chipList, chips, {
+  animation: 200,
+  ghostClass: props.negative ? 'ghost-chip-negative' : 'ghost-chip',
+  chosenClass: props.negative ? 'chosen-chip-negative' : 'chosen-chip',
+  dragClass: 'drag-chip',
+  onEnd: sync
+});
+
 const launcherStore = useLauncherStore();
-const comfyStore = useComfyStore();
 const tagInput = ref<HTMLInputElement | null>(null);
 const suggestionList = ref<HTMLElement | null>(null);
 const suggestions = ref<AutocompleteItem[]>([]);
@@ -80,12 +87,7 @@ function scheduleSuggestions() {
   clearTimeout(searchTimer);
   searchController?.abort();
   const input = tagInput.value;
-  if (
-    !input ||
-    !launcherStore.config.autocompleteEnabled ||
-    !comfyStore.isConnected ||
-    !comfyStore.isYetEssentialAvailable
-  ) {
+  if (!input || !launcherStore.config.autocompleteEnabled) {
     return closeSuggestions();
   }
   const range = getPromptTokenRange(input.value, input.selectionStart ?? 0);
@@ -96,12 +98,11 @@ function scheduleSuggestions() {
     const controller = new AbortController();
     searchController = controller;
     try {
-      const items = await ComfyApi.searchTags(
-        launcherStore.config.serverUrl,
+      const items = await searchTags(
         range.query,
         launcherStore.config.autocompleteLimit,
         range.mode,
-        controller.signal
+        launcherStore.config.autocompleteAlgorithm
       );
       if (controller.signal.aborted) return;
       suggestions.value = items;
@@ -166,16 +167,7 @@ function handleKeydown(event: KeyboardEvent) {
     class="border-border bg-background flex resize-y flex-col justify-between gap-2.5 overflow-auto rounded-md border p-2.5"
   >
     <div
-      v-draggable="[
-        chips,
-        {
-          animation: 200,
-          ghostClass: negative ? 'ghost-chip-negative' : 'ghost-chip',
-          chosenClass: negative ? 'chosen-chip-negative' : 'chosen-chip',
-          dragClass: 'drag-chip',
-          onEnd: sync
-        }
-      ]"
+      ref="chipList"
       class="flex flex-1 flex-wrap content-start items-start gap-1.5 overflow-y-auto pr-1"
     >
       <div

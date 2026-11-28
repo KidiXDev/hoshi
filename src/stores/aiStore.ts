@@ -2,7 +2,10 @@ import { isStepCount, streamText, tool } from 'ai';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 import { z } from 'zod';
-import { buildAssistantSystemPrompt } from '../data/aiPrompts';
+import {
+  buildAssistantSystemPrompt,
+  buildPromptStudioContext
+} from '../data/aiPrompts';
 import {
   cutOffMessage,
   DEFAULT_AI_CONFIG,
@@ -18,7 +21,9 @@ import {
   searchCopyrights
 } from '../services/animadexApi';
 import { loadAppData, saveAppData } from '../services/appStorage';
+import { characterDataTools } from '../services/characterDataTools';
 import { LibraryService } from '../services/libraryService';
+import { mossCatalogTools } from '../services/mossCatalogTools';
 import type {
   AiConfig,
   ChatMessage,
@@ -48,9 +53,22 @@ const READ_ONLY_TOOLS: ToolName[] = [
   'inspect_current_prompt',
   'search_animadex',
   'retrieve_animadex_tag_by_id',
-  'search_character_library'
+  'search_character_library',
+  'search_character_data',
+  'roll_character_look',
+  'search_moss_catalog'
 ];
 const NOOP = () => {};
+
+function normalizePromptLineBreaks(prompt: string): string {
+  if (!prompt.includes('\\n')) return prompt;
+  try {
+    JSON.parse(prompt);
+    return prompt;
+  } catch {
+    return prompt.replaceAll(/\\r\\n|\\n/gu, '\n');
+  }
+}
 
 function sanitizeLegacySessionInvocations(session: ChatSession) {
   for (const msg of session.messages) {
@@ -116,7 +134,6 @@ function limitChatContext<T extends { role: string; content: unknown }>(
   messages: T[],
   tokenLimit: number
 ): T[] {
-  // ponytail: token estimate is enough for budgeting; use a model tokenizer if exact limits become necessary.
   const characterBudget = Math.max(1, tokenLimit) * 4;
   let usedCharacters = 0;
   let startIndex = messages.length - 1;
@@ -488,7 +505,8 @@ export const useAiStore = defineStore('ai', () => {
       const model = getOpenRouterModel(config.value, selectedModelInfo.value);
       const systemPrompt = buildAssistantSystemPrompt(
         profileInstructions(config.value, workflowStore.profile).assistant,
-        workflowStore.profile
+        workflowStore.profile,
+        buildPromptStudioContext(workflowStore)
       );
 
       const getOrCreateInvocation = (
@@ -533,6 +551,8 @@ export const useAiStore = defineStore('ai', () => {
         toolCallId: string
       ) => {
         signal.throwIfAborted();
+        if (typeof input.prompt === 'string')
+          input = { ...input, prompt: normalizePromptLineBreaks(input.prompt) };
         const inv = getOrCreateInvocation(
           toolCallId,
           name,
@@ -641,6 +661,7 @@ export const useAiStore = defineStore('ai', () => {
           execute: async () => {
             const layout = isMoss ? mossLayoutToDraft(workflowStore) : null;
             return {
+              ...buildPromptStudioContext(workflowStore),
               positivePrompt: workflowStore.positivePrompt || '',
               negativePrompt: workflowStore.negativePrompt || '',
               ...(layout ? { layout } : {})
@@ -666,6 +687,10 @@ export const useAiStore = defineStore('ai', () => {
             return searchCharacters({ q: query, page, sort: 'count' });
           }
         }),
+
+        ...characterDataTools,
+
+        ...mossCatalogTools,
 
         retrieve_animadex_tag_by_id: tool({
           description:
@@ -697,9 +722,13 @@ export const useAiStore = defineStore('ai', () => {
         }),
 
         inject_positive_prompt: tool({
-          description: `Use this for requests to create an image or create, improve, replace, or apply the studio positive prompt. Writing prompt text in chat does not apply it. For edits, inspect the current prompt first.${isMoss ? ' A Layout draft JSON object replaces the layout boxes, the scene caption, and the canvas size.' : ''} The UI displays the full prompt and handles approval; after success, confirm briefly without repeating it. Wait for this result before calling generation. Do not use for explicitly text-only drafts or explanations.`,
+          description: `Use only when the user asks to apply a prompt, edit the current studio prompt, or create an image. Requests to write, draft, or create prompt text alone are text-only. Inspect the current prompt before editing it.${isMoss ? ' A Layout draft JSON object replaces the layout boxes, the scene caption, and the canvas size.' : ''} The UI displays the full prompt and handles approval. After success, confirm briefly without repeating it. Wait for this result before calling generation.`,
           inputSchema: z.object({
-            prompt: z.string().describe('New or enhanced positive prompt text'),
+            prompt: z
+              .string()
+              .describe(
+                'Complete positive prompt containing only drawable detail, readable without the character research, earlier prompt, or request'
+              ),
             reason: z
               .string()
               .optional()
@@ -798,7 +827,7 @@ export const useAiStore = defineStore('ai', () => {
         tools,
         temperature: config.value.temperature,
         maxOutputTokens: config.value.maxOutputTokens,
-        stopWhen: isStepCount(5),
+        stopWhen: isStepCount(8),
         abortSignal: currentAbortController.signal
       });
 
@@ -835,9 +864,7 @@ export const useAiStore = defineStore('ai', () => {
           assistantMsg.currentStep =
             toolName === 'inspect_current_prompt'
               ? 'inspecting'
-              : toolName === 'search_animadex' ||
-                  toolName === 'retrieve_animadex_tag_by_id' ||
-                  toolName === 'search_character_library'
+              : READ_ONLY_TOOLS.includes(toolName)
                 ? 'searching'
                 : toolName === 'queue_generation'
                   ? 'queueing'

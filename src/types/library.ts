@@ -26,7 +26,7 @@ export interface CharacterData {
   trigger: string;
   /** Additional descriptive tags: hair, eyes, outfit, accessories, etc. */
   tags: string[];
-  /** Where this entry originated — "local" | "animadex" | "manual" */
+  /** Where this entry originated — "local" | "animadex" | "moss" | "manual" */
   source?: string;
   /** Animadex character slug if this was imported from there */
   animadexSlug?: string;
@@ -35,6 +35,16 @@ export interface CharacterData {
    * things to avoid. Surfaced to the AI assistant alongside the tags.
    */
   notes?: string;
+}
+
+export interface CharacterDraft {
+  name: string;
+  trigger: string;
+  series: string;
+  tags: string[];
+  thumbnailUrl: string;
+  source: 'animadex' | 'moss';
+  animadexSlug?: string;
 }
 
 // Core item shape (full, with data payload)

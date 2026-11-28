@@ -1,0 +1,382 @@
+// Character Helper field rules.
+// Decides which Danbooru tag goes into which Character Helper field when the dataset is built.
+// Changes apply on the next build: Settings > Character Helper > Rebuild dataset.
+// Reset to defaults (same place) restores this file. Lines starting with // are comments.
+//
+// A general tag goes to the field of the first rule that matches, checked in this order:
+//   1. overrides, drop_tags   exact tag names
+//   2. drop_patterns          the tag is left out
+//   3. patterns               regular expressions on the tag name
+//   4. slot_to_field          the tag's slot in the Mexes/danbooru-tag-taxonomy dataset
+//   5. fallback_patterns      regular expressions, only for tags the taxonomy has no slot for
+//   6. group_to_field         Danbooru wiki tag groups
+//   7. holding_...            tags starting with holding_ go to pose
+//   8. jio7_to_field          the tag's category in Jio7/danbooru-tags-classified
+// A tag no rule matches is left out. field_report.txt next to this file lists where every tag went
+// after a build.
+//
+// Patterns are Python regular expressions matched from the start of the tag name. End one with $
+// to match the whole name. Tags use underscores: long_hair, not "long hair".
+{
+  // The fields shown in Character Helper, in this order.
+  //   id     name used by the rules below
+  //   label  name shown in the app
+  //   count  default number of tags the dice roll for this field
+  //   group  heading the field is shown under
+  // Keep the character field: it holds the character and series. A new field also needs rules that
+  // send tags to it, and Usual look only fills the fields listed here by default.
+  "fields": [
+    {"id": "character", "label": "character", "count": 1, "group": "who"},
+    {"id": "subject", "label": "subject", "count": 2, "group": "who"},
+    {"id": "hair", "label": "hair", "count": 3, "group": "looks"},
+    {"id": "eyes", "label": "eyes", "count": 1, "group": "looks"},
+    {"id": "body", "label": "body", "count": 2, "group": "looks"},
+    {"id": "outfit", "label": "outfit", "count": 2, "group": "clothes"},
+    {"id": "top", "label": "top", "count": 3, "group": "clothes"},
+    {"id": "bottom", "label": "bottom", "count": 2, "group": "clothes"},
+    {"id": "legwear", "label": "legs & feet", "count": 2, "group": "clothes"},
+    {"id": "accessories", "label": "accessories", "count": 3, "group": "clothes"},
+    {"id": "expression", "label": "expression", "count": 2, "group": "scene"},
+    {"id": "pose", "label": "pose", "count": 2, "group": "scene"},
+    {"id": "view", "label": "view", "count": 1, "group": "scene"},
+    {"id": "background", "label": "background", "count": 2, "group": "scene"}
+  ],
+
+  // Posts with any of these tags don't show a character's usual look (cosplay, other costumes,
+  // changed hair...), so they are left out when working out how a character usually looks.
+  "alt_look_tags": [
+    "adapted_costume", "aged_down", "aged_up", "alternate_breast_size", "alternate_costume",
+    "alternate_eye_color", "alternate_form", "alternate_hair_color", "alternate_hair_length",
+    "alternate_hairstyle", "alternate_skin_color", "animalization", "contemporary", "cosplay",
+    "costume_switch", "dark_persona", "enmaided", "furrification", "genderswap", "genderswap_(ftm)",
+    "genderswap_(mtf)", "hair_down", "personification"
+  ],
+
+  // Posts with any of these tags are never used as dice pictures and don't count toward a
+  // character's usual look: uncoloured, comic, sketch and reference-sheet pictures.
+  "pool_exclude_tags": [
+    "2koma", "3koma", "4koma", "character_sheet", "chibi", "comic", "expressions", "greyscale",
+    "lineart", "monochrome", "multiple_4koma", "multiple_views", "no_humans", "partially_colored",
+    "reference_sheet", "sepia", "silent_comic", "sketch", "spot_color", "text_focus", "turnaround",
+    "variations"
+  ],
+
+  // Hand-checked fixes: a tag listed under a field always goes to that field, before any other rule.
+  "overrides": {
+    "subject": [
+      "horse_girl"
+    ],
+    "hair": [
+      "one_eye_covered"
+    ],
+    "eyes": [
+      "thick_eyebrows", "short_eyebrows"
+    ],
+    "body": [
+      "halo", "mechanical_halo", "mole", "mole_under_mouth", "scar", "tattoo", "freckles", "abs",
+      "muscular", "muscular_female", "muscular_male", "dark-skinned_female", "dark-skinned_male",
+      "fang", "fangs", "skin_fang", "sharp_teeth", "pointy_ears", "forehead_mark", "facial_mark",
+      "whisker_markings", "collarbone", "midriff", "navel", "cleavage", "wings", "tail", "wet",
+      "sweat", "blood"
+    ],
+    "outfit": [
+      "maid", "school_uniform", "serafuku", "open_clothes", "floral_print", "dress", "frills",
+      "apron", "armor", "kimono", "magical_girl", "casual", "police", "pocket", "clothes_writing"
+    ],
+    "top": [
+      "bare_shoulders", "wide_sleeves", "shirt"
+    ],
+    "bottom": [
+      "skirt"
+    ],
+    "accessories": [
+      "nail_polish", "gloves", "bell", "neck_bell", "choker", "collar", "necklace", "piercing",
+      "bandages", "bandaid", "hat", "bow", "ribbon", "jewelry", "earrings", "weapon", "cross",
+      "staff", "headset", "stuffed_toy", "stuffed_animal", "doll", "jingle_bell", "ear_covers",
+      "holster", "gohei", "facepaint", "sheath", "arm_belt", "feathers"
+    ],
+    "expression": [
+      "teeth", "upper_teeth_only", "tongue", "tongue_out", "blush", "smile", "sweatdrop", "breath"
+    ],
+    "pose": [
+      "clothes_lift", "clothes_pull", "undressing", "holding", "on_bed", "on_back", "on_floor",
+      "on_ground", "on_chair", "on_couch", "head_rest", "hands_up", "trembling"
+    ],
+    "background": [
+      "heart", "star_(symbol)", "sparkle", "rose", "white_flower", "flower", "petals", "shadow",
+      "musical_note", "reflection", "partially_submerged", "christmas", "halloween", "new_year",
+      "valentine", "crystal", "sand", "branch", "air_bubble", "blanket", "brick_wall", "bamboo",
+      "vines", "tile_wall", "tiles"
+    ]
+  },
+
+  // Tags that are always left out because they are not useful as prompt building blocks.
+  "drop_tags": [
+    "condom", "used_condom", "holding_condom", "solo_focus", "male_focus", "aged_down", "aged_up",
+    "genderswap", "genderswap_(mtf)", "genderswap_(ftm)", "contemporary", "siblings", "sisters",
+    "brothers", "twins", "couple", "character_name", "copyright_name", "oral", "dated"
+  ],
+
+  // Tags matching any of these are left out: tags about the picture itself (watermarks, speech
+  // bubbles, comic panels, commentary) or about several people. Each entry must match the whole
+  // tag name.
+  "drop_patterns": [
+    ".*_\\(cosplay\\)", ".*_\\(meme\\)", ".*censor.*", ".*watermark.*", ".*_username", ".*_logo",
+    ".*_text", ".*speech_bubble.*", "spoken_.*", ".*_commentary", ".*_request", ".*_challenge",
+    "alternate_.*", "official_alternate_.*", "cosplay", "adapted_costume", "costume_switch",
+    "enmaided", ".*_connection", ".*_namesake", ".*_name", ".*_parody", "parody", "meme",
+    "virtual_youtuber", ".*_focus", ".*_theme", "dated", "signature", "cover.*", ".*koma",
+    "twitter_.*", "bkub_.*", "sound_effects", "emphasis_lines", "motion_lines", "speed_lines",
+    ".*_bubble", "border", ".*_border", "letterboxed", "pillarboxed", ".*_inset", "inset",
+    "zoom_layer", ".*_layer", "projected_inset",
+    "multiple_(girls|boys|others|views|persona|4koma|expressions)", "\\d\\+?(girls|boys|others)",
+    "6\\+.*", "everyone", "people", "too_many", "no_humans", "unworn_.*", "age_difference",
+    "interracial", ".*_and_(sister|brother|daughter|son|wife|husband|niece|nephew)s?",
+    "clothed_.*_nude_.*", "mixed-sex_bathing", "hetero", "yuri", "yaoi", "loli", "shota", "lolicon",
+    "shotacon"
+  ],
+
+  // Colour words. Used to recognise colour variants of one item (red_necktie, blue_necktie) so a
+  // character's usual look keeps only the main one. The neckwear pattern below has its own copy of
+  // this list.
+  "colors": [
+    "aqua", "black", "blonde", "blue", "brown", "dark_blue", "dark_green", "dark_red", "green",
+    "grey", "light_blue", "light_brown", "light_green", "light_purple", "orange", "pink",
+    "platinum_blonde", "purple", "red", "silver", "white", "yellow", "lavender", "tan", "beige"
+  ],
+
+  // Rules that win over the taxonomy. The first matching pattern decides the field.
+  "patterns": [
+    // Who is in the picture.
+    {"pattern": "^(1girl|1boy|1other|solo)$", "field": "subject"},
+    // Gaze belongs with the pose, not the camera.
+    {"pattern": "^(looking_.*|eye_contact|facing_.*|sideways_glance|staring|.*_looking_.*)$", "field": "pose"},
+    // Framing and camera angle.
+    {"pattern": "^(upper_body|full_body|lower_body|cowboy_shot|portrait|close-up|wide_shot|very_wide_shot|head_only|cropped_(?:torso|legs|shoulders|head|arms?)|.*_out_of_frame|from_.*|dutch_angle|pov|straight-on|profile|depth_of_field|blurry_.*|blurry|bokeh|fisheye|foreshortening|perspective|.*_shot|back_view|rear_view|three_quarter_view|vanishing_point)$", "field": "view"},
+    // Hair ornaments are accessories.
+    {"pattern": "^(hair_ornament|hair_ribbon|hair_bow|hair_flower|hairclip|hairband|hairpin|hair_bobbles|hair_tie|hair_scrunchie|scrunchie|hair_bell|hair_tubes|hair_beads|hair_stick|hair_rings?|hair_bands?|.*_hairband|.*_hair_ornament|.*_hairclip|hair_ears|hair_horns|.*_scrunchie|hair_feathers|hair_tie_in_mouth|.*_hair_ribbon|.*_hair_bow|.*_hair_flower|.*_hair_tie|hair_censor|hair_dryer|hairbrush|hair_pulled_back_tie|hair_cubes|hair_pods|hair_weapon)$", "field": "accessories"},
+    // Touching or holding hair is a pose.
+    {"pattern": "^(hair_(?:pull|grab|flip|tucking|twirling|brushing|dressing|cutting|slicked_back_gesture)|playing_with_.*hair|adjusting_hair|tying_hair|holding_.*hair|hand_in_.*hair|.*_hair_pull|tucking_hair|bunching_hair|brushing_hair|washing_hair|drying_hair|smelling_hair|cutting_hair|braiding_hair|biting_hair|hair_in_.*mouth|grabbing_another's_hair|cum_on_hair|holding_another's_hair|hand_in_another's_hair|hand_on_own_hair)$", "field": "pose"},
+    // Body hair is part of the body.
+    {"pattern": "^(pubic_hair|.*_pubic_hair|armpit_hair|chest_hair|leg_hair|arm_hair|body_hair|facial_hair|hairy.*|.*_facial_hair|beard|mustache|stubble|goatee|sideburns|long_sideburns)$", "field": "body"},
+    // Everything else about hair: colour, length, style.
+    {"pattern": ".*_hair$|^hair_.*|.*_bangs$|^bangs.*|.*twintails$|.*ponytail$|.*_braids?$|^braid.*|.*_bun$|.*_buns$|^ahoge$|.*_ahoge$|^sidelocks$|.*_sidelocks$|.*_drills?$|^antenna_hair$|^forehead$|^bob_cut$|^hime_cut$|^pixie_cut$|^bowl_cut$|^undercut$|^mohawk$|^afro$|^dreadlocks$|^cornrows$|^ringlets$|^bald.*|^widow's_peak$|^.*_hairstyle$|^updo$|^topknot$|^cowlick$|^flipped_hair$|^.*_hair_.*$", "field": "hair"},
+    // Make-up is an accessory.
+    {"pattern": "^(eyeshadow|eyeliner|mascara|.*_eyeshadow|.*_eyeliner|makeup|lipstick|(?!parted).*_lips|.*_lipstick|lipgloss)$", "field": "accessories"},
+    // Closed, crying or squinting eyes are an expression.
+    {"pattern": "^(closed_eyes|one_eye_closed|half-closed_eyes?|wide-eyed|rolling_eyes|crossed_eyes|squinting|narrowed_eyes|eyes_closed|.*_one_eye_closed|wince|winking.*|@_@|>_<|\\^_\\^|=_=|\\._\\.|o_o|0_0|x_x|\\+_\\+|;\\)|.*_stare|glaring|crying.*|tears|teardrop|tearing_up|streaming_tears|happy_tears|.*_eyes_closed|eyes_visible_through_hair)$", "field": "expression"},
+    // Eye colour, pupils, eyebrows.
+    {"pattern": ".*_eyes$|.*_pupils$|.*_sclera$|.*_irises?$|^heterochromia$|^tsurime$|^tareme$|^jitome$|^sanpaku$|^eyelashes$|.*_eyelashes$|^eyebrows$|.*_eyebrows$|^slit_pupils$|^pupils$|^.*-shaped_pupils$|^no_pupils$|^dilated_pupils$|^constricted_pupils$|^ringed_eyes$|^aegyo_sal$|^bags_under_eyes$|^eye_trail$|^third_eye$|^extra_eyes$|^one-eyed$|^cyclops$|^mole_under_eye$|^.*_under_eyes?$", "field": "eyes"},
+    // Things worn on the neck count as part of the top.
+    {"pattern": "^(?:(?:aqua|black|blonde|blue|brown|dark_blue|dark_green|dark_red|green|grey|light_blue|light_brown|light_green|light_purple|orange|pink|platinum_blonde|purple|red|silver|white|yellow|lavender|tan|beige|two-tone|multicolored|striped|plaid|checkered|polka_dot|print|frilled|torn|open|leather|denim|fur-trimmed|lace-trimmed|ribbon-trimmed|see-through|sleeveless|short|long|pleated|high-waist|floral_print|animal_print|camouflage|gold|rainbow)_)?(necktie|bowtie|neckerchief|ascot|scarf|sailor_collar|neck_ribbon|neck_ruff|bolo_tie|cravat|jabot|bow_tie|shawl|capelet|cape|cloak|poncho)$", "field": "top"},
+    // Bras and other underwear tops.
+    {"pattern": "^(?:.*_)?(bra|sports_bra|bikini_top|bikini_top_only|sarashi|pasties|no_bra)$", "field": "top"},
+    // Panties and other underwear bottoms.
+    {"pattern": "^(?:.*_)?(panties|thong|g-string|fundoshi|briefs|boxers|bikini_bottom|bikini_bottom_only)$|^(no_panties|panty_pull|panties_aside|pantyshot|side-tie_panties|panties_around_.*)$", "field": "bottom"},
+    // Garters and thigh straps go with the legs.
+    {"pattern": "^(garter_belt|garter_straps|zettai_ryouiki|thigh_belt|thigh_strap)$", "field": "legwear"},
+    // Halos are part of the body.
+    {"pattern": "^.*_halo$", "field": "body"},
+    // Several tails, wings, horns... are part of the body.
+    {"pattern": "^multiple_(tails|wings|horns|moles|scars|piercings|earrings|rings|belts|braids)$", "field": "body"},
+    // Kinds of person: cat_girl, knight, idol...
+    {"pattern": "^(?!1girl|1boy|magical_girl|.*_and_.*).*_(girl|boy)$|^(oni|angel|mermaid|merfolk|tomboy|mecha_musume|ninja|knight|idol|nekomata|jiangshi|draph|miqo'te|kemonomimi_mode)$", "field": "subject"},
+    // Bandages and plasters are accessories.
+    {"pattern": "^(bandaid_on_.*|bandaged_.*|bandage_on_.*|bandage_over_.*|.*_bandages?)$", "field": "accessories"},
+    // Covering a body part with a hand is a pose.
+    {"pattern": "^(covering_.*|covered_(eyes|mouth|face))$", "field": "pose"},
+    // A covered body part showing through clothes is part of the body.
+    {"pattern": "^covered_(navel|nipples|collarbone|abs|clitoris|penis|anus|pussy|erect_nipples)$", "field": "body"},
+    // Flowers, petals, leaves and trees belong to the scene.
+    {"pattern": "^(?!hair_).*_flower$|^.*_rose$|^.*_petals$|^.*_leaves$|^.*_tree$", "field": "background"},
+    // Prints and fabric patterns describe the outfit.
+    {"pattern": "^.*_print$|^(polka_dot|camouflage|leather|latex|plaid|checkered|argyle|pinstripe_pattern)$", "field": "outfit"},
+    // Blushes and anger veins are expressions.
+    {"pattern": "^(light_blush|anger_vein|parted_lips|blush_stickers|torogao|.*_blush)$", "field": "expression"},
+    // Actions and holding things are poses.
+    {"pattern": "^(carrying|smoking|drinking|eating|singing|bathing|floating|mouth_hold|sheet_grab|invisible_chair|indian_style|lifting_own_clothes|clothing_aside|dress_lift|adjusting_.*|holding_own_.*|holding_unworn_.*|breast_press|presenting.*|.*_grab|.*_lift|.*_pull|grabbing_.*|tachi-e)$", "field": "pose"},
+    // Fur is part of the body.
+    {"pattern": "^(black_fur|.*_fur|beard_stubble|navel_hair)$", "field": "body"}
+  ],
+
+  // The tag's slot in Mexes/danbooru-tag-taxonomy mapped to a field. Tags in any other: slot except
+  // other:unclassified (style, meta, layout...) are left out.
+  "slot_to_field": {
+    "appearance:hair": "hair",
+    "appearance:eyes": "eyes",
+    "appearance:anatomy": "body",
+    "appearance:demographics": "subject",
+    "clothing:outfit": "outfit",
+    "clothing:top": "top",
+    "clothing:bottom": "bottom",
+    "clothing:underwear": "outfit",
+    "clothing:headwear": "accessories",
+    "clothing:eyewear": "accessories",
+    "clothing:legwear": "legwear",
+    "clothing:footwear": "legwear",
+    "clothing:accents": "accessories",
+    "equipment:weapon": "accessories",
+    "equipment:handheld": "accessories",
+    "pose:camera": "view",
+    "pose:posture": "pose",
+    "pose:gesture": "pose",
+    "pose:kinetic": "pose",
+    "pose:combat": "pose",
+    "pose:interaction": "pose",
+    "pose:physiological": "pose",
+    "pose:expression": "expression",
+    "scenery:setting": "background",
+    "scenery:props": "background",
+    "scenery:atmosphere": "background",
+    "creature:animal": "background"
+  },
+
+  // Clothing names, used only for tags the taxonomy has no slot for.
+  "fallback_patterns": [
+    // Tops: shirts, jackets, sweaters, sleeves...
+    {"pattern": "^(?:.*_)?(shirt|blouse|jacket|coat|sweater|hoodie|cardigan|vest|blazer|t-shirt|tank_top|camisole|crop_top|tube_top|halterneck|bandeau|bustier|corset|waistcoat|parka|raincoat|trench_coat|labcoat|haori|sleeves|sleeve|turtleneck|tunic|jersey|polo_shirt|breastplate|pauldrons?|shoulder_armor|bra|sarashi|chest_sarashi|pasties|shrug_\\(clothing\\)|shrug|happi|tabard|suit_jacket|track_jacket|letterman_jacket|bomber_jacket|hooded_.*|sailor_shirt|serafuku_top|collared_.*|neckline|lapels|epaulettes|aiguillette)$", "field": "top"},
+    // Details of the top: bare shoulders, cutouts, open jackets, collars...
+    {"pattern": "^(bare_shoulders|off_shoulder|off-shoulder_.*|sleeveless|strapless|bare_arms|shoulder_cutout|cleavage_cutout|underboob_cutout|clothing_cutout|side_cutout|back_cutout|backless_.*|plunging_neckline|center_opening|open_shirt|open_jacket|open_coat|open_cardigan|open_vest|open_collar|unbuttoned.*|partially_unbuttoned|jacket_on_shoulders|.*_on_shoulders|coat_on_shoulders|sleeves_.*|sleeve_.*|buttons|double-breasted|breast_pocket|zipper.*|drawstring|hood|hood_up|hood_down|shirt_tucked_in|tied_shirt|midriff_peek|taut_shirt|taut_clothes|impossible_shirt|impossible_clothes|shirt_lift|.*_removed|single_bare_shoulder|armpit_cutout|detached_collar|wing_collar|popped_collar|high_collar|v-neck|.*_neckwear)$", "field": "top"},
+    // Bottoms: skirts, trousers, shorts, underwear...
+    {"pattern": "^(?:.*_)?(skirt|pants|shorts|jeans|trousers|bloomers|buruma|hakama|hakama_skirt|hakama_pants|panties|thong|g-string|fundoshi|loincloth|briefs|boxers|boxer_briefs|leggings|capri_pants|sweatpants|overskirt|pelvic_curtain|miniskirt|microskirt|bike_shorts|short_shorts|hot_pants|dolphin_shorts|gym_shorts|denim_shorts|pencil_skirt|pleated_skirt|side_slit|waist_apron|sarong|showgirl_skirt|chaps|hip_vent|bikini_bottom|.*_bikini_bottom|lowleg_.*|belt)$", "field": "bottom"},
+    // Details of the bottom: lifted skirts, no pants...
+    {"pattern": "^(bottomless|no_pants|no_panties|pantyshot|upskirt|skirt_lift|skirt_hold|pants_pull|panty_pull|skirt_pull|shorts_pull|panties_aside|skirt_set|high-waist_.*|lowleg|side-tie_.*|string_panties|cameltoe|whale_tail_\\(clothing\\)|panty_peek)$", "field": "bottom"},
+    // Legwear and footwear.
+    {"pattern": "^(?:.*_)?(thighhighs|pantyhose|socks|kneehighs|stockings|legwear|leg_warmers|footwear|boots|shoes|sandals|sneakers|loafers|slippers|high_heels|heels|pumps|geta|zouri|tabi|mary_janes|flip-flops|greaves|garter_straps|garter_belt|thigh_strap|anklet|ankle_.*|toeless_.*|stirrup_.*|uwabaki|okobo|waraji|thigh_boots|knee_boots|fishnets|leg_garter|thighlet|leg_ribbon|bobby_socks|loose_socks|tights)$", "field": "legwear"},
+    // Bare legs and feet, single socks...
+    {"pattern": "^(barefoot|no_shoes|no_socks|bare_legs|shoes_removed|.*_soles|shoe_soles|single_thighhigh|single_sock|single_shoe|single_kneehigh|skindentation|asymmetrical_legwear|mismatched_legwear|.*_over_.*hose|torn_legwear)$", "field": "legwear"},
+    // Whole outfits: dresses, uniforms, swimsuits, armor...
+    {"pattern": "^(?:.*_)?(dress|kimono|yukata|uniform|serafuku|swimsuit|bikini|leotard|bodysuit|armor|robe|pajamas|nightgown|negligee|babydoll|lingerie|costume|suit|tuxedo|overalls|jumpsuit|unitard|romper|apron|gown|sundress|cheongsam|china_dress|hanfu|hanbok|dirndl|furisode|sweater_dress|pinafore_dress|tracksuit|wetsuit|plugsuit|maid|playboy_bunny|bunnysuit|gakuran|miko|nontraditional_miko|habit|nun|teddy_\\(clothing\\)|chemise|one-piece|monokini|slingshot_swimsuit|sportswear|gym_uniform|track_suit|naked_.*|nude|completely_nude|topless.*|underwear_only|underwear|clothes|.*_clothes|japanese_clothes|chinese_clothes|bridal_.*|wedding_dress|.*_outfit|.*_attire|ao_dai|vestments|straitjacket|harness|bondage_outfit|bodystocking|bodypaint|fur_trim|frills|lace_trim|lace|ribbon_trim|gold_trim|see-through|wet_clothes|torn_clothes|skin_tight|revealing_clothes|highleg.*|leotard_under_clothes|.*_under_clothes)$", "field": "outfit"}
+  ],
+
+  // Danbooru wiki tag groups mapped to fields. The first group in this list the tag belongs to decides.
+  "group_to_field": [
+    {"group": "hair_color", "field": "hair"},
+    {"group": "hair_styles", "field": "hair"},
+    {"group": "hair", "field": "hair"},
+    {"group": "eyes_tags", "field": "eyes"},
+    {"group": "skin_color", "field": "body"},
+    {"group": "ears_tags", "field": "body"},
+    {"group": "tail", "field": "body"},
+    {"group": "wings", "field": "body"},
+    {"group": "breasts_tags", "field": "body"},
+    {"group": "body_parts", "field": "body"},
+    {"group": "ass", "field": "body"},
+    {"group": "shoulders", "field": "body"},
+    {"group": "dress", "field": "outfit"},
+    {"group": "sexual_attire", "field": "outfit"},
+    {"group": "nudity", "field": "outfit"},
+    {"group": "sleeves", "field": "top"},
+    {"group": "legwear", "field": "legwear"},
+    {"group": "headwear", "field": "accessories"},
+    {"group": "handwear", "field": "accessories"},
+    {"group": "eyewear", "field": "accessories"},
+    {"group": "piercings", "field": "accessories"},
+    {"group": "embellishment", "field": "accessories"},
+    {"group": "mask", "field": "accessories"},
+    {"group": "posture", "field": "pose"},
+    {"group": "gestures", "field": "pose"},
+    {"group": "hands", "field": "pose"},
+    {"group": "backgrounds", "field": "background"},
+    {"group": "locations", "field": "background"},
+    {"group": "lighting", "field": "background"},
+    {"group": "flowers", "field": "background"},
+    {"group": "water", "field": "background"},
+    {"group": "fire", "field": "background"},
+    {"group": "focus_tags", "field": "view"}
+  ],
+
+  // Last resort: the tag's category in Jio7/danbooru-tags-classified.
+  "jio7_to_field": {
+    "attire": "accessories",
+    "feature": "body",
+    "action": "pose",
+    "setting": "background",
+    "expression": "expression",
+    "object": "accessories"
+  },
+
+  // In a character's usual look only the most common tag of each group is kept (one hair colour,
+  // one hair length...), and the dice never roll two tags from the same group. A tag in multi allows
+  // a second one: multicolored_hair, for example, lets two hair colours stay.
+  "exclusive_groups": {
+    "hair_color": {
+      "tags": [
+        "black_hair", "blonde_hair", "brown_hair", "blue_hair", "pink_hair", "white_hair",
+        "grey_hair", "purple_hair", "red_hair", "green_hair", "orange_hair", "aqua_hair",
+        "light_brown_hair", "light_blue_hair", "dark_blue_hair", "light_purple_hair",
+        "platinum_blonde_hair", "dark_green_hair", "light_green_hair", "dark_red_hair"
+      ],
+      "multi": [
+        "multicolored_hair", "two-tone_hair", "streaked_hair", "gradient_hair",
+        "colored_inner_hair", "split-color_hair", "colored_tips"
+      ]
+    },
+    "hair_length": {
+      "tags": [
+        "very_short_hair", "short_hair", "medium_hair", "long_hair", "very_long_hair",
+        "absurdly_long_hair", "bald"
+      ],
+      "multi": []
+    },
+    "eye_color": {
+      "tags": [
+        "blue_eyes", "red_eyes", "purple_eyes", "green_eyes", "brown_eyes", "yellow_eyes",
+        "pink_eyes", "black_eyes", "grey_eyes", "orange_eyes", "aqua_eyes", "white_eyes"
+      ],
+      "multi": [
+        "heterochromia", "multicolored_eyes", "two-tone_eyes", "gradient_eyes"
+      ]
+    },
+    "breast_size": {
+      "tags": [
+        "flat_chest", "small_breasts", "medium_breasts", "large_breasts", "huge_breasts",
+        "gigantic_breasts"
+      ],
+      "multi": []
+    },
+    "subject": {
+      "tags": [
+        "1girl", "1boy", "1other"
+      ],
+      "multi": []
+    },
+    "framing": {
+      "tags": [
+        "portrait", "upper_body", "cowboy_shot", "full_body", "lower_body", "close-up"
+      ],
+      "multi": []
+    },
+    "background_color": {
+      "tags": [
+        "white_background", "grey_background", "blue_background", "pink_background",
+        "black_background", "yellow_background", "red_background", "green_background",
+        "purple_background", "orange_background", "brown_background", "aqua_background"
+      ],
+      "multi": [
+        "two-tone_background", "gradient_background", "multicolored_background"
+      ]
+    },
+    "posture": {
+      "tags": [
+        "standing", "sitting", "lying", "kneeling", "squatting", "all_fours"
+      ],
+      "multi": []
+    }
+  },
+
+  // Never part of a character's usual look: they say what happens to be visible, or are too generic
+  // to describe anyone. They stay available for autocomplete and the dice.
+  "not_identity": [
+    "animal", "anus", "areolae", "armpits", "arms", "ass", "ass_visible_through_thighs", "back",
+    "bare_arms", "bare_back", "bare_legs", "bare_shoulders", "barefoot", "bikini_tan", "blood",
+    "breasts", "cameltoe", "cleavage", "collarbone", "completely_nude", "covered_navel",
+    "covered_nipples", "dimples_of_venus", "feet", "feet_out_of_frame", "fingernails", "food",
+    "groin", "hands", "hip_bones", "holding", "kneepits", "knees", "legs", "linea_alba", "lips",
+    "median_furrow", "midriff", "nape", "navel", "navel_peek", "neck", "nipples", "nose", "nude",
+    "one-piece_tan", "penis", "pubic_hair", "pussy", "ribs", "shoulder_blades", "sideboob",
+    "skindentation", "soles", "stomach", "sweat", "tan", "tanlines", "teeth", "testicles",
+    "thigh_gap", "thighs", "toenails", "toes", "tongue", "underboob", "weapon", "wet",
+    "zettai_ryouiki"
+  ]
+}

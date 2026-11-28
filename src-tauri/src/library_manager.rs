@@ -83,7 +83,7 @@ fn generate_id(name: &str, category: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(format!("{name}{category}{ts}").as_bytes());
     let hash = hasher.finalize();
-    format!("{:x}", hash)[..16].to_string()
+    hex::encode(hash)[..16].to_string()
 }
 
 fn item_path(app_handle: &AppHandle, category: &str, id: &str) -> Result<PathBuf, String> {
@@ -238,7 +238,7 @@ pub fn clean_orphaned_thumbnails(app_handle: &AppHandle) {
                             .and_then(|m| m.modified().ok())
                             .is_some_and(|mod_time| {
                                 now.duration_since(mod_time)
-                                    .is_ok_and(|d| d.as_secs() < 60)
+                                    .is_ok_and(|d| d.as_secs() < 3600)
                             });
                         if !is_recent {
                             let _ = fs::remove_file(&path);
@@ -253,7 +253,8 @@ pub fn clean_orphaned_thumbnails(app_handle: &AppHandle) {
 // Tauri commands — Thumbnails
 
 /// Copy an image file from any path on disk into the library thumbnails dir,
-/// converting it to JPEG. Returns the thumbnail_id (filename stem).
+/// converting it to JPEG. Returns the thumbnail_id (filename stem), unique per
+/// save so its URL never resolves to a cached older image.
 #[tauri::command(async)]
 pub fn library_save_thumbnail_from_path(
     app_handle: AppHandle,
@@ -339,7 +340,7 @@ fn save_thumbnail_bytes(
     item_id: &str,
     bytes: &[u8],
 ) -> Result<String, String> {
-    let thumb_id = sanitize_segment(item_id);
+    let thumb_id = format!("{}-{}", sanitize_segment(item_id), now_ms());
     let thumb_dir = thumbnails_dir(app_handle)?;
     let dest = thumb_dir.join(format!("{thumb_id}.jpg"));
 

@@ -35,6 +35,7 @@ const activeViewTitle = computed(() => {
   if (route.path.startsWith('/statistics')) return 'Statistics';
   if (route.path.startsWith('/booru')) return 'Booru Gallery';
   if (route.path.startsWith('/animadex')) return 'Animadex Explore';
+  if (route.path.startsWith('/moss-catalog')) return 'MOSS Catalog';
   if (route.path.startsWith('/models/')) return 'Model Detail';
   if (route.path.startsWith('/models')) return 'Model Manager';
   if (route.path.startsWith('/civitai/model')) return 'Civitai Model Detail';

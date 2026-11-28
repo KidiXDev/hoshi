@@ -40,7 +40,7 @@ Context and guidelines for AI agents working on **Hoshi** (codename **Koharu**),
 | **AI**             | Vercel `ai` + `@openrouter/ai-sdk-provider`                                  | Maya assistant, prompt enhancer, session titling                        |
 | **HTTP**           | `axios` (frontend), `reqwest` (Rust)                                         | ComfyUI REST and third-party APIs                                       |
 | **Linter**         | Oxlint                                                                       | `src/components/ui/**` is ignored                                       |
-| **Formatter**      | Prettier                                                                     | `prettier-plugin-organize-imports` + `prettier-plugin-tailwindcss`      |
+| **Formatter**      | Oxfmt                                                                        | `.oxfmtrc.json`; sorts Tailwind classes, and imports in `.ts` files     |
 
 ---
 
@@ -83,6 +83,7 @@ koharu/
 │   │   ├── image_gallery.rs      # Output index + thumbnail cache
 │   │   ├── model_manager.rs      # Local model index, hashing, Civitai sync, previews
 │   │   ├── library_manager.rs  prompt_suggestions.rs  download_manager.rs
+│   │   ├── dropped_files.rs      # WebView2 bridge returning real paths for files dropped from Explorer (Windows only)
 │   │   ├── civitai.rs  animadex.rs  danbooru_wiki.rs  network_cache.rs
 │   │   └── booru/                # Provider trait (mod.rs) + API engines danbooru/gelbooru/moebooru; sources/ has one file per site
 │   ├── Cargo.toml  tauri.conf.json  capabilities/default.json
@@ -108,18 +109,18 @@ koharu/
 
 7. **Library & presets** — `library_manager.rs` stores prompts, LoRA presets and characters as JSON with JPEG thumbnails; LoRA presets only replace the LoRA stack. Legacy `lora_presets` app data is migrated into the Library on startup.
 
-8. **Drag & drop** — `dragDropEnabled: false`, so the webview handles drops; `main.ts` cancels stray file/link drops (they would otherwise navigate the app away). Every drop zone uses `useImageDropZone`, which accepts files and `text/uri-list` (gallery/history drags).
+8. **Drag & drop** — `dragDropEnabled: false`, so the webview handles drops; `main.ts` cancels stray file/link drops (they would otherwise navigate the app away). Every image drop zone uses `useImageDropZone`, which accepts files and `text/uri-list` (gallery/history drags). Model Manager uses `useModelFileDrop` instead: HTML5 `File` objects carry no path, so `droppedFilePaths` posts them with `chrome.webview.postMessageWithAdditionalObjects` and `dropped_files.rs` emits the real paths. The message must be a string: wry's handler runs first and fails on anything else, and WebView2 then never calls `dropped_files.rs`. It keeps `dropEffect = 'copy'` even though the import moves files, because reporting `move` can make Explorer delete the source itself. It uses plain handlers because `useDropZone` sets `dropEffect = 'none'` on bubbling in-app model drags.
 
 ---
 
 ## 6. Conventions
 
-1. **Prettier plugin order** — `prettier-plugin-tailwindcss` must stay last in `.prettierrc`.
+1. **Import sorting** — `sortImports` is scoped to `*.ts` in `.oxfmtrc.json`; `.vue` imports keep their hand-written order. Oxfmt does not remove unused imports; Oxlint's `no-unused-vars` flags them.
 2. **Components** — SFCs with `<script setup lang="ts">`, Composition API, Pinia composables. Shared primitives in `src/components/ui/`, app shell in `src/components/template/`.
 3. **Path sanitization** — strip surrounding quotes from path inputs in both frontend and backend.
 4. **Validation** — `bun run lint` + `bun run typecheck`; never `bun run build` for routine checks.
 5. **Select** — always the shadcn-vue `Select` suite, items wrapped in `<SelectGroup class="max-h-40 overflow-y-auto">`; canonical Tailwind classes over arbitrary values.
-6. **Comments** — none, except short section markers and `ponytail:` notes for deliberate simplifications.
+6. **Comments** — none, except short section markers.
 7. **Tests** — Vitest; typed `*.test.ts` next to the code with explicit `vitest` imports, one behavior per `it`, typed `vi.mock(import(...))`, `setActivePinia(createPinia())` for stores, `happy-dom` + `@vue/test-utils` for DOM/components. Shared helpers live in `src/test/`.
 
 ---

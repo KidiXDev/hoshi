@@ -136,6 +136,12 @@ export function clearBooruCache() {
   return invoke<{ ok: boolean }>('booru_clear_cache');
 }
 
+export function getBooruMediaCacheStats() {
+  return invoke<{ totalEntries: number; totalSizeBytes: number }>(
+    'booru_media_cache_stats'
+  );
+}
+
 export function testBooruCredentials(
   source: string,
   credentials: Record<string, string>
@@ -216,4 +222,26 @@ export function solveBooruCloudflare(source: string = 'konachan.com') {
   return invoke<{ ok: boolean; message: string }>('booru_solve_cloudflare', {
     source
   });
+}
+
+export function getKonachanAccessIssue(source: string, message: string) {
+  if (source !== 'konachan.com') return null;
+  if (message.startsWith('The verification window received clearance')) {
+    return 'rejected-after-verification';
+  }
+  if (
+    message.startsWith(
+      'konachan.com request was blocked by Cloudflare verification'
+    )
+  ) {
+    return 'challenge';
+  }
+  if (
+    message.startsWith(
+      "konachan.com request was blocked by the site's Cloudflare firewall"
+    )
+  ) {
+    return 'firewall';
+  }
+  return null;
 }

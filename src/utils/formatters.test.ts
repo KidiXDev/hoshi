@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { formatFileSize, formatShortDate } from './formatters';
+import {
+  formatElapsed,
+  formatFileSize,
+  formatShortDate,
+  formatTitle
+} from './formatters';
+
+describe('formatTitle', () => {
+  it('capitalizes words split by underscores or spaces', () => {
+    expect(formatTitle('raiden_shogun')).toBe('Raiden Shogun');
+    expect(formatTitle('fate (series)')).toBe('Fate (series)');
+  });
+});
 
 describe('formatFileSize', () => {
   it('formats byte sizes with one decimal above bytes', () => {
@@ -11,5 +23,13 @@ describe('formatFileSize', () => {
 describe('formatShortDate', () => {
   it('keeps an empty timestamp empty', () => {
     expect(formatShortDate(0)).toBe('');
+  });
+});
+
+describe('formatElapsed', () => {
+  it('shows seconds, then minutes with padded seconds, then hours', () => {
+    expect(formatElapsed(42.7)).toBe('42s');
+    expect(formatElapsed(723)).toBe('12m 03s');
+    expect(formatElapsed(3720)).toBe('1h 2m');
   });
 });

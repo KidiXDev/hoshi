@@ -1,5 +1,13 @@
+import type { WorkflowProfile } from './workflow';
+
+export type PromptAutocompleteSource = 'tag' | 'word';
+
 export type ProcessStatus =
-  'stopped' | 'starting' | 'stopping' | 'running' | 'error';
+  | 'stopped'
+  | 'starting'
+  | 'stopping'
+  | 'running'
+  | 'error';
 
 export interface LauncherConfig {
   workingDir: string;
@@ -15,6 +23,7 @@ export interface LauncherConfig {
   autocompleteIncludeArtistPrefix: boolean;
   autocompleteEscapeParentheses: boolean;
   wordAutocompleteEnabled: boolean;
+  promptAutocompleteSource: Record<WorkflowProfile, PromptAutocompleteSource>;
   promptEditorMode: boolean;
 }
 

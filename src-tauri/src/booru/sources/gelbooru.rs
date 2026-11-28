@@ -5,7 +5,12 @@ pub static GELBOORU: Gelbooru = Gelbooru {
     display_name: "Gelbooru",
     origin: "https://gelbooru.com",
     api_origin: "https://gelbooru.com",
-    media_hosts: &["gelbooru.com", "img3.gelbooru.com", "img4.gelbooru.com"],
+    media_hosts: &[
+        "gelbooru.com",
+        "img2.gelbooru.com",
+        "img3.gelbooru.com",
+        "img4.gelbooru.com",
+    ],
     ratings: &["general", "sensitive", "questionable", "explicit"],
     default_rating: "",
     max_limit: 100,

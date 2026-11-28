@@ -15,7 +15,9 @@ import {
 // -----------------------------------------------------------------------------
 
 export type MessageScrollerDefaultScrollPosition =
-  'start' | 'end' | 'last-anchor';
+  | 'start'
+  | 'end'
+  | 'last-anchor';
 export type MessageScrollerButtonDirection = 'start' | 'end';
 export type MessageScrollerScrollAlign = 'start' | 'center' | 'end' | 'nearest';
 

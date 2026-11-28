@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -23,8 +24,12 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useWorkflowStore } from '../../stores/workflowStore';
-import type { LayoutBox, LayoutBoxKind } from '../../types/workflow';
-import { layoutCanvasSize } from '../../utils/mossLayout';
+import type {
+  LayoutBox,
+  LayoutBoxKind,
+  LayoutCanvas
+} from '../../types/workflow';
+import { LAYOUT_CANVASES, layoutCanvasSize } from '../../utils/mossLayout';
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ (e: 'update:open', value: boolean): void }>();
@@ -49,8 +54,30 @@ const BOX_KINDS: { value: LayoutBoxKind; label: string; tone: string }[] = [
   { value: 'text', label: 'Text', tone: 'border-amber-500 bg-amber-500/10' }
 ];
 
+const CANVAS_LABELS: Record<LayoutCanvas | 'auto', string> = {
+  auto: 'Not specified',
+  single: 'Single image',
+  multi_panel: 'Multi-panel',
+  collage: 'Collage'
+};
+const CANVAS_OPTIONS: (LayoutCanvas | 'auto')[] = ['auto', ...LAYOUT_CANVASES];
+
 const workflowStore = useWorkflowStore();
 const boxes = computed(() => workflowStore.moss.layoutBoxes);
+const summary = computed(() => workflowStore.moss.layoutSummary);
+const canvasKind = computed({
+  get: () => summary.value.canvas ?? 'auto',
+  set: (value: LayoutCanvas | 'auto') => {
+    summary.value.canvas = value === 'auto' ? undefined : value;
+  }
+});
+
+const listText = (list?: string[]) => list?.join(', ') ?? '';
+const listFrom = (event: Event) =>
+  (event.target as HTMLInputElement).value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 const canvasSize = computed(() =>
   layoutCanvasSize({
     imageInput: workflowStore.imageInput,
@@ -262,6 +289,54 @@ onBeforeUnmount(stopDrag);
             </Button>
           </div>
 
+          <!-- Scene -->
+          <div class="flex flex-col gap-2 rounded-lg border p-2.5">
+            <div class="flex items-center gap-2">
+              <Label for="layout-canvas" class="w-14 text-xs">Canvas</Label>
+              <Select v-model="canvasKind">
+                <SelectTrigger
+                  id="layout-canvas"
+                  size="sm"
+                  class="h-7 flex-1 text-xs"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup class="max-h-40 overflow-y-auto">
+                    <SelectItem
+                      v-for="option in CANVAS_OPTIONS"
+                      :key="option"
+                      :value="option"
+                      class="text-xs"
+                    >
+                      {{ CANVAS_LABELS[option] }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="flex items-center gap-2">
+              <Label for="layout-meta" class="w-14 text-xs">Medium</Label>
+              <Input
+                id="layout-meta"
+                :model-value="listText(summary.meta)"
+                placeholder="poster, studio photography"
+                class="h-7 flex-1 text-xs"
+                @change="summary.meta = listFrom($event)"
+              />
+            </div>
+            <div class="flex items-center gap-2">
+              <Label for="layout-palette" class="w-14 text-xs">Palette</Label>
+              <Input
+                id="layout-palette"
+                :model-value="listText(summary.palette)"
+                placeholder="#F4EDE1, dark green"
+                class="h-7 flex-1 text-xs"
+                @change="summary.palette = listFrom($event)"
+              />
+            </div>
+          </div>
+
           <p
             v-if="boxes.length === 0"
             class="text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs"
@@ -365,6 +440,33 @@ onBeforeUnmount(stopDrag);
                     "
                     class="min-h-16 text-xs"
                   />
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="flex flex-col gap-1">
+                    <Label :for="`box-tags-${box.id}`" class="text-xs">
+                      Tags
+                    </Label>
+                    <Input
+                      :id="`box-tags-${box.id}`"
+                      :model-value="listText(box.tags)"
+                      placeholder="Comma separated"
+                      class="h-7 text-xs"
+                      @change="box.tags = listFrom($event)"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-1">
+                    <Label :for="`box-palette-${box.id}`" class="text-xs">
+                      Palette
+                    </Label>
+                    <Input
+                      :id="`box-palette-${box.id}`"
+                      :model-value="listText(box.palette)"
+                      placeholder="#C0C0C0, navy"
+                      class="h-7 text-xs"
+                      @change="box.palette = listFrom($event)"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

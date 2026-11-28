@@ -1,19 +1,25 @@
 mod animadex;
 mod app_data;
 mod booru;
+mod character_data;
 mod civitai;
 mod comfy_paths;
 mod comfy_update;
 mod danbooru_wiki;
 mod download_manager;
+#[cfg(windows)]
+mod dropped_files;
 mod image_gallery;
 mod library_manager;
 mod model_manager;
+mod moss_catalog;
 mod network_cache;
 mod process_manager;
 mod prompt_suggestions;
 mod python;
 mod system_info;
+mod tag_autocomplete;
+mod wildcards;
 mod word_frequency;
 
 use comfy_paths::clean_path;
@@ -384,6 +390,15 @@ pub fn run() {
                 });
             },
         )
+        .register_asynchronous_uri_scheme_protocol(
+            "koharu-moss",
+            move |_context, request, responder| {
+                let path = request.uri().path().trim_matches('/').to_string();
+                respond_in_background(responder, "public, max-age=2592000, immutable", move || {
+                    moss_catalog::media(&path)
+                });
+            },
+        )
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let gallery_cache_dir = app.path().app_config_dir()?.join(".cache").join("gallery");
@@ -394,6 +409,9 @@ pub fn run() {
                 .configure(app.path().app_config_dir()?)
                 .map_err(std::io::Error::other)?;
             network_cache::prune_expired_in_background(app.handle());
+            if let Err(error) = character_data::rebuild::ensure_config(app.handle()) {
+                eprintln!("Character Helper config: {error}");
+            }
             build_tray(app)?;
             if let (Some(window), Some(icon)) =
                 (app.get_webview_window("main"), app.default_window_icon())
@@ -401,6 +419,8 @@ pub fn run() {
                 window.set_icon(icon.clone())?;
                 #[cfg(windows)]
                 style_native_window(&window)?;
+                #[cfg(windows)]
+                dropped_files::install(&window)?;
             }
             Ok(())
         })
@@ -430,6 +450,7 @@ pub fn run() {
             booru::booru_favorites,
             booru::booru_favorite_set,
             booru::booru_clear_cache,
+            booru::booru_media_cache_stats,
             civitai::models,
             civitai::model_by_id,
             civitai::image_generation_data,
@@ -450,12 +471,15 @@ pub fn run() {
             model_manager::check_model_update,
             model_manager::delete_model,
             model_manager::move_model,
+            model_manager::import_model_files,
             model_manager::set_model_preview,
             download_manager::list,
             download_manager::pause,
             download_manager::resume,
             download_manager::cancel,
             download_manager::clear_history,
+            download_manager::retry,
+            download_manager::download_url,
             image_gallery::list_output_images,
             image_gallery::resolve_history_images,
             process_manager::discover_local_models,
@@ -479,7 +503,23 @@ pub fn run() {
             prompt_suggestions::open_prompt_suggestions_folder,
             word_frequency::load_word_frequency_data,
             word_frequency::open_word_frequency_folder,
+            tag_autocomplete::load_tag_autocomplete_data,
+            tag_autocomplete::open_tag_autocomplete_folder,
+            wildcards::load_wildcards,
+            wildcards::open_wildcards_folder,
             animadex::animadex_request,
+            moss_catalog::moss_catalog_search,
+            moss_catalog::moss_catalog_facets,
+            character_data::character_data_fields,
+            character_data::character_data_autocomplete,
+            character_data::character_data_suggest,
+            character_data::character_data_preset,
+            character_data::character_data_randomize,
+            character_data::rebuild::character_data_status,
+            character_data::rebuild::character_data_reset_config,
+            character_data::rebuild::character_data_clear_downloads,
+            character_data::rebuild::character_data_rebuild,
+            character_data::rebuild::character_data_cancel_rebuild,
             network_cache::clear_network_cache,
             network_cache::get_network_cache_stats,
             system_info::get_system_specs,
@@ -489,6 +529,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                character_data::rebuild::stop();
                 app.state::<download_manager::DownloadManager>()
                     .suspend_all(app, std::time::Duration::from_secs(5));
             }

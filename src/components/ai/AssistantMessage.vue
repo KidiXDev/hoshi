@@ -25,6 +25,7 @@ import {
 import { useAiStore } from '@/stores/aiStore';
 import type { ChatMessage, ChatMessagePart } from '@/types/ai';
 import { formatRelativeTime } from '@/utils/formatters';
+import { describeSearchActivity } from '@/utils/searchActivity';
 
 defineProps<{ msg: ChatMessage }>();
 defineEmits<{
@@ -325,16 +326,13 @@ function renderMarkdown(content: string): string {
             </div>
           </div>
 
-          <!-- Animadex lookup -->
+          <!-- Search activity -->
           <div
-            v-else-if="
-              part.invocation.name === 'search_animadex' ||
-              part.invocation.name === 'retrieve_animadex_tag_by_id'
-            "
-            class="flex items-center gap-2 text-sm"
+            v-else-if="describeSearchActivity(part.invocation)"
+            class="flex items-start gap-2 text-sm"
           >
             <div
-              class="flex h-5 w-5 items-center justify-center rounded-md border transition-colors duration-200"
+              class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors duration-200"
               :class="
                 part.invocation.result
                   ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
@@ -350,7 +348,12 @@ function renderMarkdown(content: string): string {
                 leave-active-class="transition duration-100 ease-in"
                 leave-to-class="scale-75 opacity-0"
               >
-                <Search
+                <component
+                  :is="
+                    part.invocation.name === 'search_character_library'
+                      ? Library
+                      : Search
+                  "
                   v-if="part.invocation.result"
                   key="done"
                   class="h-3 w-3"
@@ -378,78 +381,25 @@ function renderMarkdown(content: string): string {
                       ? 'cancelled'
                       : 'searching'
                 "
-                class="text-foreground font-medium"
+                class="text-foreground min-w-0 font-medium wrap-anywhere"
               >
-                {{
-                  part.invocation.result
-                    ? 'Done'
-                    : part.invocation.state === 'rejected'
-                      ? 'Search cancelled'
-                      : 'Searching...'
-                }}
-              </span>
-            </Transition>
-          </div>
-
-          <!-- Character Library search -->
-          <div
-            v-else-if="part.invocation.name === 'search_character_library'"
-            class="flex items-center gap-2 text-sm"
-          >
-            <div
-              class="flex h-5 w-5 items-center justify-center rounded-md border transition-colors duration-200"
-              :class="
-                part.invocation.result
-                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-400'
-                  : part.invocation.state === 'rejected'
-                    ? 'border-muted bg-muted/40 text-muted-foreground'
-                    : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400'
-              "
-            >
-              <Transition
-                mode="out-in"
-                enter-active-class="transition duration-200 ease-out"
-                enter-from-class="scale-75 opacity-0"
-                leave-active-class="transition duration-100 ease-in"
-                leave-to-class="scale-75 opacity-0"
-              >
-                <Library
-                  v-if="part.invocation.result"
-                  key="done"
-                  class="h-3 w-3"
-                />
-                <X
-                  v-else-if="part.invocation.state === 'rejected'"
-                  key="cancelled"
-                  class="h-3 w-3"
-                />
-                <Loader2 v-else key="searching" class="h-3 w-3 animate-spin" />
-              </Transition>
-            </div>
-            <Transition
-              mode="out-in"
-              enter-active-class="transition duration-200 ease-out"
-              enter-from-class="translate-y-0.5 opacity-0"
-              leave-active-class="transition duration-100 ease-in"
-              leave-to-class="-translate-y-0.5 opacity-0"
-            >
-              <span
-                :key="
-                  part.invocation.result
-                    ? 'done'
-                    : part.invocation.state === 'rejected'
-                      ? 'cancelled'
-                      : 'searching'
-                "
-                class="text-foreground font-medium"
-              >
-                {{
-                  part.invocation.result
-                    ? 'Character Library Inspected'
-                    : part.invocation.state === 'rejected'
-                      ? 'Library search cancelled'
-                      : 'Searching Character Library...'
-                }}
+                {{ describeSearchActivity(part.invocation)?.label }}
+                <template
+                  v-if="describeSearchActivity(part.invocation)?.subject"
+                >
+                  for
+                  <span class="text-primary"
+                    >"{{
+                      describeSearchActivity(part.invocation)?.subject
+                    }}"</span
+                  >
+                </template>
+                <span
+                  v-if="describeSearchActivity(part.invocation)?.outcome"
+                  class="text-muted-foreground ml-1 text-xs font-normal"
+                >
+                  {{ describeSearchActivity(part.invocation)?.outcome }}
+                </span>
               </span>
             </Transition>
           </div>

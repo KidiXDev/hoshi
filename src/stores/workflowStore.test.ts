@@ -119,6 +119,18 @@ describe('useWorkflowStore profiles', () => {
     setActivePinia(createPinia());
   });
 
+  it('keeps TSR and AuraFlow off in the MOSS defaults', async () => {
+    const workflow = await initializedWorkflow();
+
+    await workflow.switchProfile('moss');
+
+    expect(workflow.moss).toMatchObject({
+      tsrEnabled: false,
+      auraFlowEnabled: false,
+      auraFlowShift: 5
+    });
+  });
+
   it('save the current session and load MOSS defaults on switch', async () => {
     const workflow = await initializedWorkflow();
     workflow.positivePrompt = 'anima prompt';
@@ -135,7 +147,12 @@ describe('useWorkflowStore profiles', () => {
     expect(loadAppData).toHaveBeenCalledWith('workflow_session_state_moss');
     expect(saveAppData).toHaveBeenCalledWith('workflow_profile', 'moss');
     expect(workflow.profile).toBe('moss');
-    expect(workflow.sampler).toMatchObject({ steps: 25, cfg: 2.5 });
+    expect(workflow.sampler).toMatchObject({
+      steps: 25,
+      cfg: 3,
+      samplerName: 'er_sde',
+      scheduler: 'simple'
+    });
     expect(workflow.negativePrompt).toBe(
       'nsfw, worst quality, bad anatomy, watermark, jpeg artifact'
     );

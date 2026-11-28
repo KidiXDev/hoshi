@@ -8,6 +8,7 @@ import ModelSection from '@/components/template/ModelSection.vue';
 import AdvancedSettingsSection from '@/components/template/AdvancedSettingsSection.vue';
 import PromptSection from '@/components/template/PromptSection.vue';
 import ImageInputSection from '@/components/template/ImageInputSection.vue';
+import CharacterHelperSection from '@/components/template/CharacterHelperSection.vue';
 import WDTaggerSection from '@/components/template/WDTaggerSection.vue';
 import SamplerSection from '@/components/template/SamplerSection.vue';
 import LoraChainSection from '@/components/template/LoraChainSection.vue';
@@ -226,7 +227,12 @@ async function viewWorkflow() {
             class="border-border bg-card hover:border-primary/40 flex flex-col gap-3 rounded-xl border p-3.5 shadow-2xs transition-colors"
           >
             <PromptSection />
-            <template v-if="workflowStore.profile === 'moss'">
+            <template
+              v-if="
+                workflowStore.profile === 'moss' &&
+                workflowStore.imageInput.mode !== 'edit'
+              "
+            >
               <div class="border-border border-t pt-2">
                 <MossLayoutSection />
               </div>
@@ -237,6 +243,13 @@ async function viewWorkflow() {
             <div class="border-border border-t pt-2">
               <ImageInputSection />
             </div>
+          </section>
+
+          <!-- Character Helper -->
+          <section
+            class="border-border bg-card hover:border-primary/40 rounded-xl border p-1 shadow-2xs transition-colors"
+          >
+            <CharacterHelperSection />
           </section>
 
           <!-- 3. WD Tagger -->

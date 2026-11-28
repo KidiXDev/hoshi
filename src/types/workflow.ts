@@ -31,7 +31,7 @@ export interface SamplerSettings {
 }
 
 export interface ImageInputSettings {
-  mode: 'text2img' | 'img2img' | 'inpaint';
+  mode: 'text2img' | 'img2img' | 'inpaint' | 'edit';
   imageName: string;
   imageWidth: number;
   imageHeight: number;
@@ -84,7 +84,10 @@ export interface ResolutionSettings {
 
 export type UltimateUpscaleMode = 'Linear' | 'Chess' | 'None';
 export type UltimateSeamFixMode =
-  'None' | 'Band Pass' | 'Half Tile' | 'Half Tile + Intersections';
+  | 'None'
+  | 'Band Pass'
+  | 'Half Tile'
+  | 'Half Tile + Intersections';
 
 export interface UltimateUpscaleSettings {
   enabled: boolean;
@@ -182,6 +185,16 @@ export interface LayoutBox {
   height: number;
   caption: string;
   text: string;
+  tags?: string[];
+  palette?: string[];
+}
+
+export type LayoutCanvas = 'single' | 'multi_panel' | 'collage';
+
+export interface LayoutSummaryExtras {
+  meta?: string[];
+  canvas?: LayoutCanvas;
+  palette?: string[];
 }
 
 export interface MossSettings {
@@ -191,6 +204,7 @@ export interface MossSettings {
   slgEndPercent: number;
   layoutEnabled: boolean;
   layoutBoxes: LayoutBox[];
+  layoutSummary: LayoutSummaryExtras;
   controlEnabled: boolean;
   controlAdapter: string;
   controlColorMap: string;
@@ -198,6 +212,42 @@ export interface MossSettings {
   controlStrength: number;
   controlStartPercent: number;
   controlEndPercent: number;
+  spectrumEnabled: boolean;
+  spectrumMode: 'adaptive' | 'manual';
+  spectrumWarmupSteps: number;
+  spectrumTailActualSteps: number;
+  spectrumCacheDevice: 'main_device' | 'offload_device' | 'cpu';
+  spectrumDetailGuardSteps: number;
+  spectrumPostGuardHorizonCap: number;
+  spectrumErrorTolerance: number;
+  spectrumMaxConsecutiveForecasts: number;
+  boosterEnabled: boolean;
+  boosterBakeLora: boolean;
+  boosterInt8Attention: boolean;
+  boosterInt8StartPercent: number;
+  mgCacheEnabled: boolean;
+  mgCacheMode: 'cache' | 'calibrate';
+  mgCacheAlpha: number;
+  mgCacheBeta: number;
+  mgCacheCalibration: string;
+  mgCacheForecast: boolean;
+  mgCacheCalibrationName: string;
+  mgCacheImportanceStride: number;
+  textEmbedderCacheEnabled: boolean;
+  guidanceIntervalEnabled: boolean;
+  guidanceIntervalStart: number;
+  guidanceIntervalEnd: number;
+  progressiveEnabled: boolean;
+  progressiveScale: number;
+  progressiveFraction: number;
+  tsrEnabled: boolean;
+  tsrK: number;
+  tsrSigma: number;
+  auraFlowEnabled: boolean;
+  auraFlowShift: number;
+  editLora: string;
+  editFormat: 'Moss-Image-Edit' | 'ai-toolkit' | 'ai-toolkit (kv_cache off)';
+  editImageStrength: number;
 }
 
 export interface WorkflowState {

@@ -4,7 +4,8 @@ import { mentionReference } from './aiMentions';
 export const IMAGE_HISTORY_TURNS = 3;
 
 type ModelPart =
-  { type: 'text'; text: string } | { type: 'image'; image: string };
+  | { type: 'text'; text: string }
+  | { type: 'image'; image: string };
 
 export type ModelMessage =
   | { role: 'user'; content: string | ModelPart[] }

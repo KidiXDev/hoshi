@@ -4,6 +4,7 @@ export type AppDataName =
   | 'ai_config'
   | 'booru_prompt_format_options'
   | 'booru_gallery_state'
+  | 'character_helper_settings'
   | 'chat_sessions'
   | 'civitai_bookmarks'
   | 'civitai_browser_state'
@@ -24,11 +25,17 @@ export type AppDataName =
   | 'workflow_session_state_moss';
 
 type DataFile =
-  'config' | 'history' | 'state' | 'chat' | 'ai_config' | 'bookmarks';
+  | 'config'
+  | 'history'
+  | 'state'
+  | 'chat'
+  | 'ai_config'
+  | 'bookmarks';
 const dataFiles: Record<AppDataName, DataFile> = {
   ai_config: 'ai_config',
   booru_prompt_format_options: 'state',
   booru_gallery_state: 'state',
+  character_helper_settings: 'config',
   chat_sessions: 'chat',
   civitai_bookmarks: 'bookmarks',
   civitai_browser_state: 'state',

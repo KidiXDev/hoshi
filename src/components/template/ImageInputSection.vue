@@ -11,6 +11,7 @@ import {
   Paintbrush,
   Trash2,
   Upload,
+  WandSparkles,
   X
 } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +28,9 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import EditableNumberBadge from '../common/EditableNumberBadge.vue';
+import HelpTooltip from '../common/HelpTooltip.vue';
 import MaskPainterDialog from '../common/MaskPainterDialog.vue';
+import MossEditSettings from './MossEditSettings.vue';
 import { ComfyApi } from '../../services/comfyApi';
 import { useComfyStore } from '../../stores/comfyStore';
 import { useLauncherStore } from '../../stores/launcherStore';
@@ -81,6 +84,13 @@ const inpaintingEnabled = computed({
   get: () => workflowStore.imageInput.mode === 'inpaint',
   set: (enabled: boolean) => {
     workflowStore.imageInput.mode = enabled ? 'inpaint' : 'img2img';
+  }
+});
+
+const editEnabled = computed({
+  get: () => workflowStore.imageInput.mode === 'edit',
+  set: (enabled: boolean) => {
+    workflowStore.imageInput.mode = enabled ? 'edit' : 'img2img';
   }
 });
 
@@ -325,6 +335,32 @@ async function saveMask(blob: Blob) {
         />
       </div>
 
+      <!-- Mode Subpanel: MOSS Edit Toggle -->
+      <div
+        v-if="workflowStore.profile === 'moss'"
+        class="border-border bg-muted/30 flex items-center justify-between rounded-lg border p-2.5 transition-colors"
+      >
+        <div class="flex items-center gap-2.5">
+          <div
+            class="bg-primary/10 text-primary flex h-6 w-6 items-center justify-center rounded-md"
+          >
+            <WandSparkles class="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold">Edit Mode</span>
+              <HelpTooltip
+                text="Starts from a blank latent at the input's size, so denoise is always 1. The official workflow uses 30 steps, CFG 4, euler, normal."
+              />
+            </div>
+            <p class="text-muted-foreground text-xs">
+              Edit the input image with a prompt
+            </p>
+          </div>
+        </div>
+        <Switch v-model="editEnabled" aria-label="Enable MOSS image edit" />
+      </div>
+
       <!-- Image Upload Dropzone & Preview -->
       <div ref="dropZone" class="flex flex-col gap-2">
         <input
@@ -492,8 +528,13 @@ async function saveMask(blob: Blob) {
         </div>
       </div>
 
+      <MossEditSettings v-if="editEnabled" />
+
       <!-- Denoise Control Slider -->
-      <div v-if="!inpaintingEnabled" class="flex flex-col gap-1.5">
+      <div
+        v-if="!inpaintingEnabled && !editEnabled"
+        class="flex flex-col gap-1.5"
+      >
         <div class="flex items-center justify-between">
           <Label
             class="text-muted-foreground text-xs font-bold tracking-wider uppercase"

@@ -1,5 +1,9 @@
 export type ImageBatchStatus =
-  'ready' | 'uploading' | 'queued' | 'done' | 'error';
+  | 'ready'
+  | 'uploading'
+  | 'queued'
+  | 'done'
+  | 'error';
 
 export interface ImageBatchItem {
   id: string;
@@ -19,4 +23,7 @@ export interface ImageBatchItem {
 }
 
 export type ImageComparisonMode =
-  'split' | 'side-by-side' | 'result' | 'original';
+  | 'split'
+  | 'side-by-side'
+  | 'result'
+  | 'original';

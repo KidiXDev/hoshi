@@ -8,6 +8,7 @@ use crate::process_manager::hide_command_window;
 
 pub(crate) const LOCAL_MODEL_DISCOVERY: &str = include_str!("local_model_discovery.py");
 pub(crate) const COMFY_UPDATE_CHECK: &str = include_str!("comfy_update_check.py");
+pub(crate) const CHARACTER_DB_BUILD: &str = include_str!("character_db_build.py");
 
 const INTERPRETER_NAMES: [&str; 5] = [
     "python.exe",

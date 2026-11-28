@@ -80,7 +80,9 @@ const editorLoras = ref<LoraData['loras']>([]);
 const editorCharSeries = ref('');
 const editorCharTrigger = ref('');
 const editorCharTags = ref('');
-const editorCharSource = ref<'local' | 'animadex' | 'manual'>('local');
+const CHARACTER_SOURCES = ['local', 'animadex', 'moss', 'manual'] as const;
+type CharacterSource = (typeof CHARACTER_SOURCES)[number];
+const editorCharSource = ref<CharacterSource>('local');
 const editorCharAnimadexSlug = ref('');
 const editorCharNotes = ref('');
 const editorSaveError = ref('');
@@ -188,9 +190,8 @@ async function openEditEditor(entry: LibraryListEntry) {
       editorCharTrigger.value = item.data.trigger;
       editorCharTags.value = item.data.tags.join(', ');
       editorCharSource.value =
-        item.data.source === 'animadex' || item.data.source === 'manual'
-          ? item.data.source
-          : 'local';
+        CHARACTER_SOURCES.find((source) => source === item.data.source) ??
+        'local';
       editorCharAnimadexSlug.value = item.data.animadexSlug ?? '';
       editorCharNotes.value = item.data.notes ?? '';
     }
@@ -621,6 +622,9 @@ defineExpose({ create: openCreateEditor, edit: openEditEditor, closeDeleted });
                         >
                         <SelectItem value="animadex"
                           >Imported from Animadex</SelectItem
+                        >
+                        <SelectItem value="moss"
+                          >Imported from MOSS Catalog</SelectItem
                         >
                         <SelectItem value="manual"
                           >Manual verification</SelectItem

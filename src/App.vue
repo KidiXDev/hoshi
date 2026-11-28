@@ -156,7 +156,7 @@ onUnmounted(() => {
             <ComfyUiWorkspace v-if="comfyUiVisited" v-show="isComfyUi" />
             <RouterView v-slot="{ Component }">
               <KeepAlive
-                include="BooruGalleryView,CivitaiBrowserView,CivitaiModelDetailView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView,AnimadexExploreView,DanbooruWikiView,ModelManagerView"
+                include="BooruGalleryView,CivitaiBrowserView,CivitaiModelDetailView,ImageViewerView,UpscalerView,RemoveBackgroundView,FaceDetailerView,AnimadexExploreView,MossCatalogView,DanbooruWikiView,ModelManagerView"
                 :max="10"
               >
                 <component :is="Component" />

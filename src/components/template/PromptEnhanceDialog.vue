@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   ArrowRight,
   Check,
@@ -28,6 +28,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   buildEnhancerSystemPrompt,
   buildEnhancerUserPrompt,
+  buildPromptStudioContext,
   ENHANCE_PRESETS
 } from '../../data/aiPrompts';
 import {
@@ -37,6 +38,7 @@ import {
 } from '../../services/aiService';
 import { useAiStore } from '../../stores/aiStore';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import { mossLayoutToDraft } from '@/utils/mossLayout';
 import AiModelSelector from '@/components/common/AiModelSelector.vue';
 import AiReasoningSelector from '@/components/common/AiReasoningSelector.vue';
 
@@ -52,6 +54,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'update:open', val: boolean): void;
+  (e: 'update:target', val: 'positive' | 'negative'): void;
   (
     e: 'apply',
     payload: {
@@ -65,7 +68,7 @@ const emit = defineEmits<{
 const aiStore = useAiStore();
 const workflowStore = useWorkflowStore();
 
-const selectedStyle = ref<string>('clothing');
+const selectedStyle = ref<string>('refine');
 const styleContext = ref('');
 const customInstruction = ref('');
 const enhancedPrompt = ref('');
@@ -74,14 +77,10 @@ const errorMsg = ref('');
 const copied = ref(false);
 let abortController: AbortController | null = null;
 
-const promptTarget = ref<'positive' | 'negative'>(props.target);
-
-watch(
-  () => props.target,
-  (val) => {
-    promptTarget.value = val;
-  }
-);
+const promptTarget = computed({
+  get: () => props.target,
+  set: (value: 'positive' | 'negative') => emit('update:target', value)
+});
 
 const currentPresets = computed(
   () => ENHANCE_PRESETS[workflowStore.profile][promptTarget.value]
@@ -98,7 +97,12 @@ function selectValidStyle(reset = false) {
   }
 }
 
-watch(promptTarget, () => selectValidStyle());
+watch(currentPresets, () => {
+  stopEnhancement();
+  enhancedPrompt.value = '';
+  errorMsg.value = '';
+  selectValidStyle();
+});
 
 watch(
   () => props.open,
@@ -107,7 +111,6 @@ watch(
       enhancedPrompt.value = '';
       errorMsg.value = '';
       copied.value = false;
-      promptTarget.value = props.target;
       selectValidStyle(props.target === 'positive');
     } else {
       stopEnhancement();
@@ -121,16 +124,24 @@ const canRun = computed(
     !isStreaming.value &&
     (!isCustomMode.value || !!customInstruction.value.trim())
 );
+const canApply = computed(
+  () => !!enhancedPrompt.value.trim() && !isStreaming.value && !errorMsg.value
+);
 
 function stopEnhancement() {
   if (abortController) {
     abortController.abort();
     abortController = null;
   }
+  if (isStreaming.value)
+    errorMsg.value = 'Enhancement stopped. Run it again before applying.';
   isStreaming.value = false;
 }
 
+onBeforeUnmount(stopEnhancement);
+
 async function runEnhance() {
+  if (!canRun.value) return;
   if (!aiStore.hasApiKey) {
     errorMsg.value =
       'Please configure your OpenRouter API Key in Settings or the AI Drawer first.';
@@ -140,7 +151,8 @@ async function runEnhance() {
   errorMsg.value = '';
   enhancedPrompt.value = '';
   isStreaming.value = true;
-  abortController = new AbortController();
+  const controller = new AbortController();
+  abortController = controller;
 
   const isPositive = promptTarget.value === 'positive';
   const presets = currentPresets.value;
@@ -152,15 +164,21 @@ async function runEnhance() {
   if (!styleInstruction) {
     errorMsg.value = 'Enter an instruction for Custom mode.';
     isStreaming.value = false;
+    abortController = null;
     return;
   }
 
+  const sceneLayout =
+    !isPositive && workflowStore.profile === 'moss'
+      ? mossLayoutToDraft(workflowStore)
+      : null;
   const userPrompt = buildEnhancerUserPrompt(
     isPositive,
     props.originalPrompt,
     styleInstruction,
     isCustomMode.value ? undefined : customInstruction.value,
-    isCustomMode.value ? undefined : styleContext.value
+    isCustomMode.value ? undefined : styleContext.value,
+    sceneLayout ? JSON.stringify(sceneLayout) : workflowStore.positivePrompt
   );
 
   try {
@@ -170,37 +188,41 @@ async function runEnhance() {
       model,
       system: buildEnhancerSystemPrompt(
         profileInstructions(aiStore.config, workflowStore.profile).enhancer,
-        workflowStore.profile
+        workflowStore.profile,
+        buildPromptStudioContext(workflowStore)
       ),
       prompt: userPrompt,
       temperature: aiStore.config.temperature,
       maxOutputTokens: aiStore.config.maxOutputTokens,
-      abortSignal: abortController.signal,
+      abortSignal: controller.signal,
       onError: ({ error }) => {
+        if (controller.signal.aborted) return;
         errorMsg.value = error instanceof Error ? error.message : String(error);
       }
     });
 
     for await (const chunk of result.textStream) {
+      if (controller.signal.aborted) return;
       enhancedPrompt.value += chunk;
     }
-    if ((await result.finishReason) === 'length') {
+    const finishReason = await result.finishReason;
+    if (controller.signal.aborted) return;
+    if (finishReason === 'length') {
       errorMsg.value = cutOffMessage(aiStore.config.maxOutputTokens);
     }
   } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      // Aborted by user
-    } else {
-      errorMsg.value = err instanceof Error ? err.message : String(err);
-    }
+    if (controller.signal.aborted) return;
+    errorMsg.value = err instanceof Error ? err.message : String(err);
   } finally {
-    isStreaming.value = false;
-    abortController = null;
+    if (abortController === controller) {
+      isStreaming.value = false;
+      abortController = null;
+    }
   }
 }
 
 function handleApply(mode: 'replace' | 'append') {
-  if (!enhancedPrompt.value.trim()) return;
+  if (!canApply.value) return;
   emit('apply', {
     mode,
     text: enhancedPrompt.value.trim(),
@@ -545,7 +567,7 @@ async function copyEnhanced() {
             type="button"
             variant="outline"
             size="sm"
-            :disabled="!enhancedPrompt || isStreaming"
+            :disabled="!canApply"
             @click="handleApply('append')"
           >
             Append
@@ -553,7 +575,7 @@ async function copyEnhanced() {
           <Button
             type="button"
             size="sm"
-            :disabled="!enhancedPrompt || isStreaming"
+            :disabled="!canApply"
             class="gap-1.5"
             @click="handleApply('replace')"
           >

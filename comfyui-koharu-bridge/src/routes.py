@@ -125,7 +125,7 @@ async def model_preview_handler(request):
 
     if serve_path and os.path.exists(serve_path):
         content_type = "image/webp" if serve_path.lower().endswith(".webp") else None
-        headers = {"Cache-Control": "public, max-age=604800, immutable", **CORS_HEADERS}
+        headers = {"Cache-Control": "no-cache", **CORS_HEADERS}
         if content_type:
             headers["Content-Type"] = content_type
         return web.FileResponse(serve_path, headers=headers)

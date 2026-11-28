@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { AutocompleteItem } from './comfyApi';
+import type { AutocompleteItem } from './tagAutocomplete';
 
 const WORD_PATTERN = /^[a-z]+(?:'[a-z]+)*$/u;
 

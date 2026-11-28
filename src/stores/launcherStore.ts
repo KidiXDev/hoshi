@@ -27,6 +27,7 @@ export const DEFAULT_LAUNCHER_CONFIG: LauncherConfig = {
   autocompleteIncludeArtistPrefix: true,
   autocompleteEscapeParentheses: true,
   wordAutocompleteEnabled: true,
+  promptAutocompleteSource: { anima: 'tag', moss: 'word' },
   promptEditorMode: false
 };
 
@@ -83,7 +84,14 @@ export const useLauncherStore = defineStore('launcher', () => {
             parsed.args = `${parsed.args} --enable-cors-header`.trim();
           }
         }
-        config.value = { ...DEFAULT_LAUNCHER_CONFIG, ...parsed };
+        config.value = {
+          ...DEFAULT_LAUNCHER_CONFIG,
+          ...parsed,
+          promptAutocompleteSource: {
+            ...DEFAULT_LAUNCHER_CONFIG.promptAutocompleteSource,
+            ...parsed.promptAutocompleteSource
+          }
+        };
       }
     } catch {}
   }

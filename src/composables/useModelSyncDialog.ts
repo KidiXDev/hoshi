@@ -9,7 +9,13 @@ import {
 import { useSyncModelMutation } from './useModelManagerQueries';
 
 export type ModelSyncStage =
-  'idle' | 'hashing' | 'lookup' | 'done' | 'notFound' | 'cancelled' | 'error';
+  | 'idle'
+  | 'hashing'
+  | 'lookup'
+  | 'done'
+  | 'notFound'
+  | 'cancelled'
+  | 'error';
 
 export interface ModelSyncState {
   open: boolean;

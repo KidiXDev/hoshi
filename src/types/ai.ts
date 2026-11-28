@@ -12,7 +12,13 @@ export interface AiConfig {
   contextTokenLimit: number;
   maxOutputTokens: number;
   reasoningEffort?:
-    'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+    | 'default'
+    | 'none'
+    | 'minimal'
+    | 'low'
+    | 'medium'
+    | 'high'
+    | 'xhigh';
   providerOverride?: string;
   allowProviderFallbacks?: boolean;
 }
@@ -46,6 +52,9 @@ export type ToolName =
   | 'search_animadex'
   | 'retrieve_animadex_tag_by_id'
   | 'search_character_library'
+  | 'search_character_data'
+  | 'roll_character_look'
+  | 'search_moss_catalog'
   | 'inject_positive_prompt'
   | 'inject_negative_prompt'
   | 'queue_generation';
@@ -69,7 +78,7 @@ export interface ChatMessageAttachment {
 
 export interface ChatMessageMention {
   id: string;
-  source: 'booru' | 'animadex-character' | 'library-character';
+  source: 'booru' | 'animadex-character' | 'library-character' | 'moss-catalog';
   sourceId: string;
   label: string;
   detail: string;

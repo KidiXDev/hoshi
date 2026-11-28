@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import BooruSettings from '@/components/settings/BooruSettings.vue';
 import AiSettings from '@/components/settings/AiSettings.vue';
+import CharacterHelperSettings from '@/components/settings/CharacterHelperSettings.vue';
 import SystemInfoSettings from '@/components/settings/SystemInfoSettings.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
+import { useRoute } from 'vue-router';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -13,6 +15,7 @@ import {
   CheckCircle2,
   CloudDownload,
   Cpu,
+  Dices,
   ExternalLink,
   FlaskConical,
   FolderOpen,
@@ -59,11 +62,19 @@ import {
 } from '@/components/ui/select';
 import { BRAND_NAME, REPO_SLUG } from '@/lib/brand';
 import { loadAppData, saveAppData } from '../services/appStorage';
+import {
+  clearBooruCache,
+  fetchBooruSettings,
+  getBooruMediaCacheStats,
+  saveBooruSettings
+} from '../services/booruGallery';
 import { ComfyApi } from '../services/comfyApi';
 import {
   getGalleryCacheStats,
   type GalleryCacheStats
 } from '../services/imageGallery';
+import { TagAutocomplete } from '../services/tagAutocomplete';
+import { Wildcards } from '../services/wildcards';
 import { WordAutocomplete } from '../services/wordAutocomplete';
 import { useComfyStore } from '../stores/comfyStore';
 import { useGalleryCacheStore } from '../stores/galleryCacheStore';
@@ -83,16 +94,22 @@ import SettingsSwitchRow from '@/components/layout/SettingsSwitchRow.vue';
 const launcherStore = useLauncherStore();
 const comfyStore = useComfyStore();
 
+const COMFYUI_URL_PLACEHOLDER = 'http://127.0.0.1:8188';
+const CIVITAI_ACCOUNT_URL = 'https://civitai.com/user/account';
+const CUSTOM_NODE_URL_PLACEHOLDER = 'https://github.com/owner/custom-node';
+
 const tabs = [
   { id: 'comfyui', label: 'ComfyUI', icon: Terminal },
   { id: 'booru', label: 'Booru gallery', icon: ImageIcon },
   { id: 'civitai', label: 'Civitai', icon: KeyRound },
   { id: 'ai', label: 'AI assistant', icon: Bot },
+  { id: 'character', label: 'Character Helper', icon: Dices },
   { id: 'general', label: 'General', icon: AppWindow },
   { id: 'system', label: 'System Information', icon: MonitorCog }
 ] as const;
 type SettingsTab = (typeof tabs)[number]['id'];
-const activeTab = ref<SettingsTab>('comfyui');
+const requestedTab = tabs.find((tab) => tab.id === useRoute().query.tab)?.id;
+const activeTab = ref<SettingsTab>(requestedTab ?? 'comfyui');
 
 const workingDir = ref(launcherStore.config.workingDir);
 const pythonPath = ref(launcherStore.config.pythonPath);
@@ -140,9 +157,9 @@ const isInstallDialogOpen = ref(false);
 const repositoryUrl = ref('');
 const isInstallingCustomNode = ref(false);
 const installResult = ref<{ ok: boolean; message: string } | null>(null);
-const autocompleteReady = computed(
-  () => comfyStore.isConnected && comfyStore.isYetEssentialAvailable
-);
+const tagListStatus = ref<{ ok: boolean; message: string } | null>(null);
+const wildcardStatus = ref<{ ok: boolean; message: string } | null>(null);
+const isLoadingTagData = ref(false);
 const comfyUpdate = ref<ComfyUpdateStatus | null>(null);
 const comfyUpdateError = ref('');
 const isCheckingComfyUpdate = ref(false);
@@ -205,25 +222,45 @@ function openWordListFolder() {
   void WordAutocomplete.openFolder().catch(console.error);
 }
 
+function loadStatus(
+  result: PromiseSettledResult<number>,
+  noun: string,
+  emptyMessage: string
+) {
+  if (result.status === 'rejected') {
+    const reason: unknown = result.reason;
+    return {
+      ok: false,
+      message: reason instanceof Error ? reason.message : String(reason)
+    };
+  }
+  return result.value > 0
+    ? { ok: true, message: `${result.value.toLocaleString()} ${noun} loaded` }
+    : { ok: false, message: emptyMessage };
+}
+
+async function refreshTagData() {
+  isLoadingTagData.value = true;
+  const [tags, wildcards] = await Promise.allSettled([
+    TagAutocomplete.reload().then((entries) => entries.length),
+    Wildcards.reload().then((map) => Object.keys(map).length)
+  ]);
+  tagListStatus.value = loadStatus(tags, 'tags', 'No tag CSV found');
+  wildcardStatus.value = loadStatus(
+    wildcards,
+    'wildcards',
+    'No wildcard files found'
+  );
+  isLoadingTagData.value = false;
+}
+
 onMounted(() => {
   void loadCivitaiSettings();
   void refreshWordList();
+  void refreshTagData();
+  void loadBooruMediaCacheLimit();
 });
 let saveSuccessTimer: ReturnType<typeof setTimeout> | undefined;
-
-watch(
-  autocompleteReady,
-  async (ready) => {
-    if (!ready) return;
-    const settings = await ComfyApi.fetchTagAutocompleteSettings(
-      serverUrl.value
-    );
-    if (!settings) return;
-    autocompleteAlgorithm.value = settings.search_algorithm;
-    autocompleteLimit.value = settings.search_limit;
-  },
-  { immediate: true }
-);
 
 async function handleBrowseComfyDir() {
   const dir = await launcherStore.selectComfyDir();
@@ -276,13 +313,6 @@ async function saveApplicationSettings() {
     wordAutocompleteEnabled: wordAutocompleteEnabled.value,
     promptEditorMode: promptEditorMode.value
   });
-  if (!serverChanged && autocompleteEnabled.value && autocompleteReady.value) {
-    await ComfyApi.updateTagAutocompleteSettings(
-      cleanedServerUrl,
-      autocompleteAlgorithm.value,
-      autocompleteLimit.value
-    );
-  }
   showSaved();
   if (serverChanged) comfyStore.init();
 }
@@ -414,9 +444,6 @@ async function testConnection() {
   const start = Date.now();
   const ok = await ComfyApi.checkHealth(serverUrl.value);
   comfyStore.isConnected = ok;
-  comfyStore.isYetEssentialAvailable = ok
-    ? await ComfyApi.checkTagAutocomplete(serverUrl.value)
-    : false;
   const latency = Date.now() - start;
   isTesting.value = false;
 
@@ -488,21 +515,73 @@ const networkCacheStats = ref<{
 } | null>(null);
 const thumbnailCacheStats = ref<GalleryCacheStats | null>(null);
 const isClearingNetworkCache = ref(false);
+const booruMediaCacheStats = ref<{
+  totalEntries: number;
+  totalSizeBytes: number;
+} | null>(null);
+const booruMediaCacheLimit = ref<number>();
+const isClearingBooruMediaCache = ref(false);
 const cacheResult = ref<{ ok: boolean; message: string } | null>(null);
 let cacheResultTimer: ReturnType<typeof setTimeout> | undefined;
 
 async function loadCacheStats() {
-  const [network, thumbnails] = await Promise.allSettled([
+  const [network, thumbnails, booruMedia] = await Promise.allSettled([
     invoke<{ totalEntries: number; totalSizeBytes: number }>(
       'get_network_cache_stats'
     ),
-    getGalleryCacheStats()
+    getGalleryCacheStats(),
+    getBooruMediaCacheStats()
   ]);
   if (network.status === 'fulfilled') networkCacheStats.value = network.value;
   else console.warn('Failed to load network cache stats:', network.reason);
   if (thumbnails.status === 'fulfilled')
     thumbnailCacheStats.value = thumbnails.value;
   else console.warn('Failed to load thumbnail cache stats:', thumbnails.reason);
+  if (booruMedia.status === 'fulfilled')
+    booruMediaCacheStats.value = booruMedia.value;
+  else console.warn('Failed to load booru media stats:', booruMedia.reason);
+}
+
+async function loadBooruMediaCacheLimit() {
+  try {
+    booruMediaCacheLimit.value = (await fetchBooruSettings()).cacheBudgetMiB;
+  } catch (err) {
+    console.warn('Failed to load booru media cache limit:', err);
+  }
+}
+
+const saveBooruMediaCacheLimit = useDebounceFn(async () => {
+  const limit = Math.min(
+    32768,
+    Math.max(128, Math.round(Number(booruMediaCacheLimit.value) || 1024))
+  );
+  booruMediaCacheLimit.value = limit;
+  try {
+    await saveBooruSettings({ cacheBudgetMiB: limit });
+    await loadCacheStats();
+    showSaved();
+  } catch (err) {
+    clearTimeout(cacheResultTimer);
+    cacheResult.value = {
+      ok: false,
+      message: `Failed to save limit: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+}, 600);
+
+async function clearBooruMediaCache() {
+  if (isClearingBooruMediaCache.value) return;
+  isClearingBooruMediaCache.value = true;
+  let error = '';
+  try {
+    await clearBooruCache();
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+  } finally {
+    isClearingBooruMediaCache.value = false;
+  }
+  await loadCacheStats();
+  showCacheResult(error, 'Booru media cache cleared.');
 }
 
 function showCacheResult(error: string, successMessage: string) {
@@ -916,7 +995,7 @@ void loadCacheStats();
                     />
                     <Input
                       v-model="serverUrl"
-                      placeholder="http://127.0.0.1:8188"
+                      :placeholder="COMFYUI_URL_PLACEHOLDER"
                       class="text-foreground pl-9 font-mono text-xs"
                     />
                   </div>
@@ -969,7 +1048,7 @@ void loadCacheStats();
                 variant="outline"
                 size="sm"
                 class="text-xs"
-                @click="openUrl('https://civitai.com/user/account')"
+                @click="openUrl(CIVITAI_ACCOUNT_URL)"
               >
                 <ExternalLink class="h-3.5 w-3.5" />
                 Manage API keys
@@ -1015,6 +1094,9 @@ void loadCacheStats();
           <!-- AI -->
           <AiSettings v-show="activeTab === 'ai'" @saved="showSaved" />
 
+          <!-- Character Helper -->
+          <CharacterHelperSettings v-if="activeTab === 'character'" />
+
           <!-- System information -->
           <SystemInfoSettings v-if="activeTab === 'system'" />
 
@@ -1038,7 +1120,7 @@ void loadCacheStats();
             <!-- Autocomplete -->
             <SettingsSection
               title="Tag autocomplete"
-              description="Danbooru tag suggestions for Anima prompts, prompt chips and tag fields. Requires the yet_essential custom node."
+              description="Danbooru tag suggestions for Anima prompts, prompt chips and tag fields. Type @ for artists and $ for wildcards."
               icon-class="text-amber-400"
             >
               <template #icon>
@@ -1047,34 +1129,93 @@ void loadCacheStats();
               <template #actions>
                 <Label
                   class="text-foreground flex cursor-pointer items-center gap-2 text-xs font-medium"
-                  :class="{ 'opacity-50': !autocompleteReady }"
                 >
-                  <Switch
-                    v-model="autocompleteEnabled"
-                    :disabled="!autocompleteReady"
-                  />
+                  <Switch v-model="autocompleteEnabled" />
                   <span>Enabled</span>
                 </Label>
               </template>
 
-              <NoticeBanner v-if="!autocompleteReady">
-                <span v-if="!comfyStore.isConnected">
-                  Start the ComfyUI server to detect autocomplete support.
-                </span>
-                <span v-else>
-                  The
-                  <code class="font-mono font-semibold">yet_essential</code>
-                  custom node is not detected. Install it into
-                  <code class="font-mono">custom_nodes</code> and restart
-                  ComfyUI.
+              <div
+                class="border-border/60 bg-muted/20 flex flex-wrap items-center justify-between gap-4 rounded-lg border p-3"
+              >
+                <div class="min-w-0 space-y-1.5">
+                  <p class="text-foreground text-xs font-medium">
+                    Tag list and wildcards
+                  </p>
+                  <p
+                    v-for="(status, index) in [tagListStatus, wildcardStatus]"
+                    :key="index"
+                    class="font-mono text-sm font-semibold"
+                  >
+                    <span
+                      v-if="status"
+                      :class="{ 'text-muted-foreground': !status.ok }"
+                    >
+                      {{ status.message }}
+                    </span>
+                    <span v-else class="text-muted-foreground">Loading…</span>
+                  </p>
+                </div>
+                <div class="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="TagAutocomplete.openFolder().catch(console.error)"
+                  >
+                    <FolderOpen class="h-3.5 w-3.5" />
+                    Tags folder
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="Wildcards.openFolder().catch(console.error)"
+                  >
+                    <FolderOpen class="h-3.5 w-3.5" />
+                    Wildcards folder
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    :disabled="isLoadingTagData"
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="refreshTagData"
+                  >
+                    <Loader2
+                      v-if="isLoadingTagData"
+                      class="h-3.5 w-3.5 animate-spin"
+                    />
+                    <RefreshCw v-else class="h-3.5 w-3.5" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              <NoticeBanner
+                v-if="
+                  (tagListStatus && !tagListStatus.ok) ||
+                  (wildcardStatus && !wildcardStatus.ok)
+                "
+              >
+                <span>
+                  Put a Danbooru tag CSV (<code class="font-mono font-semibold"
+                    >tag,category,post_count,aliases</code
+                  >) in the tags folder, and wildcard
+                  <code class="font-mono font-semibold">.txt</code> files (one
+                  option per line, used as
+                  <code class="font-mono font-semibold">__name__</code>) in the
+                  wildcards folder, then click Refresh.
                 </span>
               </NoticeBanner>
 
               <div
                 class="grid grid-cols-1 gap-4 sm:grid-cols-2"
                 :class="{
-                  'pointer-events-none opacity-50':
-                    !autocompleteEnabled || !autocompleteReady
+                  'pointer-events-none opacity-50': !autocompleteEnabled
                 }"
               >
                 <Field class="gap-1.5">
@@ -1083,7 +1224,7 @@ void loadCacheStats();
                   </FieldLabel>
                   <Select
                     v-model="autocompleteAlgorithm"
-                    :disabled="!autocompleteEnabled || !autocompleteReady"
+                    :disabled="!autocompleteEnabled"
                   >
                     <SelectTrigger class="w-full text-xs">
                       <SelectValue placeholder="Search mode">
@@ -1123,7 +1264,7 @@ void loadCacheStats();
                     type="number"
                     min="5"
                     max="50"
-                    :disabled="!autocompleteEnabled || !autocompleteReady"
+                    :disabled="!autocompleteEnabled"
                     class="font-mono text-xs"
                   />
                   <FieldDescription class="text-xs">5 – 50</FieldDescription>
@@ -1134,21 +1275,21 @@ void loadCacheStats();
                 v-model="autocompleteReplaceUnderscores"
                 label="Replace underscores with spaces"
                 description="Insert “long hair” instead of “long_hair”."
-                :disabled="!autocompleteEnabled || !autocompleteReady"
+                :disabled="!autocompleteEnabled"
               />
 
               <SettingsSwitchRow
                 v-model="autocompleteIncludeArtistPrefix"
                 label="Keep @ on artist tags"
                 description="Prefix inserted artist tags with @ so Anima treats them as artists."
-                :disabled="!autocompleteEnabled || !autocompleteReady"
+                :disabled="!autocompleteEnabled"
               />
 
               <SettingsSwitchRow
                 v-model="autocompleteEscapeParentheses"
                 label="Escape parentheses"
                 description="Insert “miku_\(vocaloid\)” so ComfyUI does not read a tag's parentheses as emphasis."
-                :disabled="!autocompleteEnabled || !autocompleteReady"
+                :disabled="!autocompleteEnabled"
               />
             </SettingsSection>
 
@@ -1321,6 +1462,59 @@ void loadCacheStats();
                 </Button>
               </div>
 
+              <div
+                class="border-border/60 bg-muted/20 flex items-center justify-between gap-4 rounded-lg border p-3"
+              >
+                <div class="min-w-0">
+                  <p class="text-foreground text-xs font-medium">Booru media</p>
+                  <p class="mt-1.5 font-mono text-sm font-semibold">
+                    <template v-if="booruMediaCacheStats">
+                      {{ formatFileSize(booruMediaCacheStats.totalSizeBytes) }}
+                    </template>
+                    <span v-else class="text-muted-foreground">Loading…</span>
+                  </p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                  <Label
+                    for="booru-media-cache-limit"
+                    class="text-muted-foreground text-xs"
+                  >
+                    Limit (MiB)
+                  </Label>
+                  <Input
+                    id="booru-media-cache-limit"
+                    v-model.number="booruMediaCacheLimit"
+                    type="number"
+                    min="128"
+                    max="32768"
+                    step="128"
+                    :disabled="booruMediaCacheLimit === undefined"
+                    class="h-8 w-24 font-mono text-xs"
+                    @update:model-value="saveBooruMediaCacheLimit"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    :disabled="
+                      isClearingBooruMediaCache ||
+                      !booruMediaCacheStats?.totalEntries
+                    "
+                    class="border-border bg-secondary hover:bg-accent h-8 gap-1.5 text-xs font-medium"
+                    @click="clearBooruMediaCache"
+                  >
+                    <Loader2
+                      v-if="isClearingBooruMediaCache"
+                      class="h-3.5 w-3.5 animate-spin"
+                    />
+                    <Trash2 v-else class="h-3.5 w-3.5 text-rose-400" />
+                    {{
+                      isClearingBooruMediaCache ? 'Clearing…' : 'Clear cache'
+                    }}
+                  </Button>
+                </div>
+              </div>
+
               <NoticeBanner
                 v-if="cacheResult"
                 :tone="cacheResult.ok ? 'emerald' : 'destructive'"
@@ -1435,7 +1629,7 @@ void loadCacheStats();
           v-model="repositoryUrl"
           type="url"
           autocomplete="off"
-          placeholder="https://github.com/owner/custom-node"
+          :placeholder="CUSTOM_NODE_URL_PLACEHOLDER"
           class="font-mono text-xs"
           :disabled="isInstallingCustomNode"
           @keydown.enter="installCustomNode"
