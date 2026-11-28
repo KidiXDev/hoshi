@@ -419,6 +419,10 @@ pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, 
         match response {
             Ok(response) => {
                 let status = response.status();
+                let challenge = response
+                    .headers()
+                    .get("cf-mitigated")
+                    .is_some_and(|value| value == "challenge");
                 let final_url = sanitized_url(response.url());
                 let retry_after = response
                     .headers()
@@ -428,7 +432,7 @@ pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, 
                     .unwrap_or((attempt + 1) as u64)
                     .min(5);
                 let body = response.text().unwrap_or_default();
-                if status.is_success() {
+                if status.is_success() && !challenge {
                     if body.trim().is_empty() {
                         return Ok(Value::Null);
                     }
@@ -445,7 +449,8 @@ pub(crate) fn send_json(source: &str, request: RequestBuilder) -> Result<Value, 
                         "{source} request was blocked by the site's Cloudflare firewall (HTTP {status}). This is not a solvable challenge; the site is rejecting requests from this app."
                     ));
                 }
-                if body.contains("cf-mitigated")
+                if challenge
+                    || body.contains("cf-mitigated")
                     || body.contains("challenges.cloudflare.com")
                     || body.contains("Just a moment...")
                     || body.contains("Turnstile")
@@ -1140,72 +1145,30 @@ pub async fn booru_solve_cloudflare(
         "konachan" | "konachan.com" => "konachan.com",
         _ => return Err(format!("Cloudflare solver is not supported for {source}")),
     };
-    let target_url = format!("https://{normalized_source}/post.json?limit=1");
-
     if let Some(existing) = app_handle.get_webview_window("booru-cf-solver") {
-        let _ = existing.close();
-        thread::sleep(Duration::from_millis(200));
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Err("Konachan is already open in the app window.".into());
     }
 
-    let parsed_url = Url::parse(&target_url).map_err(|e| e.to_string())?;
-
-    let old_cookie = {
-        let current = settings(&app_handle)?;
-        current
-            .credentials
-            .konachan
-            .get("cookie")
-            .cloned()
-            .unwrap_or_default()
-    };
-    let old_clearance = old_cookie.split(';').find_map(|pair| {
-        let mut parts = pair.trim().splitn(2, '=');
-        if parts.next()? == "cf_clearance" {
-            parts.next().map(str::to_string)
-        } else {
-            None
-        }
-    });
+    let posts_url =
+        Url::parse(&format!("https://{normalized_source}/post")).map_err(|e| e.to_string())?;
+    let api_url = posts_url.join("/post.json").map_err(|e| e.to_string())?;
 
     let app_name = app_handle.package_info().name.clone();
-    let banner_script = format!(
-        r#"
-        window.addEventListener('DOMContentLoaded', () => {{
-            const banner = document.createElement('div');
-            banner.style.position = 'fixed';
-            banner.style.top = '0';
-            banner.style.left = '0';
-            banner.style.right = '0';
-            banner.style.zIndex = '9999999';
-            banner.style.padding = '12px 16px';
-            banner.style.background = '#0f172a';
-            banner.style.color = '#38bdf8';
-            banner.style.fontSize = '13px';
-            banner.style.fontWeight = '600';
-            banner.style.fontFamily = 'system-ui, sans-serif';
-            banner.style.textAlign = 'center';
-            banner.style.borderBottom = '1px solid #1e293b';
-            banner.style.boxShadow = '0 2px 10px rgba(0,0,0,0.5)';
-            banner.innerText = '🛡️ {app_name}: Please complete Cloudflare verification. This window will close automatically once verified.';
-            document.body.prepend(banner);
-        }});
-    "#
-    );
 
-    let solver_window = tauri::WebviewWindowBuilder::new(
+    let window = tauri::WebviewWindowBuilder::new(
         &app_handle,
         "booru-cf-solver",
-        tauri::WebviewUrl::External(parsed_url),
+        tauri::WebviewUrl::External(posts_url),
     )
-    .title(format!("Konachan Cloudflare Verification - {app_name}"))
-    .inner_size(620.0, 720.0)
+    .title(format!("Konachan - {app_name}"))
+    .inner_size(1000.0, 760.0)
     .incognito(true)
     .user_agent(CLOUDFLARE_SOLVER_UA)
-    .initialization_script(&banner_script)
     .build()
     .map_err(|e| format!("Failed to create verification window: {e}"))?;
 
-    let _ = solver_window.set_focus();
+    let _ = window.set_focus();
 
     let app_handle_clone = app_handle.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1213,64 +1176,53 @@ pub async fn booru_solve_cloudflare(
         for _ in 0..max_checks {
             thread::sleep(Duration::from_millis(800));
 
-            let Some(window) = app_handle_clone.get_webview_window("booru-cf-solver") else {
-                return Err("Verification was cancelled (window closed).".into());
-            };
-
-            if let Ok(cookies) = window.cookies() {
-                let clearance_cookie = cookies.iter().find(|c| c.name() == "cf_clearance");
-                let is_new_clearance = match (&clearance_cookie, &old_clearance) {
-                    (Some(c), Some(old)) => !c.value().is_empty() && c.value() != old,
-                    (Some(c), None) => !c.value().is_empty(),
-                    _ => false,
-                };
-
-                if is_new_clearance {
-                    // Brief delay to allow Cloudflare redirects to complete and set remaining session cookies
-                    thread::sleep(Duration::from_millis(1000));
-
-                    let final_cookies = window.cookies().unwrap_or(cookies);
-                    let mut cookie_header_parts = Vec::new();
-                    for c in &final_cookies {
-                        let name = c.name();
-                        let val = c.value();
-                        cookie_header_parts.push(format!("{name}={val}"));
-                    }
-                    let cookie_str = cookie_header_parts.join("; ");
-
-                    let mut current_settings = settings(&app_handle_clone)?;
-                    current_settings
-                        .credentials
-                        .konachan
-                        .insert("cookie".into(), cookie_str);
-                    current_settings
-                        .credentials
-                        .konachan
-                        .insert("userAgent".into(), CLOUDFLARE_SOLVER_UA.into());
-                    current_settings.revision += 1;
-                    validate_settings(&mut current_settings)?;
-                    crate::app_data::save_app_data_entry(
-                        &app_handle_clone,
-                        "state",
-                        "booru_gallery",
-                        serde_json::to_value(&current_settings).map_err(|e| e.to_string())?,
-                    )?;
-                    clear_json_caches(&app_handle_clone);
-
-                    let _ = window.close();
-
-                    return Ok(serde_json::json!({
-                        "ok": true,
-                        "message": "Cloudflare clearance obtained successfully!"
-                    }));
+            let Ok(cookies) = window.cookies_for_url(api_url.clone()) else {
+                if window.url().is_err() {
+                    return Err("Verification was cancelled (window closed).".into());
                 }
+                continue;
+            };
+            if !cookies.iter().any(|c| c.name() == "cf_clearance" && !c.value().is_empty()) {
+                continue;
             }
+
+            let cookie_header = cookies
+                .iter()
+                .map(|c| format!("{}={}", c.name(), c.value()))
+                .collect::<Vec<_>>()
+                .join("; ");
+            let credentials = HashMap::from([
+                ("cookie".into(), cookie_header),
+                ("userAgent".into(), CLOUDFLARE_SOLVER_UA.into()),
+            ]);
+            let timeout = settings(&app_handle_clone)?.timeout;
+            provider(normalized_source)?
+                .test_credentials(&client(timeout)?, &credentials)
+                .map_err(|error| {
+                    let reason = error.trim_end_matches(" Please solve the Cloudflare challenge to proceed.");
+                    format!("The verification window received clearance, but the gallery still could not load Konachan (R18). {reason} You can browse in the Konachan window while it is open.")
+                })?;
+
+            let mut current_settings = settings(&app_handle_clone)?;
+            current_settings.credentials.konachan = credentials;
+            current_settings.revision += 1;
+            validate_settings(&mut current_settings)?;
+            crate::app_data::save_app_data_entry(
+                &app_handle_clone,
+                "state",
+                "booru_gallery",
+                serde_json::to_value(&current_settings).map_err(|e| e.to_string())?,
+            )?;
+            clear_json_caches(&app_handle_clone);
+            let _ = window.close();
+
+            return Ok(serde_json::json!({
+                "ok": true,
+                "message": "Konachan (R18) verified. The gallery can load posts."
+            }));
         }
 
-        if let Some(window) = app_handle_clone.get_webview_window("booru-cf-solver") {
-            let _ = window.close();
-        }
-        Err("Verification timed out. Please try again.".into())
+        Err("The gallery did not receive clearance in time. You can continue in the Konachan window.".into())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1626,6 +1578,25 @@ mod tests {
             send_json("rule34", client(5).unwrap().get(url)),
             Ok(Value::Null)
         );
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn cloudflare_challenge_header_rejects_a_success_status() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/post.json", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            assert!(stream.read(&mut [0; 4096]).unwrap() > 0);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncf-mitigated: challenge\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .unwrap();
+        });
+
+        let error = send_json("konachan.com", client(5).unwrap().get(url)).unwrap_err();
+        assert!(error.starts_with("konachan.com request was blocked by Cloudflare verification"));
         server.join().unwrap();
     }
 

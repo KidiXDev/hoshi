@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildBooruPrompt,
   formatBooruWarnings,
+  getKonachanAccessIssue,
   normalizeBooruRatings
 } from './booruGallery';
 
@@ -21,6 +22,35 @@ describe('normalizeBooruRatings', () => {
     expect(normalizeBooruRatings(['general', 'explicit'], ['unknown'])).toEqual(
       ['general']
     );
+  });
+});
+
+describe('getKonachanAccessIssue', () => {
+  it('recognizes when clearance still results in HTTP 403', () => {
+    const error =
+      'The verification window received clearance, but the gallery still could not load Konachan (R18). konachan.com request was blocked by Cloudflare verification (HTTP 403 Forbidden).';
+    expect(getKonachanAccessIssue('konachan.com', error)).toBe(
+      'rejected-after-verification'
+    );
+    expect(getKonachanAccessIssue('konachan.net', error)).toBeNull();
+  });
+
+  it('distinguishes a solvable challenge from a firewall denial', () => {
+    expect(
+      getKonachanAccessIssue(
+        'konachan.com',
+        'konachan.com request was blocked by Cloudflare verification (HTTP 403 Forbidden).'
+      )
+    ).toBe('challenge');
+    expect(
+      getKonachanAccessIssue(
+        'konachan.com',
+        "konachan.com request was blocked by the site's Cloudflare firewall (HTTP 403 Forbidden)."
+      )
+    ).toBe('firewall');
+    expect(
+      getKonachanAccessIssue('konachan.com', 'Connection timed out')
+    ).toBeNull();
   });
 });
 

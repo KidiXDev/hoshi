@@ -223,3 +223,25 @@ export function solveBooruCloudflare(source: string = 'konachan.com') {
     source
   });
 }
+
+export function getKonachanAccessIssue(source: string, message: string) {
+  if (source !== 'konachan.com') return null;
+  if (message.startsWith('The verification window received clearance')) {
+    return 'rejected-after-verification';
+  }
+  if (
+    message.startsWith(
+      'konachan.com request was blocked by Cloudflare verification'
+    )
+  ) {
+    return 'challenge';
+  }
+  if (
+    message.startsWith(
+      "konachan.com request was blocked by the site's Cloudflare firewall"
+    )
+  ) {
+    return 'firewall';
+  }
+  return null;
+}

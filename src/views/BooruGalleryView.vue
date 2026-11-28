@@ -16,6 +16,7 @@ import {
 } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { toast } from 'vue-sonner';
 import {
   AlertCircle,
   Check,
@@ -55,6 +56,7 @@ import {
   fetchBooruSettings,
   fetchBooruSources,
   formatBooruWarnings,
+  getKonachanAccessIssue,
   normalizeBooruRatings,
   searchBooru,
   solveBooruCloudflare,
@@ -476,11 +478,8 @@ function applySuggestionTag(tag: string) {
   void runSearch(true);
 }
 
-const isCloudflareBlocked = computed(
-  () =>
-    selectedSource.value === 'konachan.com' &&
-    (errorMessage.value.toLowerCase().includes('cloudflare') ||
-      errorMessage.value.includes('403'))
+const konachanAccessIssue = computed(() =>
+  getKonachanAccessIssue(selectedSource.value, errorMessage.value)
 );
 
 const isSolvingCloudflare = shallowRef(false);
@@ -490,14 +489,16 @@ async function handleSolveCloudflare() {
   isSolvingCloudflare.value = true;
   try {
     await solveBooruCloudflare('konachan.com');
-    errorMessage.value = '';
-    if (posts.value.length > 0) {
-      await runSearch(false);
-    } else {
-      await runSearch(true);
-    }
+    if (selectedSource.value === 'konachan.com')
+      await runSearch(posts.value.length === 0);
   } catch (error) {
-    errorMessage.value = readableError(error);
+    if (selectedSource.value !== 'konachan.com') return;
+    const message = readableError(error);
+    if (getKonachanAccessIssue('konachan.com', message)) {
+      errorMessage.value = message;
+    } else {
+      toast.error(message);
+    }
   } finally {
     isSolvingCloudflare.value = false;
   }
@@ -855,22 +856,37 @@ onUnmounted(deactivateView);
       class="flex-1 overflow-y-auto p-5"
       @scroll.passive="handleScroll"
     >
-      <!-- Cloudflare Challenge Error State -->
       <div
-        v-if="isCloudflareBlocked && !posts.length"
-        class="mx-auto mt-12 max-w-lg rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-xs leading-relaxed text-amber-200 shadow-sm"
+        v-if="konachanAccessIssue"
+        class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 text-xs leading-relaxed text-amber-200 shadow-sm"
+        :class="posts.length ? 'mb-4' : 'mx-auto mt-12 max-w-lg'"
       >
         <div class="flex items-start gap-3">
           <ShieldAlert class="h-5 w-5 shrink-0 text-amber-400" />
           <div class="space-y-2">
-            <span class="block text-sm font-semibold text-amber-300"
-              >Cloudflare Verification Required</span
+            <span class="block text-sm font-semibold text-amber-300">
+              {{
+                konachanAccessIssue === 'challenge'
+                  ? 'Cloudflare verification required'
+                  : 'Konachan (R18) is blocked in the gallery'
+              }}
+            </span>
+            <p
+              v-if="konachanAccessIssue === 'challenge'"
+              class="text-muted-foreground leading-normal"
             >
-            <p class="text-muted-foreground leading-normal">
-              konachan.com requires Cloudflare verification. Click the button
-              below to solve the verification check first.
+              Complete the verification to try loading posts in the gallery.
             </p>
-            <div class="pt-1">
+            <p
+              v-else-if="konachanAccessIssue === 'rejected-after-verification'"
+              class="text-muted-foreground leading-normal"
+            >
+              {{ errorMessage }}
+            </p>
+            <p v-else class="text-muted-foreground leading-normal">
+              Konachan’s firewall blocked the gallery’s request.
+            </p>
+            <div v-if="konachanAccessIssue === 'challenge'" class="pt-1">
               <Button
                 size="sm"
                 class="cursor-pointer bg-amber-600 font-medium text-white shadow-xs hover:bg-amber-500"
@@ -895,7 +911,7 @@ onUnmounted(deactivateView);
 
       <!-- Generic Error State -->
       <div
-        v-else-if="errorMessage && !posts.length"
+        v-if="errorMessage && !konachanAccessIssue && !posts.length"
         class="border-destructive/30 bg-destructive/10 text-destructive mx-auto mt-12 max-w-lg rounded-xl border p-5 text-xs leading-relaxed shadow-sm"
       >
         <div class="flex items-start gap-3">
@@ -925,40 +941,17 @@ onUnmounted(deactivateView);
       />
 
       <!-- Loaded Virtualized Aspect-Ratio Gallery Results -->
-      <template v-else>
+      <template v-else-if="posts.length || !konachanAccessIssue">
         <!-- Warnings / Soft Errors -->
         <NoticeBanner v-if="visibleWarnings.length" class="mb-4">
           {{ visibleWarnings.join(' ') }}
         </NoticeBanner>
 
-        <!-- Cloudflare Challenge Banner during pagination -->
-        <div
-          v-if="isCloudflareBlocked"
-          class="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200"
+        <NoticeBanner
+          v-if="errorMessage && !konachanAccessIssue"
+          tone="destructive"
+          class="mb-4"
         >
-          <div class="flex items-center gap-2">
-            <ShieldAlert class="h-4 w-4 shrink-0 text-amber-400" />
-            <span
-              >Cloudflare verification required for konachan.com. Please
-              re-verify to fetch more posts.</span
-            >
-          </div>
-          <Button
-            size="sm"
-            class="h-7 cursor-pointer bg-amber-600 px-3 text-xs text-white hover:bg-amber-500"
-            :disabled="isSolvingCloudflare"
-            @click="handleSolveCloudflare"
-          >
-            <Loader2
-              v-if="isSolvingCloudflare"
-              class="mr-1.5 h-3 w-3 animate-spin"
-            />
-            <ShieldCheck v-else class="mr-1.5 h-3 w-3" />
-            {{ isSolvingCloudflare ? 'Verifying...' : 'Solve Challenge' }}
-          </Button>
-        </div>
-
-        <NoticeBanner v-else-if="errorMessage" tone="destructive" class="mb-4">
           {{ errorMessage }}
         </NoticeBanner>
 
@@ -1010,34 +1003,13 @@ onUnmounted(deactivateView);
           </div>
         </div>
 
-        <div class="flex flex-col items-center justify-center gap-3 py-6">
-          <!-- Cloudflare Challenge Banner during pagination -->
-          <div
-            v-if="isCloudflareBlocked && posts.length"
-            class="flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200 shadow-xs"
-          >
-            <div class="flex items-center gap-2">
-              <ShieldAlert class="h-4 w-4 shrink-0 text-amber-400" />
-              <span>Cloudflare verification required to load more posts.</span>
-            </div>
-            <Button
-              size="sm"
-              class="h-7 cursor-pointer bg-amber-600 px-3 text-xs text-white hover:bg-amber-500"
-              :disabled="isSolvingCloudflare"
-              @click="handleSolveCloudflare"
-            >
-              <Loader2
-                v-if="isSolvingCloudflare"
-                class="mr-1.5 h-3 w-3 animate-spin"
-              />
-              <ShieldCheck v-else class="mr-1.5 h-3 w-3" />
-              {{ isSolvingCloudflare ? 'Verifying...' : 'Solve Challenge' }}
-            </Button>
-          </div>
-
+        <div
+          v-if="!konachanAccessIssue"
+          class="flex flex-col items-center justify-center gap-3 py-6"
+        >
           <!-- Generic Pagination Error Banner -->
           <div
-            v-else-if="errorMessage && posts.length"
+            v-if="errorMessage && posts.length"
             class="border-destructive/30 bg-destructive/10 text-destructive flex items-center gap-3 rounded-lg border px-4 py-2 text-xs"
           >
             <AlertCircle class="h-4 w-4 shrink-0" />
